@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+:root {
+  /* DARI SIR — light blue theme */
+  --background: #eef6ff;
+  --surface: #ffffff;
+  --surface-2: #f4f9ff;
+  --foreground: #0b2545;
+  --muted: #5b7aa3;
+  --border: #cfe2f7;
+  --primary: #1d72d2;
+  --primary-700: #155bb0;
+  --accent: #2c9bf0;
+  --up: #0a8754;
+  --up-bg: #e3f6ec;
+  --down: #d13438;
+  --down-bg: #fdeaea;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-700: var(--primary-700);
+  --color-accent: var(--accent);
+  --color-up: var(--up);
+  --color-up-bg: var(--up-bg);
+  --color-down: var(--down);
+  --color-down-bg: var(--down-bg);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, Arial, sans-serif;
+}
+
+/* thin scrollbars for data tables */
+::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 8px;
+}
