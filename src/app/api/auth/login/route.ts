@@ -13,14 +13,14 @@ export async function POST(req: Request) {
     const email = String(body.email ?? "").trim().toLowerCase();
     const password = String(body.password ?? "");
 
-    const user = getUserByEmail(email);
+    const user = await getUserByEmail(email);
     if (!user || !verifyPassword(password, user.passwordHash)) {
       return Response.json({ error: "Invalid email or password." }, { status: 401 });
     }
 
     // Unverified account: send a fresh OTP and ask the client to verify.
     if (!user.verified) {
-      const code = createOtp(email, "verify");
+      const code = await createOtp(email, "verify");
       const { devCode } = await sendOtpEmail(email, code);
       return Response.json({ needOtp: true, email, devCode });
     }

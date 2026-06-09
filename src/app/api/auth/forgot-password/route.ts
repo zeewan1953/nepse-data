@@ -8,14 +8,14 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   try {
     const email = String((await req.json()).email ?? "").trim().toLowerCase();
-    const user = getUserByEmail(email);
+    const user = await getUserByEmail(email);
     if (!user) {
       return Response.json(
         { error: "No account found with this email. Please sign up first." },
         { status: 404 },
       );
     }
-    const code = createOtp(email, "reset");
+    const code = await createOtp(email, "reset");
     const { devCode } = await sendOtpEmail(email, code);
     return Response.json({ needReset: true, email, devCode });
   } catch (e) {

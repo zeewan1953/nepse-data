@@ -1,7 +1,7 @@
 import "server-only";
 import { cookies } from "next/headers";
 import { randomBytes } from "node:crypto";
-import { getDb } from "@/lib/db";
+import { one, run } from "@/lib/db";
 import type { User } from "./users";
 
 const COOKIE = "darisir_session";
@@ -9,9 +9,11 @@ const TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 export async function createSession(userId: string): Promise<void> {
   const token = randomBytes(32).toString("hex");
-  getDb()
-    .prepare("INSERT INTO sessions(token, userId, expiresAt) VALUES(?,?,?)")
-    .run(token, userId, Date.now() + TTL);
+  await run("INSERT INTO sessions(token, userId, expiresAt) VALUES(?,?,?)", [
+    token,
+    userId,
+    Date.now() + TTL,
+  ]);
   const jar = await cookies();
   jar.set(COOKIE, token, {
     httpOnly: true,
@@ -26,23 +28,21 @@ export async function getSessionUser(): Promise<User | null> {
   const jar = await cookies();
   const token = jar.get(COOKIE)?.value;
   if (!token) return null;
-  const db = getDb();
-  const s = db.prepare("SELECT * FROM sessions WHERE token=?").get(token) as
-    | { token: string; userId: string; expiresAt: number }
-    | undefined;
+  const s = await one<{ token: string; userId: string; expiresAt: number }>(
+    "SELECT * FROM sessions WHERE token=?",
+    [token],
+  );
   if (!s || Date.now() > s.expiresAt) {
-    if (s) db.prepare("DELETE FROM sessions WHERE token=?").run(token);
+    if (s) await run("DELETE FROM sessions WHERE token=?", [token]);
     return null;
   }
-  const u = db
-    .prepare("SELECT id, email, mobile, name, verified FROM users WHERE id=?")
-    .get(s.userId) as User | undefined;
+  const u = await one<User>("SELECT id, email, mobile, name, verified FROM users WHERE id=?", [s.userId]);
   return u ?? null;
 }
 
 export async function destroySession(): Promise<void> {
   const jar = await cookies();
   const token = jar.get(COOKIE)?.value;
-  if (token) getDb().prepare("DELETE FROM sessions WHERE token=?").run(token);
+  if (token) await run("DELETE FROM sessions WHERE token=?", [token]);
   jar.delete(COOKIE);
 }

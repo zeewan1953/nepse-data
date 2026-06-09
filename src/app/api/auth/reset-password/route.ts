@@ -15,13 +15,13 @@ export async function POST(req: Request) {
     if (password.length < 8) {
       return Response.json({ error: "Password must be at least 8 characters." }, { status: 400 });
     }
-    const res = verifyOtp(email, code, "reset");
+    const res = await verifyOtp(email, code, "reset");
     if (!res.ok) return Response.json({ error: res.error }, { status: 400 });
 
-    const user = getUserByEmail(email);
+    const user = await getUserByEmail(email);
     if (!user) return Response.json({ error: "User not found." }, { status: 404 });
 
-    updatePassword(email, password);
+    await updatePassword(email, password);
     await createSession(user.id);
     return Response.json({ ok: true, user: publicUser(user) });
   } catch (e) {

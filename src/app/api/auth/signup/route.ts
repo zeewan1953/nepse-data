@@ -18,14 +18,14 @@ export async function POST(req: Request) {
     if (!EMAIL_RE.test(email)) return Response.json({ error: "Enter a valid email." }, { status: 400 });
     if (password.length < 8) return Response.json({ error: "Password must be at least 8 characters." }, { status: 400 });
 
-    const existing = getUserByEmail(email);
+    const existing = await getUserByEmail(email);
     if (existing?.verified) {
       return Response.json({ error: "This email is already registered. Please log in." }, { status: 409 });
     }
-    if (existing) resetUnverifiedUser({ email, password, mobile, name });
-    else createUser({ email, password, mobile, name });
+    if (existing) await resetUnverifiedUser({ email, password, mobile, name });
+    else await createUser({ email, password, mobile, name });
 
-    const code = createOtp(email, "verify");
+    const code = await createOtp(email, "verify");
     const { devCode } = await sendOtpEmail(email, code);
     return Response.json({ needOtp: true, email, devCode });
   } catch (e) {

@@ -8,10 +8,10 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   try {
     const email = String((await req.json()).email ?? "").trim().toLowerCase();
-    const user = getUserByEmail(email);
+    const user = await getUserByEmail(email);
     // Always respond ok (don't reveal whether the email exists).
     if (!user) return Response.json({ ok: true });
-    const code = createOtp(email, "verify");
+    const code = await createOtp(email, "verify");
     const { devCode } = await sendOtpEmail(email, code);
     return Response.json({ ok: true, devCode });
   } catch (e) {

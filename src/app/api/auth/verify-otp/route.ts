@@ -11,11 +11,11 @@ export async function POST(req: Request) {
     const email = String(body.email ?? "").trim().toLowerCase();
     const code = String(body.code ?? "").trim();
 
-    const res = verifyOtp(email, code, "verify");
+    const res = await verifyOtp(email, code, "verify");
     if (!res.ok) return Response.json({ error: res.error }, { status: 400 });
 
-    markVerified(email);
-    const user = getUserByEmail(email);
+    await markVerified(email);
+    const user = await getUserByEmail(email);
     if (!user) return Response.json({ error: "User not found." }, { status: 404 });
 
     await createSession(user.id);

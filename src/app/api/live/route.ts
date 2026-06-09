@@ -26,7 +26,7 @@ async function loadAll(): Promise<{ rows: LiveMarketData[]; source: string }> {
   if (Array.isArray(live) && live.length > 50) {
     globalThis.__lastLive = live;
     try {
-      saveLiveSnapshot(live);
+      await saveLiveSnapshot(live);
     } catch {
       /* db optional */
     }
@@ -40,7 +40,7 @@ async function loadAll(): Promise<{ rows: LiveMarketData[]; source: string }> {
   const statMap = new Map(stats.map((s) => [s.symbol, s]));
   let ohlc = new Map<string, Ohlc>();
   try {
-    ohlc = getOhlcMap();
+    ohlc = await getOhlcMap();
   } catch {
     /* db optional */
   }
