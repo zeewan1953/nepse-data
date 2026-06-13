@@ -1,4 +1,6 @@
 import "server-only";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { createClient } from "@libsql/client";
 import type { InArgs } from "@libsql/client";
 
@@ -14,8 +16,10 @@ if (!url) {
   console.log("No TURSO_DATABASE_URL found, falling back to local SQLite...");
 }
 
+const localDbUrl = pathToFileURL(path.join(process.cwd(), "data", "darisir.db")).href;
+
 export const db = createClient({
-  url: url || "file:data/darisir.db",
+  url: url || localDbUrl,
   authToken,
 });
 

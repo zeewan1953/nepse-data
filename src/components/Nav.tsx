@@ -66,27 +66,18 @@ export default function Nav() {
           {data ? (open ? "Market Open" : "Market Closed") : "…"}
         </div>
 
-        {!loading && (
-          user ? (
-            <div className="flex items-center gap-2">
-              <span className="hidden text-sm font-semibold sm:inline">
-                {user.name || user.email.split("@")[0]}
-              </span>
-              <button
-                onClick={handleLogout}
-                className="rounded-md bg-white px-3 py-1.5 text-sm font-semibold text-down hover:bg-white/90"
-              >
-                Logout
-              </button>
-            </div>
-          ) : (
-            <Link
-              href="/login"
-              className="rounded-md bg-white px-3 py-1.5 text-sm font-semibold text-primary hover:bg-white/90"
+        {!loading && user && (
+          <div className="flex items-center gap-2">
+            <span className="hidden text-sm font-semibold sm:inline">
+              {user.name || user.email.split("@")[0]}
+            </span>
+            <button
+              onClick={handleLogout}
+              className="rounded-md bg-white px-3 py-1.5 text-sm font-semibold text-down hover:bg-white/90"
             >
-              Login
-            </Link>
-          )
+              Logout
+            </button>
+          </div>
         )}
       </div>
     </header>
