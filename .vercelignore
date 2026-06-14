@@ -1,0 +1,10 @@
+# Ignore development artifacts and temporary SQLite files
+node_modules
+.vscode
+.git
+*.zip
+npm-debug.log*
+.DS_Store
+
+data/*.db-shm
+data/*.db-wal

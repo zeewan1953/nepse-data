@@ -9,11 +9,10 @@ const authToken = process.env.TURSO_AUTH_TOKEN;
 
 if (!url) {
   if (process.env.VERCEL === "1") {
-    throw new Error(
-      "Turso database URL is required in production. Set TURSO_DATABASE_URL and TURSO_AUTH_TOKEN in Vercel.",
-    );
+    console.warn("No TURSO_DATABASE_URL found on Vercel; falling back to local SQLite.");
+  } else {
+    console.log("No TURSO_DATABASE_URL found, falling back to local SQLite...");
   }
-  console.log("No TURSO_DATABASE_URL found, falling back to local SQLite...");
 }
 
 const localDbUrl = pathToFileURL(path.join(process.cwd(), "data", "darisir.db")).href;

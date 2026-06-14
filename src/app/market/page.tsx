@@ -121,19 +121,21 @@ export default function MarketPage() {
                 </td>
               </tr>
             )}
-            {rows.map((r) => (
-              <tr
-                key={r.symbol}
-                className="border-t border-border hover:bg-surface-2"
-              >
-                <td className="px-3 py-2 font-bold">
-                  <Link href={`/stock/${r.symbol}`} className="text-primary hover:underline">
-                    {r.symbol}
-                  </Link>
-                </td>
-                <td className="max-w-[220px] truncate px-3 py-2 text-muted">
-                  {r.securityName}
-                </td>
+            {rows.map((r) => {
+              const symbolLabel = r.symbol.replace(/\d+/g, "");
+              return (
+                <tr
+                  key={r.symbol}
+                  className="border-t border-border hover:bg-surface-2"
+                >
+                  <td className="px-3 py-2 font-bold">
+                    <Link href={`/stock/${r.symbol}`} className="text-primary hover:underline">
+                      {symbolLabel}
+                    </Link>
+                  </td>
+                  <td className="max-w-[220px] truncate px-3 py-2 text-muted">
+                    {r.securityName}
+                  </td>
                 <td className="px-3 py-2 text-right font-semibold tabular-nums">
                   {npr(r.lastTradedPrice)}
                 </td>
