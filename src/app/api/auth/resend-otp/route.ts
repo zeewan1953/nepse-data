@@ -1,5 +1,5 @@
 import { getUserByEmail } from "@/lib/auth/users";
-import { createOtp } from "@/lib/auth/otp";
+import { createOtp, getOtpCooldown } from "@/lib/auth/otp";
 import { sendOtpEmail } from "@/lib/auth/mailer";
 
 export const runtime = "nodejs";
@@ -7,7 +7,15 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   try {
-    const email = String((await req.json()).email ?? "").trim().toLowerCase();
+    const body = await req.json();
+    const email = String(body.email ?? "").trim().toLowerCase();
+
+    // Check cooldown
+    const cooldown = await getOtpCooldown(email);
+    if (cooldown > 0) {
+      return Response.json({ ok: true, cooldown });
+    }
+
     const user = await getUserByEmail(email);
     // Always respond ok (don't reveal whether the email exists).
     if (!user) return Response.json({ ok: true });

@@ -1,6 +1,7 @@
 import { getUserByEmail, updatePassword, publicUser } from "@/lib/auth/users";
 import { verifyOtp } from "@/lib/auth/otp";
 import { createSession } from "@/lib/auth/session";
+import { sendPasswordChangedEmail } from "@/lib/auth/mailer";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,9 +13,20 @@ export async function POST(req: Request) {
     const code = String(body.code ?? "").trim();
     const password = String(body.password ?? "");
 
+    // Password validation
     if (password.length < 8) {
       return Response.json({ error: "Password must be at least 8 characters." }, { status: 400 });
     }
+    if (!/[A-Z]/.test(password)) {
+      return Response.json({ error: "Password must contain at least one uppercase letter." }, { status: 400 });
+    }
+    if (!/[0-9]/.test(password)) {
+      return Response.json({ error: "Password must contain at least one number." }, { status: 400 });
+    }
+    if (!/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password)) {
+      return Response.json({ error: "Password must contain at least one special character." }, { status: 400 });
+    }
+
     const res = await verifyOtp(email, code, "reset");
     if (!res.ok) return Response.json({ error: res.error }, { status: 400 });
 
@@ -22,6 +34,7 @@ export async function POST(req: Request) {
     if (!user) return Response.json({ error: "User not found." }, { status: 404 });
 
     await updatePassword(email, password);
+    await sendPasswordChangedEmail(email);
     await createSession(user.id);
     return Response.json({ ok: true, user: publicUser(user) });
   } catch (e) {

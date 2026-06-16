@@ -22,6 +22,17 @@ export const db = createClient({
   authToken,
 });
 
+// Run schema migrations on startup
+async function migrateSchema(): Promise<void> {
+  // Add createdAt column to otps table if it doesn't exist (SQLite 3.37+)
+  try {
+    await db.execute("ALTER TABLE otps ADD COLUMN createdAt INTEGER DEFAULT 0");
+  } catch {
+    // Column already exists or table doesn't exist yet — safe to ignore
+  }
+}
+migrateSchema().catch(console.error);
+
 type SqlArgs = InArgs;
 
 type OhlcRow = {
