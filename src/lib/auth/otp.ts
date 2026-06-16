@@ -32,12 +32,11 @@ export async function createOtp(email: string, purpose: string): Promise<string>
   }
 
   const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
+  // Delete old OTPs first, then insert new one
+  await run("DELETE FROM otps WHERE email=?", [email]);
   await run(
     `INSERT INTO otps(email, codeHash, purpose, expiresAt, attempts, createdAt)
-     VALUES(?,?,?,?,0,?)
-     ON CONFLICT(email) DO UPDATE SET
-       codeHash=excluded.codeHash, purpose=excluded.purpose,
-       expiresAt=excluded.expiresAt, attempts=0, createdAt=excluded.createdAt`,
+     VALUES(?,?,?,?,0,?)`,
     [email, hashCode(code, email), purpose, Date.now() + OTP_TTL, Date.now()],
   );
   return code;

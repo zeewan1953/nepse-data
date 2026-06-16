@@ -73,6 +73,13 @@ async function migrateSchema(): Promise<void> {
   } catch {
     // already exists
   }
+
+  // Add unique index on otps email for upsert safety
+  try {
+    await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_otps_email ON otps(email)");
+  } catch {
+    // index may already exist or table was created differently
+  }
 }
 migrateSchema().catch(console.error);
 
