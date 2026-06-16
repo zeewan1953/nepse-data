@@ -1,19 +1,37 @@
 import "server-only";
 import { cookies } from "next/headers";
 import { randomBytes } from "node:crypto";
-import { one, run } from "@/lib/db";
+import { one, run, execute } from "@/lib/db";
 import type { User } from "./users";
 
 const COOKIE = "darisir_session";
 const TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
+const MAX_DEVICES = 3;
 
 export async function createSession(userId: string): Promise<void> {
   const token = randomBytes(32).toString("hex");
-  await run("INSERT INTO sessions(token, userId, expiresAt) VALUES(?,?,?)", [
+  const now = Date.now();
+
+  await run("INSERT INTO sessions(token, userId, expiresAt, createdAt) VALUES(?,?,?,?)", [
     token,
     userId,
-    Date.now() + TTL,
+    now + TTL,
+    now,
   ]);
+
+  // Enforce max 3 devices: delete oldest sessions beyond the limit
+  const result = await execute(
+    "SELECT token FROM sessions WHERE userId=? AND expiresAt > ? ORDER BY createdAt DESC",
+    [userId, now],
+  );
+  const allTokens = result.rows.map((r) => String(r.token));
+  if (allTokens.length > MAX_DEVICES) {
+    const toDelete = allTokens.slice(MAX_DEVICES);
+    for (const t of toDelete) {
+      await run("DELETE FROM sessions WHERE token=?", [t]);
+    }
+  }
+
   const jar = await cookies();
   jar.set(COOKIE, token, {
     httpOnly: true,
@@ -45,4 +63,13 @@ export async function destroySession(): Promise<void> {
   const token = jar.get(COOKIE)?.value;
   if (token) await run("DELETE FROM sessions WHERE token=?", [token]);
   jar.delete(COOKIE);
+}
+
+/** Returns how many active sessions a user currently has */
+export async function getActiveSessionCount(userId: string): Promise<number> {
+  const result = await execute(
+    "SELECT COUNT(*) as cnt FROM sessions WHERE userId=? AND expiresAt > ?",
+    [userId, Date.now()],
+  );
+  return Number(result.rows[0]?.cnt ?? 0);
 }

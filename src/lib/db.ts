@@ -41,9 +41,17 @@ async function migrateSchema(): Promise<void> {
       token TEXT PRIMARY KEY,
       userId TEXT NOT NULL,
       expiresAt INTEGER NOT NULL,
+      createdAt INTEGER NOT NULL DEFAULT 0,
       FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
     )
   `);
+
+  // Add createdAt column to sessions if missing
+  try {
+    await db.execute("ALTER TABLE sessions ADD COLUMN createdAt INTEGER DEFAULT 0");
+  } catch {
+    // already exists
+  }
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS otps (
