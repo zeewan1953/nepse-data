@@ -97,15 +97,14 @@ export default function Dashboard() {
         </Link>
       </div>
 
-      {/* Index cards */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
         {nepse && (
-          <IndexCard name="NEPSE" value={nepse.currentValue ?? nepse.close} change={nepse.change} perChange={nepse.perChange} big />
+          <IndexCard name="NEPSE" value={nepse.currentValue ?? nepse.close} change={nepse.change} perChange={nepse.perChange} />
         )}
-        {(indices.data?.subIndices ?? []).slice(0, 7).map((s) => (
+        {(indices.data?.subIndices ?? []).slice(0, 11).map((s) => (
           <IndexCard key={s.id} name={s.index.replace(" Index", "")} value={s.currentValue} change={s.change} perChange={s.perChange} />
         ))}
-        {!indices.data && Array.from({ length: 8 }).map((_, i) => <div key={i} className="h-24 animate-pulse rounded-xl border border-border bg-surface-2" />)}
+        {!indices.data && Array.from({ length: 8 }).map((_, i) => <div key={i} className="h-20 animate-pulse rounded-xl border border-border bg-surface-2" />)}
       </div>
 
       {/* Movers — compact, above AI signals */}
@@ -316,14 +315,14 @@ export default function Dashboard() {
   );
 }
 
-function IndexCard({ name, value, change, perChange, big }: { name: string; value: number; change: number; perChange: number; big?: boolean }) {
+function IndexCard({ name, value, change, perChange }: { name: string; value: number; change: number; perChange: number; }) {
+  const positive = change >= 0;
   return (
-    <div className={`rounded-xl border border-border bg-surface p-4 shadow-sm ${big ? "ring-2 ring-primary/30" : ""}`}>
-      <div className="text-xs font-semibold uppercase tracking-wide text-muted">{name}</div>
-      <div className={`mt-1 font-extrabold tabular-nums ${big ? "text-2xl" : "text-lg"}`}>{npr(value)}</div>
-      <div className={`text-sm font-semibold tabular-nums ${changeClass(change)}`}>
-        {change > 0 ? "+" : ""}
-        {npr(change)} ({pct(perChange)})
+    <div className="rounded-xl border border-border bg-surface p-3 shadow-sm">
+      <div className="truncate text-[11px] font-semibold uppercase tracking-wide text-muted">{name}</div>
+      <div className="mt-0.5 text-base font-extrabold tabular-nums text-foreground">{npr(value)}</div>
+      <div className={`text-xs font-semibold tabular-nums ${changeClass(change)}`}>
+        {positive ? "+" : ""}{npr(change)} ({pct(perChange)})
       </div>
     </div>
   );
