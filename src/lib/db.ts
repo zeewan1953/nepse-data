@@ -5,17 +5,13 @@ import { pathToFileURL } from "node:url";
 import { createClient } from "@libsql/client";
 import type { InArgs } from "@libsql/client";
 
-const url = process.env.TURSO_DATABASE_URL?.trim();
-const authToken = process.env.TURSO_AUTH_TOKEN;
+// ─── Local SQLite (only for live OHLC market data) ──────────────────────
+// Auth uses Supabase PostgreSQL — see src/lib/supabase.ts
 
 let localDbUrl: string;
 
-if (url) {
-  // Turso cloud database (production)
-  localDbUrl = url;
-} else if (process.env.VERCEL === "1") {
-  // On Vercel without Turso: use in-memory database (ephemeral but works)
-  console.warn("No TURSO_DATABASE_URL on Vercel — using in-memory SQLite (auth data will reset between deployments)");
+if (process.env.VERCEL === "1") {
+  // On Vercel: use in-memory SQLite for ephemeral market data
   localDbUrl = ":memory:";
 } else {
   // Local development: ensure data directory exists
@@ -28,54 +24,7 @@ if (url) {
 
 export const db = createClient({
   url: localDbUrl,
-  authToken,
 });
-
-// Run schema migrations on startup
-async function migrateSchema(): Promise<void> {
-  // Create users table
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      email TEXT UNIQUE NOT NULL,
-      password TEXT NOT NULL,
-      name TEXT,
-      createdAt INTEGER NOT NULL DEFAULT (unixepoch()),
-      updatedAt INTEGER NOT NULL DEFAULT (unixepoch())
-    )
-  `);
-
-  // Create sessions table
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS sessions (
-      id TEXT PRIMARY KEY,
-      userId INTEGER NOT NULL,
-      createdAt INTEGER NOT NULL DEFAULT (unixepoch()),
-      expiresAt INTEGER NOT NULL,
-      FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
-    )
-  `);
-
-  // Create otps table
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS otps (
-      email TEXT NOT NULL,
-      hash TEXT NOT NULL,
-      expiresAt INTEGER NOT NULL,
-      attempts INTEGER NOT NULL DEFAULT 0,
-      lockedUntil INTEGER NOT NULL DEFAULT 0,
-      createdAt INTEGER NOT NULL DEFAULT 0
-    )
-  `);
-
-  // Add createdAt column to otps table if it doesn't exist (SQLite 3.37+)
-  try {
-    await db.execute("ALTER TABLE otps ADD COLUMN createdAt INTEGER DEFAULT 0");
-  } catch {
-    // Column already exists — safe to ignore
-  }
-}
-migrateSchema().catch(console.error);
 
 type SqlArgs = InArgs;
 

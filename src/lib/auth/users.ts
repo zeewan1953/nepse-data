@@ -1,6 +1,6 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
-import { one, run } from "@/lib/db";
+import { supabaseAdmin } from "@/lib/supabase";
 import { hashPassword } from "./password";
 
 export type User = {
@@ -11,10 +11,25 @@ export type User = {
   verified: number;
 };
 
-type UserRow = User & { passwordHash: string; createdAt: number };
+type UserRow = User & { passwordHash: string; createdAt: string };
 
 export async function getUserByEmail(email: string): Promise<UserRow | undefined> {
-  return one<UserRow>("SELECT * FROM users WHERE email=?", [email]);
+  const { data, error } = await supabaseAdmin
+    .from("users")
+    .select("*")
+    .eq("email", email)
+    .single();
+
+  if (error || !data) return undefined;
+  return {
+    id: data.id,
+    email: data.email,
+    mobile: data.mobile ?? null,
+    name: data.name ?? null,
+    verified: data.is_active ? 1 : 0,
+    passwordHash: data.password_hash,
+    createdAt: data.created_at,
+  };
 }
 
 export async function createUser(input: {
@@ -23,37 +38,51 @@ export async function createUser(input: {
   mobile?: string;
   name?: string;
 }): Promise<string> {
-  const id = randomBytes(12).toString("hex");
-  await run(
-    `INSERT INTO users(id, email, mobile, name, passwordHash, verified, createdAt)
-     VALUES(?,?,?,?,?,0,?)`,
-    [id, input.email, input.mobile ?? null, input.name ?? null, hashPassword(input.password), Date.now()],
-  );
+  const id = randomBytes(16).toString("hex");
+  const { error } = await supabaseAdmin.from("users").insert({
+    id,
+    email: input.email,
+    mobile: input.mobile ?? null,
+    name: input.name ?? null,
+    password_hash: hashPassword(input.password),
+    is_active: false,
+  });
+  if (error) throw new Error(`Create user failed: ${error.message}`);
   return id;
 }
 
-// Replace the password/profile of an existing unverified user (re-signup).
 export async function resetUnverifiedUser(input: {
   email: string;
   password: string;
   mobile?: string;
   name?: string;
 }): Promise<void> {
-  await run("UPDATE users SET passwordHash=?, mobile=?, name=? WHERE email=? AND verified=0", [
-    hashPassword(input.password),
-    input.mobile ?? null,
-    input.name ?? null,
-    input.email,
-  ]);
+  const { error } = await supabaseAdmin
+    .from("users")
+    .update({
+      password_hash: hashPassword(input.password),
+      mobile: input.mobile ?? null,
+      name: input.name ?? null,
+    })
+    .eq("email", input.email)
+    .eq("is_active", false);
+  if (error) throw new Error(`Reset user failed: ${error.message}`);
 }
 
 export async function markVerified(email: string): Promise<void> {
-  await run("UPDATE users SET verified=1 WHERE email=?", [email]);
+  const { error } = await supabaseAdmin
+    .from("users")
+    .update({ is_active: true })
+    .eq("email", email);
+  if (error) throw new Error(`Mark verified failed: ${error.message}`);
 }
 
-// Reset a user's password (after OTP verification) and mark them verified.
 export async function updatePassword(email: string, newPassword: string): Promise<void> {
-  await run("UPDATE users SET passwordHash=?, verified=1 WHERE email=?", [hashPassword(newPassword), email]);
+  const { error } = await supabaseAdmin
+    .from("users")
+    .update({ password_hash: hashPassword(newPassword), is_active: true })
+    .eq("email", email);
+  if (error) throw new Error(`Update password failed: ${error.message}`);
 }
 
 export function publicUser(u: UserRow | User): User {
