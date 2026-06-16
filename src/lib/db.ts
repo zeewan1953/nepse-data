@@ -1,4 +1,5 @@
 import "server-only";
+import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { createClient } from "@libsql/client";
@@ -7,18 +8,26 @@ import type { InArgs } from "@libsql/client";
 const url = process.env.TURSO_DATABASE_URL?.trim();
 const authToken = process.env.TURSO_AUTH_TOKEN;
 
-if (!url) {
-  if (process.env.VERCEL === "1") {
-    console.warn("No TURSO_DATABASE_URL found on Vercel; falling back to local SQLite.");
-  } else {
-    console.log("No TURSO_DATABASE_URL found, falling back to local SQLite...");
+let localDbUrl: string;
+
+if (url) {
+  // Turso cloud database (production)
+  localDbUrl = url;
+} else if (process.env.VERCEL === "1") {
+  // On Vercel without Turso: use in-memory database (ephemeral but works)
+  console.warn("No TURSO_DATABASE_URL on Vercel — using in-memory SQLite (auth data will reset between deployments)");
+  localDbUrl = ":memory:";
+} else {
+  // Local development: ensure data directory exists
+  const dataDir = path.join(process.cwd(), "data");
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
   }
+  localDbUrl = pathToFileURL(path.join(dataDir, "darisir.db")).href;
 }
 
-const localDbUrl = pathToFileURL(path.join(process.cwd(), "data", "darisir.db")).href;
-
 export const db = createClient({
-  url: url || localDbUrl,
+  url: localDbUrl,
   authToken,
 });
 
