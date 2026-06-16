@@ -1,4 +1,4 @@
-import { getNepse, cached, getDailyTradeStats } from "@/lib/nepse";
+import { getNepse, cached, getDailyTradeStats, safeNepseCall } from "@/lib/nepse";
 import { saveLiveSnapshot, getOhlcMap } from "@/lib/db";
 import type { LiveMarketData, Security } from "@rumess/nepse-api";
 
@@ -22,7 +22,7 @@ type Ohlc = { openPrice: number; highPrice: number; lowPrice: number; averageTra
 //    still appear, with zeros.
 async function loadAll(): Promise<{ rows: LiveMarketData[]; source: string }> {
   const nepse = getNepse();
-  const live = await nepse.getLiveMarket().catch(() => [] as LiveMarketData[]);
+  const live = await safeNepseCall(() => nepse.getLiveMarket(), "Live market data").catch(() => [] as LiveMarketData[]);
   if (Array.isArray(live) && live.length > 50) {
     globalThis.__lastLive = live;
     try {
@@ -34,16 +34,14 @@ async function loadAll(): Promise<{ rows: LiveMarketData[]; source: string }> {
   }
 
   const [securities, stats] = await Promise.all([
-    cached("seclist", 3_600_000, () => nepse.getSecurityList()).catch(() => []),
+    cached("seclist", 3_600_000, () => safeNepseCall(() => nepse.getSecurityList(), "Security list")).catch(() => []),
     getDailyTradeStats().catch(() => []),
   ]);
   const statMap = new Map(stats.map((s) => [s.symbol, s]));
   let ohlc = new Map<string, Ohlc>();
   try {
     ohlc = await getOhlcMap();
-  } catch {
-    /* db optional */
-  }
+  } catch { /* db optional */ }
 
   const active = (securities ?? []).filter((s: Security) => s.activeStatus === "A");
   if (active.length) {

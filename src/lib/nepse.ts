@@ -1,6 +1,6 @@
 import "server-only";
 import { Nepse } from "@rumess/nepse-api";
-import type { SecurityPriceVolumeHistory } from "@rumess/nepse-api";
+import type { SecurityPriceVolumeHistory, LiveMarketData } from "@rumess/nepse-api";
 
 // Single long-lived client so the auth token / dummy-id state is reused across
 // requests instead of re-negotiating on every API call.
@@ -48,8 +48,9 @@ export type DailyTradeStat = {
 // keeps working after the market closes (unlike the live feed), so it provides
 // the "last traded" values when the market is shut.
 export async function getDailyTradeStats(): Promise<DailyTradeStat[]> {
-  return getNepse().requestGETAPI<DailyTradeStat[]>(
-    "/api/nots/securityDailyTradeStat/58",
+  return safeNepseCall(
+    () => getNepse().requestGETAPI<DailyTradeStat[]>("/api/nots/securityDailyTradeStat/58"),
+    "Daily trade stats",
   );
 }
 
@@ -58,7 +59,7 @@ export async function getDailyTradeStats(): Promise<DailyTradeStat[]> {
 // "nonDelisted" security list the keymap is built from).
 export async function resolveSecurityId(symbol: string): Promise<number | null> {
   const nepse = getNepse();
-  const km = await nepse.getSecuritySymbolIdKeymap().catch(() => null);
+  const km = await safeNepseCall(() => nepse.getSecuritySymbolIdKeymap(), "Security keymap").catch(() => null);
   const fromKm = km?.get(symbol);
   if (fromKm) return Number(fromKm);
 
@@ -66,8 +67,8 @@ export async function resolveSecurityId(symbol: string): Promise<number | null> 
   const st = stats.find((s) => s.symbol === symbol);
   if (st?.securityId) return Number(st.securityId);
 
-  const live = await nepse.getLiveMarket().catch(() => []);
-  const lv = live.find((s) => s.symbol === symbol);
+  const live = await safeNepseCall(() => nepse.getLiveMarket(), "Live market").catch(() => [] as LiveMarketData[]);
+  const lv = live.find((s: LiveMarketData) => s.symbol === symbol);
   if (lv?.securityId) return Number(lv.securityId);
 
   return null;
@@ -79,16 +80,19 @@ export async function getPriceHistoryById(
   id: number,
   size = 300,
 ): Promise<SecurityPriceVolumeHistory> {
-  return getNepse().requestGETAPI<SecurityPriceVolumeHistory>(
-    `/api/nots/market/security/price/${id}?size=${size}&page=0`,
+  return safeNepseCall(
+    () => getNepse().requestGETAPI<SecurityPriceVolumeHistory>(
+      `/api/nots/market/security/price/${id}?size=${size}&page=0`,
+    ),
+    `Price history ${id}`,
   );
 }
 
 // Security details (profile + day stats) by security id.
 export async function getSecurityDetailsById(id: number): Promise<unknown> {
   const nepse = getNepse();
-  const payloadId = await nepse.getPOSTPayloadIDForScrips();
-  return nepse.requestPOSTAPI(`/api/nots/security/${id}`, { id: payloadId });
+  const payloadId = await safeNepseCall(() => nepse.getPOSTPayloadIDForScrips(), "Scrip payload");
+  return safeNepseCall(() => nepse.requestPOSTAPI(`/api/nots/security/${id}`, { id: payloadId }), `Security details ${id}`);
 }
 
 export async function getPriceHistory(
