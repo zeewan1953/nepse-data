@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth/useAuth";
 
@@ -29,6 +29,9 @@ const icons = {
   refresh: "M23 4v6h-6 M1 20v-6h6 M3.51 9a9 9 0 0 1 14.85-3.36L23 10 M1 14l4.64 4.36A9 9 0 0 0 20.49 15",
   chevron: "M9 18l6-6-6-6",
   check: "M20 6L9 17l-5-5",
+  monitor: "M4 4h16v10H4z M9 20h6 M12 14v6",
+  smartphone: "M7 2h10v20H7z M10 18h4",
+  camera: "M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z M12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
 };
 
 /* ─── Toggle Switch ───────────────────────────────────────────────────── */
@@ -107,9 +110,27 @@ function SectionLabel({ children }: { children: string }) {
   );
 }
 
+/* ─── Modal ───────────────────────────────────────────────────────────── */
+function Modal({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-2xl bg-[#1a1f35] p-6 shadow-2xl ring-1 ring-white/10" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-lg font-bold text-white">{title}</h2>
+          <button onClick={onClose} className="rounded-lg p-1.5 text-white/40 hover:text-white hover:bg-white/10 transition-colors">
+            <Icon d="M18 6L6 18M6 6l12 12" size={20} />
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 /* ─── Main Component ───────────────────────────────────────────────────── */
 export default function ProfilePage() {
-  const { user, loading, logout } = useAuth();
+  const { user, loading, logout, refresh } = useAuth();
   const router = useRouter();
 
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -118,8 +139,47 @@ export default function ProfilePage() {
   const [autoUpdate, setAutoUpdate] = useState(true);
   const [language, setLanguage] = useState("English");
   const [showLangPicker, setShowLangPicker] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editMobile, setEditMobile] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState("");
+  const [pwdOpen, setPwdOpen] = useState(false);
+  const [currentPwd, setCurrentPwd] = useState("");
+  const [newPwd, setNewPwd] = useState("");
+  const [confirmPwd, setConfirmPwd] = useState("");
+  const [pwdMsg, setPwdMsg] = useState("");
+  const [pwdLoading, setPwdLoading] = useState(false);
+  const [securityOpen, setSecurityOpen] = useState(false);
 
   const languages = ["English", "नेपाली", "हिन्दी", "中文", "日本語"];
+
+  useEffect(() => { if (user) { setEditName(user.name || ""); setEditMobile(user.mobile || ""); } }, [user]);
+
+  async function handleSaveProfile() {
+    setSaving(true); setSaveMsg("");
+    try {
+      const r = await fetch("/api/auth/me", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: editName, mobile: editMobile }) });
+      const j = await r.json();
+      if (!r.ok) { setSaveMsg(j.error ?? "Failed to save"); return; }
+      setSaveMsg("Profile updated!");
+      await refresh();
+      setTimeout(() => { setEditOpen(false); setSaveMsg(""); }, 1000);
+    } catch (e) { setSaveMsg((e as Error).message); } finally { setSaving(false); }
+  }
+
+  async function handleChangePassword() {
+    setPwdLoading(true); setPwdMsg("");
+    if (newPwd !== confirmPwd) { setPwdMsg("Passwords do not match"); setPwdLoading(false); return; }
+    if (newPwd.length < 8) { setPwdMsg("Password must be at least 8 characters"); setPwdLoading(false); return; }
+    try {
+      const r = await fetch("/api/auth/reset-password", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ currentPassword: currentPwd, newPassword: newPwd }) });
+      const j = await r.json();
+      if (!r.ok) { setPwdMsg(j.error ?? "Failed"); setPwdLoading(false); return; }
+      setPwdMsg("Password changed!");
+      setTimeout(() => { setPwdOpen(false); setPwdMsg(""); setCurrentPwd(""); setNewPwd(""); setConfirmPwd(""); }, 1200);
+    } catch (e) { setPwdMsg((e as Error).message); } finally { setPwdLoading(false); }
+  }
 
   async function handleLogout() {
     await logout();
@@ -169,11 +229,11 @@ export default function ProfilePage() {
         {/* ── Account Section ─────────────────────────────────── */}
         <SectionLabel>Account</SectionLabel>
         <div className="mb-6 rounded-2xl bg-white/[0.03] p-1.5 ring-1 ring-white/[0.05]">
-          <MenuItem icon={icons.user} label="Profile" desc={displayName} />
+          <MenuItem icon={icons.user} label="Profile" desc={displayName} onClick={() => setEditOpen(true)} />
           <div className="mx-4 border-t border-white/[0.04]" />
           <MenuItem icon={icons.mail} label="Email" desc={displayEmail} />
           <div className="mx-4 border-t border-white/[0.04]" />
-          <MenuItem icon={icons.phone} label="Phone" desc={displayPhone} />
+          <MenuItem icon={icons.phone} label="Phone" desc={displayPhone} onClick={() => setEditOpen(true)} />
         </div>
 
         {/* ── Settings Section ────────────────────────────────── */}
@@ -233,9 +293,9 @@ export default function ProfilePage() {
                   label="Notifications"
                   trailing={<Toggle on={notifications} onChange={() => setNotifications(!notifications)} />}
                 />
-                <SubItem icon={icons.shield} label="Privacy Settings" />
-                <SubItem icon={icons.edit} label="Edit Profile" />
-                <SubItem icon={icons.key} label="Change Password" />
+                <SubItem icon={icons.shield} label="Security" onClick={() => setSecurityOpen(true)} />
+                <SubItem icon={icons.edit} label="Edit Profile" onClick={() => setEditOpen(true)} />
+                <SubItem icon={icons.key} label="Change Password" onClick={() => setPwdOpen(true)} />
                 <SubItem
                   icon={icons.refresh}
                   label="Auto Update"
@@ -249,9 +309,9 @@ export default function ProfilePage() {
         {/* ── Support & Security Section ──────────────────────── */}
         <SectionLabel>More</SectionLabel>
         <div className="mb-6 rounded-2xl bg-white/[0.03] p-1.5 ring-1 ring-white/[0.05]">
-          <MenuItem icon={icons.shield} label="Security" desc="Two-factor, sessions, devices" />
+          <MenuItem icon={icons.shield} label="Security" desc="Two-factor, sessions, devices" onClick={() => setSecurityOpen(true)} />
           <div className="mx-4 border-t border-white/[0.04]" />
-          <MenuItem icon={icons.support} label="Support" desc="Help center, contact us" />
+          <MenuItem icon={icons.support} label="Support" desc="Help center, contact us" onClick={() => window.open("https://wa.me/9779705100088", "_blank")} />
         </div>
 
         {/* ── Logout ──────────────────────────────────────────── */}
@@ -270,6 +330,46 @@ export default function ProfilePage() {
           DARI SIR v2.0 &middot; Nepal Stock Exchange
         </p>
       </div>
+
+      {/* ── Edit Profile Modal ──────────────────────────────────── */}
+      <Modal open={editOpen} onClose={() => { setEditOpen(false); setSaveMsg(""); }} title="Edit Profile">
+        <div className="space-y-4">
+          <div><label className="mb-1.5 block text-xs font-semibold text-white/50 uppercase tracking-wide">Name</label><input value={editName} onChange={(e) => setEditName(e.target.value)} className="w-full rounded-xl bg-white/[0.06] border border-white/10 px-4 py-2.5 text-sm text-white placeholder-white/30 outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/30 transition-all" placeholder="Your name" /></div>
+          <div><label className="mb-1.5 block text-xs font-semibold text-white/50 uppercase tracking-wide">Email</label><input value={displayEmail} disabled className="w-full rounded-xl bg-white/[0.06] border border-white/10 px-4 py-2.5 text-sm text-white placeholder-white/30 outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/30 transition-all opacity-50 cursor-not-allowed" /><p className="mt-1 text-[11px] text-white/30">Email cannot be changed</p></div>
+          <div><label className="mb-1.5 block text-xs font-semibold text-white/50 uppercase tracking-wide">Phone</label><input value={editMobile} onChange={(e) => setEditMobile(e.target.value)} className="w-full rounded-xl bg-white/[0.06] border border-white/10 px-4 py-2.5 text-sm text-white placeholder-white/30 outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/30 transition-all" placeholder="98XXXXXXXX" /></div>
+          {saveMsg && <p className={`text-sm text-center py-2 rounded-lg ${saveMsg.includes("updated") ? "text-emerald-400 bg-emerald-500/10" : "text-red-400 bg-red-500/10"}`}>{saveMsg}</p>}
+          <button onClick={handleSaveProfile} disabled={saving} className="w-full rounded-xl bg-emerald-500 py-2.5 text-sm font-bold text-white hover:bg-emerald-600 disabled:opacity-50 transition-colors">{saving ? "Saving..." : "Save Changes"}</button>
+        </div>
+      </Modal>
+
+      {/* ── Change Password Modal ───────────────────────────────── */}
+      <Modal open={pwdOpen} onClose={() => { setPwdOpen(false); setPwdMsg(""); setCurrentPwd(""); setNewPwd(""); setConfirmPwd(""); }} title="Change Password">
+        <div className="space-y-4">
+          <div><label className="mb-1.5 block text-xs font-semibold text-white/50 uppercase tracking-wide">Current Password</label><input type="password" value={currentPwd} onChange={(e) => setCurrentPwd(e.target.value)} className="w-full rounded-xl bg-white/[0.06] border border-white/10 px-4 py-2.5 text-sm text-white placeholder-white/30 outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/30 transition-all" placeholder="Enter current password" /></div>
+          <div><label className="mb-1.5 block text-xs font-semibold text-white/50 uppercase tracking-wide">New Password</label><input type="password" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} className="w-full rounded-xl bg-white/[0.06] border border-white/10 px-4 py-2.5 text-sm text-white placeholder-white/30 outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/30 transition-all" placeholder="At least 8 characters" /></div>
+          <div><label className="mb-1.5 block text-xs font-semibold text-white/50 uppercase tracking-wide">Confirm Password</label><input type="password" value={confirmPwd} onChange={(e) => setConfirmPwd(e.target.value)} className="w-full rounded-xl bg-white/[0.06] border border-white/10 px-4 py-2.5 text-sm text-white placeholder-white/30 outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/30 transition-all" placeholder="Re-enter new password" /></div>
+          {pwdMsg && <p className={`text-sm text-center py-2 rounded-lg ${pwdMsg.includes("changed") ? "text-emerald-400 bg-emerald-500/10" : "text-red-400 bg-red-500/10"}`}>{pwdMsg}</p>}
+          <button onClick={handleChangePassword} disabled={pwdLoading} className="w-full rounded-xl bg-emerald-500 py-2.5 text-sm font-bold text-white hover:bg-emerald-600 disabled:opacity-50 transition-colors">{pwdLoading ? "Updating..." : "Update Password"}</button>
+        </div>
+      </Modal>
+
+      {/* ── Security Modal ──────────────────────────────────────── */}
+      <Modal open={securityOpen} onClose={() => setSecurityOpen(false)} title="Security">
+        <div className="space-y-4">
+          <div className="rounded-xl bg-white/[0.04] p-4 ring-1 ring-white/5">
+            <div className="flex items-center gap-3 mb-3"><Icon d={icons.monitor} size={20} stroke="currentColor" /><div className="flex-1"><p className="text-sm font-medium text-white">Current Session</p><p className="text-xs text-white/40">This device</p></div><span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 font-semibold">Active</span></div>
+            <p className="text-[11px] text-white/30">Last login: {new Date().toLocaleDateString()}</p>
+          </div>
+          <div className="rounded-xl bg-white/[0.04] p-4 ring-1 ring-white/5">
+            <div className="flex items-center gap-3 mb-3"><Icon d="M7 2h10v20H7z M10 18h4" size={20} stroke="currentColor" /><div className="flex-1"><p className="text-sm font-medium text-white">Active Devices</p><p className="text-xs text-white/40">Up to 3 devices allowed</p></div></div>
+            <p className="text-[11px] text-white/30">Sessions are automatically managed. When you login on a new device, the oldest session is removed if you have 3 active devices.</p>
+          </div>
+          <div className="rounded-xl bg-white/[0.04] p-4 ring-1 ring-white/5">
+            <p className="text-sm font-medium text-white mb-1">Protected by Google</p>
+            <p className="text-xs text-white/40">Your account uses Google Sign-In for secure authentication. No password required.</p>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
