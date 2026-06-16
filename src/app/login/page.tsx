@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 
@@ -8,68 +8,85 @@ function LoginPageContent() {
   const params = useSearchParams();
   const from = params.get("from") || "/";
   const [error, setError] = useState<string | null>(null);
-  const [googleLoading, setGoogleLoading] = useState(false);
-  const [googleReady, setGoogleReady] = useState(false);
-  const googleBtnRef = useRef<HTMLDivElement>(null);
+  const [loading, setLoading] = useState(false);
 
-  // Load Google Identity Services
+  // Load Google Identity Services script
   useEffect(() => {
     const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
     if (!clientId || clientId.includes("PASTE")) return;
 
     const existing = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
-    if (existing) return;
+    if (existing) {
+      initGoogle();
+      return;
+    }
 
     const script = document.createElement("script");
     script.src = "https://accounts.google.com/gsi/client";
     script.async = true;
     script.defer = true;
-    script.onload = () => {
-      // @ts-ignore
-      const google = window.google;
-      if (!google?.accounts?.id) return;
-
-      google.accounts.id.initialize({
-        client_id: clientId,
-        callback: handleGoogleCredential,
-      });
-
-      if (googleBtnRef.current) {
-        google.accounts.id.renderButton(googleBtnRef.current, {
-          theme: "outline",
-          size: "large",
-          width: 400,
-          text: "continue_with",
-          shape: "rectangular",
-          logo_alignment: "left",
-        });
-      }
-      setGoogleReady(true);
-    };
+    script.onload = () => initGoogle();
     document.head.appendChild(script);
   }, []);
 
-  async function handleGoogleCredential(response: any) {
-    setGoogleLoading(true);
+  function initGoogle() {
+    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+    if (!clientId) return;
+    // @ts-ignore
+    const google = window.google;
+    if (!google?.accounts?.id) return;
+
+    google.accounts.id.initialize({
+      client_id: clientId,
+      callback: handleGoogleCredential,
+      auto_select: false,
+    });
+  }
+
+  function handleGoogleCredential(response: any) {
+    setLoading(true);
     setError(null);
-    try {
-      const r = await fetch("/api/auth/google", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ credential: response.credential }),
-      });
-      const j = await r.json();
-      if (!r.ok) {
-        setError(j.error ?? "Google login failed");
-        return;
-      }
-      router.push(from);
-      router.refresh();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setGoogleLoading(false);
+    fetch("/api/auth/google", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ credential: response.credential }),
+    })
+      .then((r) => r.json())
+      .then((j) => {
+        if (!j.ok && j.error) {
+          setError(j.error);
+          return;
+        }
+        if (!j.ok) {
+          setError("Google login failed");
+          return;
+        }
+        router.push(from);
+        router.refresh();
+      })
+      .catch((e) => setError((e as Error).message))
+      .finally(() => setLoading(false));
+  }
+
+  function onGoogleClick() {
+    setError(null);
+    // @ts-ignore
+    const google = window.google;
+    if (!google?.accounts?.id) {
+      setError("Google Sign-In not ready. Please wait or refresh the page.");
+      return;
     }
+    // This triggers the Google account picker popup
+    google.accounts.id.prompt((notification: any) => {
+      if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+        // Fallback: try OAuth redirect flow
+        const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+        const redirectUri = window.location.origin + "/api/auth/google/callback";
+        const scope = "openid email profile";
+        const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=id_token&scope=${encodeURIComponent(scope)}&nonce=${Date.now()}`;
+        window.location.href = url;
+      }
+    });
   }
 
   return (
@@ -125,7 +142,7 @@ function LoginPageContent() {
           <div className="px-4 py-2 rounded-full bg-[#FFD700]/20 border border-[#FFD700]/40">
             <span className="text-sm font-bold text-[#FFD700]">NEPSE Pro</span>
           </div>
-          <p className="text-xs text-white/50">© 2026 DARI SIR. All rights reserved.</p>
+          <p className="text-xs text-white/50">&copy; 2026 DARI SIR. All rights reserved.</p>
         </div>
       </div>
 
@@ -164,22 +181,26 @@ function LoginPageContent() {
               <p className="text-gray-600">Sign in with your Google account to continue</p>
             </div>
 
-            {/* Google Sign-In Button */}
-            <div className="flex justify-center mb-6" ref={googleBtnRef} />
-
-            {googleLoading && (
-              <div className="flex items-center justify-center gap-3 py-4">
-                <span className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-[#1B5E20] border-t-transparent" />
-                <span className="text-gray-600 font-medium">Signing you in...</span>
-              </div>
-            )}
-
-            {!googleReady && !googleLoading && (
-              <div className="p-6 rounded-xl bg-yellow-50 border border-yellow-200">
-                <p className="text-sm text-yellow-800 font-medium mb-2">Google Sign-In not configured</p>
-                <p className="text-xs text-yellow-700">Set NEXT_PUBLIC_GOOGLE_CLIENT_ID in environment variables to enable login.</p>
-              </div>
-            )}
+            {/* Custom Google Sign-In Button */}
+            <button
+              onClick={onGoogleClick}
+              disabled={loading}
+              className="w-full max-w-sm mx-auto h-14 rounded-xl border-2 border-gray-300 bg-white hover:bg-gray-50 hover:border-gray-400 active:bg-gray-100 transition-all duration-200 flex items-center justify-center gap-3 px-6 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? (
+                <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-gray-400 border-t-transparent" />
+              ) : (
+                <svg className="w-6 h-6" viewBox="0 0 24 24">
+                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/>
+                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                </svg>
+              )}
+              <span className="text-base font-semibold text-gray-700">
+                {loading ? "Signing in..." : "Continue with Google"}
+              </span>
+            </button>
 
             {/* Support link */}
             <p className="mt-8 text-center text-xs text-gray-500">
@@ -208,7 +229,7 @@ export default function LoginPage() {
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
         <div className="flex items-center gap-3">
           <span className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-[#1B5E20] border-t-transparent" />
-          <span className="text-gray-600 font-medium">Loading…</span>
+          <span className="text-gray-600 font-medium">Loading...</span>
         </div>
       </div>
     }>
