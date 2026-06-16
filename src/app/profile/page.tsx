@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth/useAuth";
+import { useTheme } from "@/lib/ThemeProvider";
 
 /* ─── Icon components (inline SVG, no extra deps) ─────────────────────── */
 function Icon({ d, size = 22, stroke = "currentColor" }: { d: string; size?: number; stroke?: string }) {
@@ -132,9 +133,9 @@ function Modal({ open, onClose, title, children }: { open: boolean; onClose: () 
 export default function ProfilePage() {
   const { user, loading, logout, refresh } = useAuth();
   const router = useRouter();
+  const { dark, toggle: toggleTheme } = useTheme();
 
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [darkMode, setDarkMode] = useState(true);
   const [notifications, setNotifications] = useState(true);
   const [autoUpdate, setAutoUpdate] = useState(true);
   const [language, setLanguage] = useState("English");
@@ -286,7 +287,7 @@ export default function ProfilePage() {
                 <SubItem
                   icon={icons.moon}
                   label="Dark Mode"
-                  trailing={<Toggle on={darkMode} onChange={() => setDarkMode(!darkMode)} />}
+                  trailing={<Toggle on={dark} onChange={toggleTheme} />}
                 />
                 <SubItem
                   icon={icons.bell}
