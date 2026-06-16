@@ -50,54 +50,32 @@ export default function SummaryBar() {
     agg.mood === "Bullish" ? "up" : agg.mood === "Bearish" ? "down" : "muted";
 
   return (
-    <div className="sticky top-[57px] z-40 border-b border-border bg-surface/95 backdrop-blur">
-      <div className="mx-auto flex max-w-7xl flex-wrap items-stretch gap-x-6 gap-y-2 px-4 py-2 text-sm">
-        <Item label="NEPSE Index">
-          <span className="font-bold tabular-nums">{npr(nepse?.currentValue ?? nepse?.close)}</span>
+    <div className="sticky top-[45px] z-40 border-b border-border bg-surface/95 backdrop-blur">
+      <div className="mx-auto flex max-w-7xl items-center gap-x-5 gap-y-1 px-4 py-1.5 text-xs">
+        <Item label="NEPSE">
+          <span className="font-bold tabular-nums text-foreground">{npr(nepse?.currentValue ?? nepse?.close)}</span>
         </Item>
-        <Item label="Daily Change">
-          <span
-            className={`font-bold tabular-nums ${
-              (nepse?.change ?? 0) > 0
-                ? "text-up"
-                : (nepse?.change ?? 0) < 0
-                  ? "text-down"
-                  : "text-muted"
-            }`}
-          >
+        <Item label="Change">
+          <span className={`font-bold tabular-nums ${(nepse?.change ?? 0) > 0 ? "text-up" : (nepse?.change ?? 0) < 0 ? "text-down" : "text-muted"}`}>
             {nepse ? `${nepse.change > 0 ? "+" : ""}${npr(nepse.change)} (${pct(nepse.perChange)})` : "—"}
           </span>
         </Item>
         <Item label="Turnover">
-          <span className="font-bold tabular-nums">Rs {compact(agg.turnover)}</span>
+          <span className="font-bold tabular-nums text-foreground">Rs {compact(agg.turnover)}</span>
         </Item>
         <Item label="Volume">
-          <span className="font-bold tabular-nums">{num(agg.volume)}</span>
+          <span className="font-bold tabular-nums text-foreground">{num(agg.volume)}</span>
         </Item>
-        <Item label="Status">
-          <span className="inline-flex items-center gap-1 font-bold">
-            <span
-              className={`h-2 w-2 rounded-full ${
-                open ? "bg-up animate-pulse" : "bg-down"
-              }`}
-            />
-            {status.data ? (open ? "Open" : "Closed") : "…"}
-          </span>
-        </Item>
-        <Item label="Market Mood">
-          <span
-            className={`font-bold ${
-              moodTone === "up" ? "text-up" : moodTone === "down" ? "text-down" : "text-muted"
-            }`}
-          >
+        <Item label="Mood">
+          <span className={`font-bold ${moodTone === "up" ? "text-up" : moodTone === "down" ? "text-down" : "text-muted"}`}>
             {agg.mood}
-            {agg.up + agg.down > 0 && (
-              <span className="ml-1 font-normal text-muted">
-                ▲{agg.up} ▼{agg.down}
-              </span>
-            )}
           </span>
         </Item>
+        <div className="ml-auto hidden items-center gap-1 text-[10px] text-muted sm:flex">
+          <span className="text-up">▲ {agg.up}</span>
+          <span className="text-down">▼ {agg.down}</span>
+          <span>— {agg.flat}</span>
+        </div>
       </div>
     </div>
   );
@@ -105,10 +83,8 @@ export default function SummaryBar() {
 
 function Item({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col leading-tight">
-      <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-        {label}
-      </span>
+    <div className="flex items-baseline gap-1.5 leading-tight">
+      <span className="text-[10px] font-medium uppercase tracking-wide text-muted">{label}</span>
       {children}
     </div>
   );

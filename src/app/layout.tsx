@@ -31,11 +31,11 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
+      <body className="min-h-full flex flex-col bg-background">
         <ThemeProvider>
           <Nav />
           <SummaryBar />
-          <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6">{children}</main>
+          <main className="mx-auto w-full max-w-7xl flex-1 px-3 py-4">{children}</main>
         </ThemeProvider>
       </body>
     </html>
