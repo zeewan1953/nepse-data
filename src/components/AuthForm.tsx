@@ -13,7 +13,6 @@ export default function AuthForm({ initialMode }: { initialMode: "login" | "sign
   const [mobile, setMobile] = useState("");
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
-  const [devCode, setDevCode] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -49,8 +48,7 @@ export default function AuthForm({ initialMode }: { initialMode: "login" | "sign
     if (!j) return;
     if (j.needOtp) {
       setMode("otp");
-      if (j.devCode) setDevCode(j.devCode);
-      setInfo(j.devCode ? "Email not set up — use the code shown below." : `Verification code sent to ${email}.`);
+      setInfo("A verification code has been sent to your email address.");
     } else if (j.ok) {
       router.push("/");
       router.refresh();
@@ -70,8 +68,7 @@ export default function AuthForm({ initialMode }: { initialMode: "login" | "sign
     const url = mode === "reset" ? "/api/auth/forgot-password" : "/api/auth/resend-otp";
     const j = await post(url, { email });
     if (j) {
-      if (j.devCode) setDevCode(j.devCode);
-      setInfo(j.devCode ? "Email not set up — use the code shown below." : "A new code has been sent to your email.");
+      setInfo("A new verification code has been sent to your email.");
     }
   }
 
@@ -80,8 +77,7 @@ export default function AuthForm({ initialMode }: { initialMode: "login" | "sign
     const j = await post("/api/auth/forgot-password", { email });
     if (j?.needReset) {
       setMode("reset");
-      if (j.devCode) setDevCode(j.devCode);
-      setInfo(j.devCode ? "Email not set up — use the code shown below." : `Reset code sent to ${email}.`);
+      setInfo("A reset code has been sent to your email address.");
     }
   }
 
@@ -115,16 +111,6 @@ export default function AuthForm({ initialMode }: { initialMode: "login" | "sign
 
         {error && <div className="mb-3 rounded-lg bg-down-bg px-3 py-2 text-sm text-down">{error}</div>}
         {info && <div className="mb-3 rounded-lg bg-up-bg px-3 py-2 text-sm text-up">{info}</div>}
-        {devCode && (mode === "otp" || mode === "reset") && (
-          <button
-            type="button"
-            onClick={() => setCode(devCode)}
-            className="mb-3 block w-full rounded-lg border border-primary bg-surface-2 px-3 py-2 text-center text-sm"
-          >
-            Your code: <b className="text-lg tabular-nums tracking-[0.3em] text-primary">{devCode}</b>
-            <span className="block text-xs text-muted">tap to fill</span>
-          </button>
-        )}
 
         {mode === "otp" ? (
           <form onSubmit={onSubmitOtp} className="space-y-3">

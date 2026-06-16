@@ -16,8 +16,8 @@ export async function POST(req: Request) {
       );
     }
     const code = await createOtp(email, "reset");
-    const { devCode } = await sendOtpEmail(email, code);
-    return Response.json({ needReset: true, email, devCode });
+    await sendOtpEmail(email, code);
+    return Response.json({ needReset: true, email });
   } catch (e) {
     return Response.json({ error: (e as Error)?.message ?? "Request failed" }, { status: 500 });
   }

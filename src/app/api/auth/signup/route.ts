@@ -26,8 +26,8 @@ export async function POST(req: Request) {
     else await createUser({ email, password, mobile, name });
 
     const code = await createOtp(email, "verify");
-    const { devCode } = await sendOtpEmail(email, code);
-    return Response.json({ needOtp: true, email, devCode });
+    await sendOtpEmail(email, code);
+    return Response.json({ needOtp: true, email });
   } catch (e) {
     return Response.json({ error: (e as Error)?.message ?? "Signup failed" }, { status: 500 });
   }

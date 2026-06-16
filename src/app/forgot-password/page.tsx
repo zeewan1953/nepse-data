@@ -9,7 +9,6 @@ export default function ForgotPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  const [devCode, setDevCode] = useState<string | null>(null);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -27,10 +26,6 @@ export default function ForgotPasswordPage() {
       if (!r.ok) {
         setError(j.error ?? "Something went wrong");
         return;
-      }
-
-      if (j.devCode) {
-        setDevCode(j.devCode);
       }
 
       setSuccess(true);
@@ -97,13 +92,6 @@ export default function ForgotPasswordPage() {
                 </div>
               )}
 
-              {devCode && (
-                <div className="mb-6 p-4 rounded-xl border-2 border-dashed border-[#1B5E20] bg-[#E8F5E9]">
-                  <p className="text-xs text-gray-600 mb-1 text-center">Development — use this code:</p>
-                  <p className="text-3xl font-black tracking-[0.3em] text-[#1B5E20] text-center">{devCode}</p>
-                </div>
-              )}
-
               <form onSubmit={onSubmit} className="space-y-5">
                 <div>
                   <label className="block text-sm font-semibold text-[#1A1A1A] mb-2">Email Address</label>
@@ -158,7 +146,7 @@ export default function ForgotPasswordPage() {
               </p>
 
               <button
-                onClick={() => router.push(`/reset-password?email=${encodeURIComponent(email)}${devCode ? `&devCode=${devCode}` : ""}`)}
+                onClick={() => router.push(`/reset-password?email=${encodeURIComponent(email)}`)}
                 className="w-full h-12 rounded-xl bg-[#1B5E20] text-white font-bold text-base transition-all duration-200 hover:bg-[#145214] hover:scale-[1.01] active:scale-[0.98] shadow-lg shadow-[#1B5E20]/25 mb-4"
               >
                 Enter Reset Code

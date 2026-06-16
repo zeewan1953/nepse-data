@@ -7,9 +7,8 @@ function ResetPasswordContent() {
   const router = useRouter();
   const params = useSearchParams();
   const email = params.get("email") || "";
-  const devCodeParam = params.get("devCode") || "";
 
-  const [code, setCode] = useState(devCodeParam || "");
+  const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);

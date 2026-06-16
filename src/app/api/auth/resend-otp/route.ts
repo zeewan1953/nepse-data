@@ -20,8 +20,8 @@ export async function POST(req: Request) {
     // Always respond ok (don't reveal whether the email exists).
     if (!user) return Response.json({ ok: true });
     const code = await createOtp(email, "verify");
-    const { devCode } = await sendOtpEmail(email, code);
-    return Response.json({ ok: true, devCode });
+    await sendOtpEmail(email, code);
+    return Response.json({ ok: true });
   } catch (e) {
     return Response.json({ error: (e as Error)?.message ?? "Resend failed" }, { status: 500 });
   }

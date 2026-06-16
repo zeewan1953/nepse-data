@@ -13,7 +13,6 @@ function LoginPageContent() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
-  const [devCode, setDevCode] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -53,8 +52,7 @@ function LoginPageContent() {
     if (!j) return;
     if (j.needOtp) {
       setStep("otp");
-      if (j.devCode) setDevCode(j.devCode);
-      setInfo(j.devCode ? "Email not configured — use code below" : `OTP sent to ${email}`);
+      setInfo("A verification code has been sent to your email address.");
     } else if (j.ok) {
       router.push(from);
       router.refresh();
@@ -73,11 +71,10 @@ function LoginPageContent() {
   async function resendOtp() {
     const j = await post("/api/auth/resend-otp", { email });
     if (j) {
-      if (j.devCode) setDevCode(j.devCode);
       if (j.cooldown) {
         setError(`Please wait ${j.cooldown}s before requesting again`);
       } else {
-        setInfo("New OTP sent to your email");
+        setInfo("A new verification code has been sent to your email.");
       }
     }
   }
@@ -86,12 +83,7 @@ function LoginPageContent() {
     e.preventDefault();
     const j = await post("/api/auth/forgot-password", { email });
     if (j) {
-      if (j.devCode) {
-        setDevCode(j.devCode);
-        setInfo("Email not configured — use code below");
-      } else {
-        setInfo(`Reset code sent to ${email}`);
-      }
+      setInfo("A reset code has been sent to your email address.");
       router.push(`/forgot-password?email=${encodeURIComponent(email)}`);
     }
   }
@@ -212,20 +204,6 @@ function LoginPageContent() {
                 <p className="text-sm text-green-700 font-medium">{info}</p>
               </div>
             </div>
-          )}
-
-          {devCode && step === "otp" && (
-            <button
-              type="button"
-              onClick={() => {
-                const input = document.querySelector('input[name="otp"]') as HTMLInputElement;
-                if (input) input.value = devCode;
-              }}
-              className="mb-6 w-full p-4 rounded-xl border-2 border-dashed border-[#1B5E20] bg-white hover:bg-[#E8F5E9] transition-all duration-200 cursor-pointer"
-            >
-              <p className="text-xs text-gray-500 mb-1">Development — tap to fill:</p>
-              <p className="text-3xl font-black tracking-[0.3em] text-[#1B5E20]">{devCode}</p>
-            </button>
           )}
 
           {/* EMAIL + PASSWORD STEP */}

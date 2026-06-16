@@ -10,6 +10,7 @@ const links = [
   { href: "/market", label: "Market Watch" },
   { href: "/floorsheet", label: "Broker Analysis" },
   { href: "/portfolio", label: "Portfolio" },
+  { href: "/profile", label: "Profile" },
 ];
 
 export default function Nav() {

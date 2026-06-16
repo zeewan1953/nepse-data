@@ -21,8 +21,8 @@ export async function POST(req: Request) {
     // Unverified account: send a fresh OTP and ask the client to verify.
     if (!user.verified) {
       const code = await createOtp(email, "verify");
-      const { devCode } = await sendOtpEmail(email, code);
-      return Response.json({ needOtp: true, email, devCode });
+      await sendOtpEmail(email, code);
+      return Response.json({ needOtp: true, email });
     }
 
     await createSession(user.id);
