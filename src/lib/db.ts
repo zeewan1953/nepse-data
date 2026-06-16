@@ -33,11 +33,46 @@ export const db = createClient({
 
 // Run schema migrations on startup
 async function migrateSchema(): Promise<void> {
+  // Create users table
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT UNIQUE NOT NULL,
+      password TEXT NOT NULL,
+      name TEXT,
+      createdAt INTEGER NOT NULL DEFAULT (unixepoch()),
+      updatedAt INTEGER NOT NULL DEFAULT (unixepoch())
+    )
+  `);
+
+  // Create sessions table
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      id TEXT PRIMARY KEY,
+      userId INTEGER NOT NULL,
+      createdAt INTEGER NOT NULL DEFAULT (unixepoch()),
+      expiresAt INTEGER NOT NULL,
+      FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Create otps table
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS otps (
+      email TEXT NOT NULL,
+      hash TEXT NOT NULL,
+      expiresAt INTEGER NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      lockedUntil INTEGER NOT NULL DEFAULT 0,
+      createdAt INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+
   // Add createdAt column to otps table if it doesn't exist (SQLite 3.37+)
   try {
     await db.execute("ALTER TABLE otps ADD COLUMN createdAt INTEGER DEFAULT 0");
   } catch {
-    // Column already exists or table doesn't exist yet — safe to ignore
+    // Column already exists — safe to ignore
   }
 }
 migrateSchema().catch(console.error);

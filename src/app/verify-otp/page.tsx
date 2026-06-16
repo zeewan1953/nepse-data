@@ -16,6 +16,9 @@ function VerifyOtpContent() {
   const [timer, setTimer] = useState(300); // 5 min
   const inputsRef = useRef<(HTMLInputElement | null)[]>([]);
 
+  // Masked email display
+  const maskedEmail = email ? email.replace(/(.{2})(.*)(@.*)/, "$1***$3") : "your email";
+
   // Countdown timer (5 min)
   useEffect(() => {
     if (timer <= 0) return;
@@ -32,6 +35,7 @@ function VerifyOtpContent() {
 
   const minutes = Math.floor(timer / 60);
   const seconds = timer % 60;
+  const progressPercent = (timer / 300) * 100;
 
   async function post(url: string, payload: Record<string, unknown>) {
     setLoading(true);
@@ -115,45 +119,86 @@ function VerifyOtpContent() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-surface to-surface-2 px-4 py-12">
-      <div className="w-full max-w-sm">
-        {/* Branding */}
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 p-8">
+      <div className="w-full max-w-md">
+        {/* Logo */}
         <div className="mb-8 text-center">
-          <div className="mb-3 inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 shadow-lg shadow-primary/20">
-            <span className="text-xl font-black text-white">D</span>
-            <span className="text-lg font-bold text-white">DARI SIR</span>
+          <div className="inline-flex items-center gap-3 rounded-2xl bg-[#1B5E20] px-6 py-4 shadow-lg">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-[#FFD700] to-[#FFA000]">
+              <span className="text-2xl font-black text-[#0D2818]">D</span>
+            </div>
+            <div>
+              <span className="text-2xl font-black text-white tracking-wide">DARI SIR</span>
+              <p className="text-xs text-white/70">NEPSE Live Market</p>
+            </div>
           </div>
-          <p className="text-sm text-muted">NEPSE Live Market</p>
         </div>
 
-        <div className="rounded-2xl border border-border bg-surface p-6 shadow-lg">
-          <h1 className="mb-1 text-xl font-bold text-center">Verify Email</h1>
-          <p className="mb-4 text-center text-sm text-muted">Enter the 6-digit code sent to <b className="text-foreground">{email}</b></p>
-
-          {/* Timer */}
-          <div className="mb-4 flex justify-center">
-            <span className={`rounded-full px-3 py-1 text-sm font-bold tabular-nums ${
-              timer > 60 ? "bg-up-bg text-up" : timer > 0 ? "bg-down-bg text-down animate-pulse" : ""
-            }`}>
-              ⏱️ {String(minutes).padStart(2, "0")}:{String(seconds).padStart(2, "0")}
-            </span>
+        {/* Card */}
+        <div className="rounded-2xl bg-white shadow-[0_4px_24px_rgba(0,0,0,0.08)] border border-gray-200 p-10 animate-[fadeIn_0.3s_ease-out]">
+          {/* Envelope icon */}
+          <div className="mb-6 flex justify-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#E8F5E9]">
+              <svg className="w-8 h-8 text-[#1B5E20]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+            </div>
           </div>
 
+          <h1 className="text-3xl font-black text-[#1A1A1A] mb-2 text-center">Enter Verification Code</h1>
+          <p className="text-gray-600 text-center mb-6">
+            We sent a 6-digit code to <span className="font-semibold text-[#1B5E20]">{maskedEmail}</span>
+          </p>
+
+          {/* Timer with progress bar */}
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-semibold text-gray-600">Code expires in</span>
+              <span className={`text-lg font-black tabular-nums ${
+                timer > 60 ? "text-[#1B5E20]" : "text-red-500 animate-pulse"
+              }`}>
+                {String(minutes).padStart(2, "0")}:{String(seconds).padStart(2, "0")}
+              </span>
+            </div>
+            <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+              <div
+                className={`h-full transition-all duration-1000 ${
+                  timer > 120 ? "bg-[#1B5E20]" : timer > 60 ? "bg-yellow-500" : "bg-red-500"
+                }`}
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Error/Info messages */}
           {error && (
-            <div className="mb-4 rounded-lg border border-down/20 bg-down-bg px-3 py-2 text-sm text-down">
-              ⚠️ {error}
-              {remaining !== null && remaining > 0 && <span className="block mt-1">Attempts remaining: {remaining}</span>}
+            <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-200 animate-[shake_0.5s_ease-in-out]">
+              <div className="flex items-start gap-3">
+                <svg className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+                <p className="text-sm text-red-700 font-medium">{error}</p>
+              </div>
+              {remaining !== null && remaining > 0 && (
+                <p className="mt-2 text-xs text-red-600 font-medium">Attempts remaining: {remaining}</p>
+              )}
             </div>
           )}
+
           {info && (
-            <div className="mb-4 rounded-lg border border-up/20 bg-up-bg px-3 py-2 text-sm text-up">
-              ✅ {info}
+            <div className="mb-6 p-4 rounded-xl bg-green-50 border border-green-200">
+              <div className="flex items-start gap-3">
+                <svg className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+                <p className="text-sm text-green-700 font-medium">{info}</p>
+              </div>
             </div>
           )}
 
           <form onSubmit={onSubmit}>
-            {/* 6-digit boxes */}
-            <div className="mb-4 flex justify-center gap-2" onPaste={handlePaste}>
+            {/* 6-digit OTP boxes */}
+            <div className="mb-8 flex justify-center gap-3" onPaste={handlePaste}>
               {code.map((digit, idx) => (
                 <input
                   key={idx}
@@ -165,19 +210,24 @@ function VerifyOtpContent() {
                   autoFocus={idx === 0}
                   onChange={(e) => handleChange(idx, e.target.value)}
                   onKeyDown={(e) => handleKeyDown(idx, e)}
-                  className="w-12 h-14 rounded-xl border-2 border-border bg-surface-2 text-center text-2xl font-black outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  className={`w-[52px] h-[56px] rounded-xl border-2 text-center text-2xl font-black outline-none transition-all duration-200 animate-[bounceIn_0.3s_ease-out] ${
+                    digit
+                      ? "border-[#1B5E20] bg-[#E8F5E9] text-[#1B5E20]"
+                      : "border-gray-300 bg-white text-[#1A1A1A] focus:border-[#1B5E20] focus:ring-2 focus:ring-[#1B5E20]/20"
+                  }`}
                 />
               ))}
             </div>
 
+            {/* Submit button */}
             <button
               type="submit"
               disabled={loading || code.some((d) => !d)}
-              className="w-full rounded-xl bg-primary py-3 font-bold text-white transition hover:bg-primary-700 disabled:opacity-50"
+              className="w-full h-12 rounded-xl bg-[#1B5E20] text-white font-bold text-base transition-all duration-200 hover:bg-[#145214] hover:scale-[1.01] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 shadow-lg shadow-[#1B5E20]/25 mb-4"
             >
               {loading ? (
-                <span className="inline-flex items-center gap-2">
-                  <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                <span className="inline-flex items-center gap-3">
+                  <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
                   Verifying…
                 </span>
               ) : (
@@ -185,32 +235,66 @@ function VerifyOtpContent() {
               )}
             </button>
 
-            <button
-              type="button"
-              onClick={resend}
-              disabled={loading || cooldown > 0}
-              className="mt-3 w-full text-center text-sm font-medium text-primary transition hover:underline disabled:opacity-50"
-            >
-              {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend code"}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => router.push("/login")}
-              className="mt-2 w-full text-center text-sm text-muted transition hover:text-foreground"
-            >
-              ← Back to login
-            </button>
+            {/* Resend & Back */}
+            <div className="flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => router.push("/login")}
+                className="text-sm text-gray-500 hover:text-gray-700 transition-colors flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+                Back to Login
+              </button>
+              <button
+                type="button"
+                onClick={resend}
+                disabled={loading || cooldown > 0}
+                className={`text-sm font-semibold transition-colors ${
+                  cooldown > 0
+                    ? "text-gray-400 cursor-not-allowed"
+                    : "text-[#1B5E20] hover:text-[#145214]"
+                }`}
+              >
+                {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend Code"}
+              </button>
+            </div>
           </form>
         </div>
       </div>
+
+      {/* Custom animations */}
+      <style jsx>{`
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes shake {
+          0%, 100% { transform: translateX(0); }
+          10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+          20%, 40%, 60%, 80% { transform: translateX(4px); }
+        }
+        @keyframes bounceIn {
+          0% { transform: scale(0.8); opacity: 0; }
+          50% { transform: scale(1.05); }
+          100% { transform: scale(1); opacity: 1; }
+        }
+      `}</style>
     </div>
   );
 }
 
 export default function VerifyOtpPage() {
   return (
-    <Suspense fallback={<div className="flex min-h-screen items-center justify-center"><span className="text-muted">Loading…</span></div>}>
+    <Suspense fallback={
+      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+        <div className="flex items-center gap-3">
+          <span className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-[#1B5E20] border-t-transparent" />
+          <span className="text-gray-600 font-medium">Loading…</span>
+        </div>
+      </div>
+    }>
       <VerifyOtpContent />
     </Suspense>
   );
