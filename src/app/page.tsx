@@ -104,7 +104,7 @@ export default function Dashboard() {
         {(indices.data?.subIndices ?? []).slice(0, 11).map((s) => (
           <IndexCard key={s.id} name={s.index.replace(" Index", "")} value={s.currentValue} change={s.change} perChange={s.perChange} />
         ))}
-        {!indices.data && Array.from({ length: 8 }).map((_, i) => <div key={i} className="h-20 animate-pulse rounded-xl border border-border bg-surface-2" />)}
+        {!indices.data && Array.from({ length: 8 }).map((_, i) => <div key={i} className="h-16 animate-pulse rounded-lg border border-border bg-surface-2" />)}
       </div>
 
       {/* Movers — compact, above AI signals */}
@@ -318,10 +318,10 @@ export default function Dashboard() {
 function IndexCard({ name, value, change, perChange }: { name: string; value: number; change: number; perChange: number; }) {
   const positive = change >= 0;
   return (
-    <div className="rounded-xl border border-border bg-surface p-3 shadow-sm">
-      <div className="truncate text-[11px] font-semibold uppercase tracking-wide text-muted">{name}</div>
-      <div className="mt-0.5 text-base font-extrabold tabular-nums text-foreground">{npr(value)}</div>
-      <div className={`text-xs font-semibold tabular-nums ${changeClass(change)}`}>
+    <div className="rounded-lg border border-border bg-surface p-2.5 shadow-sm">
+      <div className="truncate text-[10px] font-medium uppercase tracking-wide text-muted">{name}</div>
+      <div className="mt-0.5 text-sm font-extrabold tabular-nums text-foreground">{npr(value)}</div>
+      <div className={`text-[11px] font-semibold tabular-nums ${changeClass(change)}`}>
         {positive ? "+" : ""}{npr(change)} ({pct(perChange)})
       </div>
     </div>
