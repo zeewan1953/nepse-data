@@ -1,32 +1,5 @@
 import "server-only";
-import fs from "node:fs";
-import path from "node:path";
-import { pathToFileURL } from "node:url";
-import { createClient } from "@libsql/client";
-import type { InArgs } from "@libsql/client";
-
-// ─── Local SQLite (only for live OHLC market data) ──────────────────────
-// Auth uses Supabase PostgreSQL — see src/lib/supabase.ts
-
-let localDbUrl: string;
-
-if (process.env.VERCEL === "1") {
-  // On Vercel: use in-memory SQLite for ephemeral market data
-  localDbUrl = ":memory:";
-} else {
-  // Local development: ensure data directory exists
-  const dataDir = path.join(process.cwd(), "data");
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
-  }
-  localDbUrl = pathToFileURL(path.join(dataDir, "darisir.db")).href;
-}
-
-export const db = createClient({
-  url: localDbUrl,
-});
-
-type SqlArgs = InArgs;
+import { supabaseAdmin } from "@/lib/supabase";
 
 type OhlcRow = {
   symbol: string;
@@ -36,66 +9,63 @@ type OhlcRow = {
   averageTradedPrice: number;
 };
 
-async function createOhlcTable(): Promise<void> {
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS live_ohlc (
-      symbol TEXT PRIMARY KEY,
-      openPrice REAL NOT NULL,
-      highPrice REAL NOT NULL,
-      lowPrice REAL NOT NULL,
-      averageTradedPrice REAL NOT NULL,
-      updatedAt INTEGER NOT NULL
-    )
-  `);
-}
+type LiveEntry = {
+  symbol: string;
+  openPrice: number;
+  highPrice: number;
+  lowPrice: number;
+  averageTradedPrice: number;
+};
 
-export async function execute(sql: string, args?: SqlArgs) {
-  return db.execute(sql, args);
-}
-
-export async function one<T = unknown>(sql: string, args?: SqlArgs): Promise<T | undefined> {
-  const result = await execute(sql, args);
-  return (result.rows[0] as T | undefined) ?? undefined;
-}
-
-export async function run(sql: string, args?: SqlArgs) {
-  return execute(sql, args);
-}
-
-export async function saveLiveSnapshot(live: Array<OhlcRow>): Promise<void> {
+/**
+ * Save live market snapshot to Supabase `nepse` table.
+ * Uses upsert on symbol (primary key).
+ */
+export async function saveLiveSnapshot(live: Array<LiveEntry>): Promise<void> {
   if (!live.length) return;
-  await createOhlcTable();
 
-  const statements = live.map((row) => ({
-    sql: `INSERT INTO live_ohlc(symbol, openPrice, highPrice, lowPrice, averageTradedPrice, updatedAt)
-          VALUES (?, ?, ?, ?, ?, ?)
-          ON CONFLICT(symbol) DO UPDATE SET
-            openPrice=excluded.openPrice,
-            highPrice=excluded.highPrice,
-            lowPrice=excluded.lowPrice,
-            averageTradedPrice=excluded.averageTradedPrice,
-            updatedAt=excluded.updatedAt`,
-    args: [row.symbol, row.openPrice, row.highPrice, row.lowPrice, row.averageTradedPrice, Date.now()],
+  const rows = live.map((row) => ({
+    symbol: row.symbol,
+    open_price: row.openPrice,
+    high_price: row.highPrice,
+    low_price: row.lowPrice,
+    average_traded_price: row.averageTradedPrice,
+    updated_at: new Date().toISOString(),
   }));
 
-  await db.batch(statements, "write");
+  // Supabase upsert in batches of 500 to avoid payload size limits
+  const BATCH = 500;
+  for (let i = 0; i < rows.length; i += BATCH) {
+    const batch = rows.slice(i, i + BATCH);
+    const { error } = await supabaseAdmin.from("nepse").upsert(batch, { onConflict: "symbol" });
+    if (error) {
+      console.error("saveLiveSnapshot batch error:", error.message);
+    }
+  }
 }
 
+/**
+ * Get OHLC data map from Supabase `nepse` table.
+ */
 export async function getOhlcMap(): Promise<Map<string, OhlcRow>> {
-  await createOhlcTable();
-  const result = await db.execute(
-    "SELECT symbol, openPrice, highPrice, lowPrice, averageTradedPrice FROM live_ohlc",
-  );
-  return new Map(
-    result.rows.map((row) => [
-      String(row.symbol),
-      {
-        symbol: String(row.symbol),
-        openPrice: Number(row.openPrice),
-        highPrice: Number(row.highPrice),
-        lowPrice: Number(row.lowPrice),
-        averageTradedPrice: Number(row.averageTradedPrice),
-      },
-    ]),
-  );
+  const { data, error } = await supabaseAdmin
+    .from("nepse")
+    .select("symbol, open_price, high_price, low_price, average_traded_price");
+
+  if (error) {
+    console.error("getOhlcMap error:", error.message);
+    return new Map();
+  }
+
+  const map = new Map<string, OhlcRow>();
+  for (const row of data || []) {
+    map.set(String(row.symbol), {
+      symbol: String(row.symbol),
+      openPrice: Number(row.open_price ?? 0),
+      highPrice: Number(row.high_price ?? 0),
+      lowPrice: Number(row.low_price ?? 0),
+      averageTradedPrice: Number(row.average_traded_price ?? 0),
+    });
+  }
+  return map;
 }
