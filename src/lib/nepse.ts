@@ -16,6 +16,22 @@ export function getNepse(): Nepse {
   return globalThis.__nepseClient;
 }
 
+// Wrap NEPSE calls with better error messages for network failures
+export async function safeNepseCall<T>(fn: () => Promise<T>, context = "NEPSE API"): Promise<T> {
+  try {
+    return await fn();
+  } catch (e) {
+    const err = e as Error;
+    if (err.message?.includes("ENOTFOUND") || err.message?.includes("getaddrinfo")) {
+      throw new Error(`Network error: Cannot reach nepalstock.com.np. Check your internet connection or try again later.`);
+    }
+    if (err.message?.includes("ETIMEDOUT") || err.message?.includes("timeout")) {
+      throw new Error(`Timeout: ${context} took too long to respond. NEPSE server may be slow or down.`);
+    }
+    throw err;
+  }
+}
+
 export type DailyTradeStat = {
   securityId: string | number;
   securityName: string;

@@ -1,4 +1,4 @@
-import { getNepse, cached } from "@/lib/nepse";
+import { getNepse, cached, safeNepseCall } from "@/lib/nepse";
 import type { FloorSheet, FloorSheetItem } from "@rumess/nepse-api";
 
 export const runtime = "nodejs";
@@ -11,14 +11,20 @@ const MAX_PAGES = 50; // a single broker's trades fit in far fewer pages than th
 async function fetchSide(broker: number, side: "buy" | "sell"): Promise<FloorSheetItem[]> {
   const nepse = getNepse();
   const opt = side === "buy" ? { buyerBroker: broker } : { sellerBroker: broker };
-  const first = (await nepse.getFloorSheet({ ...opt, page: 0, size: SIZE })) as FloorSheet;
+  const first = await safeNepseCall(
+    () => nepse.getFloorSheet({ ...opt, page: 0, size: SIZE }) as Promise<FloorSheet>,
+    `Broker ${broker} ${side} data`
+  );
   const items: FloorSheetItem[] = [...(first.floorsheets?.content ?? [])];
   const pages = Math.min(first.floorsheets?.totalPages ?? 1, MAX_PAGES);
   const rest = Array.from({ length: Math.max(0, pages - 1) }, (_, i) => i + 1);
   for (let i = 0; i < rest.length; i += 4) {
     const batch = rest.slice(i, i + 4);
     const res = await Promise.all(
-      batch.map((p) => nepse.getFloorSheet({ ...opt, page: p, size: SIZE }).catch(() => null)),
+      batch.map((p) => safeNepseCall(
+        () => nepse.getFloorSheet({ ...opt, page: p, size: SIZE }) as Promise<FloorSheet>,
+        `Broker ${broker} ${side} page ${p}`
+      ).catch(() => null)),
     );
     for (const r of res) if (r) items.push(...((r as FloorSheet).floorsheets?.content ?? []));
   }
