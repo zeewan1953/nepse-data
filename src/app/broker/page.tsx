@@ -9,18 +9,21 @@ type BrokerStock = { symbol: string; name: string; buyQty: number; buyAmt: numbe
 type BrokerResp = { broker: number; stocks: BrokerStock[]; totals: { buyAmt: number; sellAmt: number; netAmt: number }; error?: string };
 type LiveResp = { data: LiveMarketData[]; count: number };
 
-const BROKERS = Array.from({ length: 68 }, (_, i) => i + 1);
-
 export default function BrokerAnalysisPage() {
   const status = usePoll<MarketStatus>("/api/market-status", 30_000);
   const open = status.data?.isOpen?.toUpperCase() === "OPEN";
   const { data: liveData } = usePoll<LiveResp>("/api/live", open ? 5_000 : 60_000);
 
   const [brokerId, setBrokerId] = useState(1);
+  const [input, setInput] = useState("1");
   const [range, setRange] = useState<"TODAY" | "WEEK" | "MONTH">("TODAY");
   const [data, setData] = useState<BrokerResp | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    setInput(String(brokerId));
+  }, [brokerId]);
 
   useEffect(() => {
     setLoading(true);
@@ -46,7 +49,7 @@ export default function BrokerAnalysisPage() {
     if (!data?.stocks) return [];
     return [...data.stocks].sort((a, b) => b.netAmt - a.netAmt).slice(0, 12);
   }, [data]);
-  const maxBar = useMemo(() => Math.max(...chartStocks.map((s) => Math.max(Math.abs(s.buyAmt), Math.abs(s.sellAmt))), 1), [chartStocks]);
+  const maxBar = useMemo(() => Math.max(...chartStocks.map((s) => Math.max(s.buyAmt, s.sellAmt)), 1), [chartStocks]);
 
   const buyRatio = data ? (data.totals.buyAmt / (data.totals.buyAmt + data.totals.sellAmt) * 100) : 0;
   const today = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
@@ -60,15 +63,27 @@ export default function BrokerAnalysisPage() {
           </h1>
           <div className="flex items-center gap-3 rounded-full border border-border bg-surface px-5 py-1.5 shadow-sm">
             <span className="text-muted">🏢</span>
-            <select
-              value={brokerId}
-              onChange={(e) => setBrokerId(Number(e.target.value))}
-              className="bg-transparent text-sm font-semibold text-foreground outline-none"
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const n = Number(input.replace(/\D/g, ""));
+                if (n >= 1 && n <= 999) setBrokerId(n);
+              }}
+              className="flex items-center gap-2"
             >
-              {BROKERS.map((b) => (
-                <option key={b} value={b}>Broker #{b}</option>
-              ))}
-            </select>
+              <span className="text-xs font-semibold text-muted">Broker #</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={input}
+                onChange={(e) => setInput(e.target.value.replace(/\D/g, ""))}
+                className="w-16 bg-transparent text-sm font-semibold text-foreground outline-none"
+                placeholder="1"
+              />
+              <button type="submit" className="rounded-md bg-primary px-2.5 py-1 text-xs font-semibold text-white hover:bg-primary-700">
+                Search
+              </button>
+            </form>
           </div>
         </div>
 
@@ -113,15 +128,15 @@ export default function BrokerAnalysisPage() {
                 </span>
               </div>
 
-              <div className="flex items-end justify-between gap-2 border-b-2 border-border pb-0" style={{ height: 190 }}>
+              <div className="flex items-end justify-between gap-2 border-b-2 border-border pb-0" style={{ height: 200 }}>
                 {chartStocks.map((s) => {
-                  const buyH = (s.buyAmt / maxBar) * 150;
-                  const sellH = (s.sellAmt / maxBar) * 150;
+                  const buyH = Math.max((s.buyAmt / maxBar) * 160, 4);
+                  const sellH = Math.max((s.sellAmt / maxBar) * 160, 4);
                   return (
-                    <div key={s.symbol} className="flex flex-col items-center" style={{ width: "8%", minWidth: 28 }}>
-                      <div className="flex items-end gap-1" style={{ height: 150 }}>
-                        <div className="w-[44%] rounded-t-lg bg-up shadow-sm" style={{ height: Math.max(buyH, 4) }} />
-                        <div className="w-[44%] rounded-t-lg bg-down shadow-sm" style={{ height: Math.max(sellH, 4) }} />
+                    <div key={s.symbol} className="flex flex-col items-center" style={{ width: "8%", minWidth: 32 }}>
+                      <div className="flex items-end gap-1" style={{ height: 160 }}>
+                        <div className="w-[46%] rounded-t-md bg-up shadow-sm" style={{ height: buyH }} />
+                        <div className="w-[46%] rounded-t-md bg-down shadow-sm" style={{ height: sellH }} />
                       </div>
                       <div className="mt-2 w-full truncate text-center text-[10px] font-semibold text-muted">{s.symbol.replace(/\d+/g, "")}</div>
                     </div>
