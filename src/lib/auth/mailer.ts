@@ -5,7 +5,7 @@ import "server-only";
 
 const RESEND_API_URL = "https://api.resend.com/emails";
 
-const SENDER_EMAIL = "noreply@darisir.com";
+const SENDER_EMAIL = "onboarding@resend.dev";
 const SENDER_NAME = "DARI SIR";
 
 // ─── Shared Resend send helper ───────────────────────────────────────────────
