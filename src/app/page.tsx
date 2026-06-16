@@ -44,6 +44,7 @@ type SignalRow = {
   } | null;
 };
 type SignalsResp = { signals: SignalRow[]; generatedAt: number };
+type NewsResp = { news: { id: string; title: string; source: string; url: string; time: string }[]; updatedAt: number };
 
 function chgOf(g: TopTenItem): number {
   // The upstream API actually returns `percentageChange`; the TS type says
@@ -65,6 +66,7 @@ export default function Dashboard() {
   const indices = usePoll<IndicesResp>("/api/indices", interval);
   const movers = usePoll<MoversResp>("/api/movers", interval);
   const signals = usePoll<SignalsResp>("/api/signals", open ? 5 * 60_000 : 10 * 60_000);
+  const news = usePoll<NewsResp>("/api/news", 3_000);
 
   const nepse =
     indices.data?.index?.find((i) => i.index === "NEPSE Index") ?? indices.data?.index?.[0];
@@ -112,6 +114,9 @@ export default function Dashboard() {
         <MoverCard title="Top Gainers" tone="up" rows={movers.data?.gainers ?? []} />
         <MoverCard title="Top Losers" tone="down" rows={movers.data?.losers ?? []} />
       </div>
+
+      {/* News ticker */}
+      <NewsSection news={news.data?.news ?? []} loading={news.loading && !news.data} />
 
       {/* Top AI Signals — compact table */}
       <section className="rounded-xl border border-border bg-surface shadow-sm">
@@ -325,6 +330,61 @@ function IndexCard({ name, value, change, perChange }: { name: string; value: nu
         {positive ? "+" : ""}{npr(change)} ({pct(perChange)})
       </div>
     </div>
+  );
+}
+
+function NewsSection({ news, loading }: { news: NewsResp["news"]; loading: boolean }) {
+  const sources = Array.from(new Set(news.map((n) => n.source)));
+  const [filter, setFilter] = useState<string>("all");
+  const filtered = filter === "all" ? news : news.filter((n) => n.source === filter);
+
+  return (
+    <section className="rounded-xl border border-border bg-surface shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
+        <h2 className="font-bold">📰 Market News</h2>
+        <div className="flex items-center gap-1 overflow-x-auto text-xs font-semibold">
+          <button
+            onClick={() => setFilter("all")}
+            className={`rounded-md px-2.5 py-1 transition ${filter === "all" ? "bg-primary text-white" : "text-muted hover:bg-surface-2"}`}
+          >
+            All
+          </button>
+          {sources.map((s) => (
+            <button
+              key={s}
+              onClick={() => setFilter(s)}
+              className={`whitespace-nowrap rounded-md px-2.5 py-1 transition ${filter === s ? "bg-primary text-white" : "text-muted hover:bg-surface-2"}`}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="max-h-64 overflow-auto">
+        {loading && (
+          <div className="px-4 py-6 text-center text-sm text-muted">Loading market news…</div>
+        )}
+        <div className="divide-y divide-border">
+          {filtered.map((n) => (
+            <a
+              key={n.id}
+              href={n.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-start justify-between gap-3 px-4 py-2 text-sm hover:bg-surface-2"
+            >
+              <span className="min-w-0">
+                <span className="font-medium text-foreground">{n.title}</span>
+                <span className="ml-2 text-[10px] font-semibold text-muted">{n.source}</span>
+              </span>
+              <span className="shrink-0 text-[10px] text-muted">
+                {new Date(n.time).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+              </span>
+            </a>
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }
 
