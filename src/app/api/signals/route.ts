@@ -128,6 +128,13 @@ export async function GET() {
             stopLoss: signal.stopLoss,
             trend: signal.trend,
             rsi: signal.rsi,
+            atr: signal.atr,
+            atrStopLoss: signal.atrStopLoss,
+            sar: signal.sar,
+            tmaSignal: signal.tmaDmaCross,
+            tmaValue: signal.tmaValue,
+            sma50: signal.sma50,
+            ema20: signal.ema20,
             breakout: {
               signal: brk.signal,
               entry: brk.entry,

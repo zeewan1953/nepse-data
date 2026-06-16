@@ -3,6 +3,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePoll } from "@/lib/useLive";
 import type { MarketStatus, NepseIndex, NepseSubIndex, TopTenItem } from "@/lib/types";
+import { classifySymbol, TYPE_BADGE } from "@/lib/types";
 import { npr, pct, changeClass } from "@/lib/format";
 
 type IndicesResp = { index: NepseIndex[]; subIndices: NepseSubIndex[] };
@@ -19,6 +20,14 @@ type SignalRow = {
   stopLoss: number | null;
   trend: string | null;
   rsi: number | null;
+  atr: number | null;
+  atrStopLoss: number | null;
+  sar: { sar: number; trend: "up" | "down"; bullish: boolean } | null;
+  tmaSignal: "golden" | "death" | "bullish" | "bearish" | null;
+  tmaValue: number | null;
+  sma50: number | null;
+  ema20: number | null;
+  securityName?: string;
   breakout?: {
     signal: "BUY" | "SELL" | "WAIT";
     entry: number | null;
@@ -37,8 +46,16 @@ type SignalRow = {
 type SignalsResp = { signals: SignalRow[]; generatedAt: number };
 
 function chgOf(g: TopTenItem): number {
+  // The upstream API actually returns `percentageChange`; the TS type says
+  // `percentChange`. Handle both so we never show 0% in movers.
   const x = g as TopTenItem & { percentageChange?: number };
   return x.percentChange ?? x.percentageChange ?? 0;
+}
+
+function ltpOf(g: TopTenItem): number {
+  // Upstream returns `ltp` but fall back to `cp` (closing price) if absent.
+  const x = g as TopTenItem & { lastTradedPrice?: number };
+  return x.ltp ?? x.lastTradedPrice ?? x.cp ?? 0;
 }
 
 export default function Dashboard() {
@@ -127,20 +144,23 @@ export default function Dashboard() {
             <thead className="bg-surface-2 text-xs uppercase text-muted">
               <tr>
                 <th className="px-3 py-2 text-left">Symbol</th>
+                <th className="px-3 py-2 text-left">Type</th>
                 <th className="px-3 py-2 text-left">Signal</th>
-                <th className="px-3 py-2 text-left">Confidence</th>
+                <th className="px-3 py-2 text-left">Conf</th>
                 <th className="px-3 py-2 text-right">LTP</th>
                 <th className="px-3 py-2 text-right">% Chg</th>
-                <th className="px-3 py-2 text-right">Buy Zone</th>
+                <th className="px-3 py-2 text-center">RSI</th>
+                <th className="px-3 py-2 text-center">SAR</th>
+                <th className="px-3 py-2 text-center">TMA</th>
+                <th className="px-3 py-2 text-right">ATR SL</th>
                 <th className="px-3 py-2 text-right">Target</th>
-                <th className="px-3 py-2 text-right">SL</th>
                 <th className="px-3 py-2 text-center">Broker</th>
               </tr>
             </thead>
             <tbody>
               {signals.loading && !signals.data && (
                 <tr>
-                  <td colSpan={9} className="px-3 py-8 text-center text-muted">
+                  <td colSpan={12} className="px-3 py-8 text-center text-muted">
                     Scanning active stocks…
                   </td>
                 </tr>
@@ -149,12 +169,25 @@ export default function Dashboard() {
                 const isBuy = s.recommendation.includes("Buy");
                 const isSell = s.recommendation.includes("Sell");
                 const col = isBuy ? "var(--up)" : isSell ? "var(--down)" : "var(--muted)";
+                const sType = classifySymbol(s.symbol, s.name);
+                const rsiColor =
+                  s.rsi === null ? "text-muted"
+                  : s.rsi < 30 ? "text-up font-bold"
+                  : s.rsi > 70 ? "text-down font-bold"
+                  : s.rsi > 55 ? "text-up"
+                  : s.rsi < 45 ? "text-down"
+                  : "text-muted";
                 return (
                   <tr key={s.symbol} className="border-t border-border hover:bg-surface-2">
                     <td className="px-3 py-1.5">
                       <Link href={`/stock/${s.symbol}`} className="font-bold text-primary hover:underline">
                         {s.symbol}
                       </Link>
+                    </td>
+                    <td className="px-3 py-1.5">
+                      <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${TYPE_BADGE[sType]}`}>
+                        {sType}
+                      </span>
                     </td>
                     <td className="px-3 py-1.5">
                       <span
@@ -166,8 +199,8 @@ export default function Dashboard() {
                       </span>
                     </td>
                     <td className="px-3 py-1.5">
-                      <div className="flex items-center gap-2">
-                        <div className="h-1.5 w-16 overflow-hidden rounded-full bg-border">
+                      <div className="flex items-center gap-1.5">
+                        <div className="h-1.5 w-12 overflow-hidden rounded-full bg-border">
                           <div className="h-full rounded-full" style={{ width: `${s.confidence}%`, background: col }} />
                         </div>
                         <span className="text-xs tabular-nums text-muted">{s.confidence}%</span>
@@ -175,11 +208,35 @@ export default function Dashboard() {
                     </td>
                     <td className="px-3 py-1.5 text-right font-semibold tabular-nums">{npr(s.ltp)}</td>
                     <td className={`px-3 py-1.5 text-right tabular-nums ${changeClass(s.change)}`}>{pct(s.change)}</td>
-                    <td className="px-3 py-1.5 text-right tabular-nums text-up">
-                      {s.buyZone ? `${npr(s.buyZone[0])}-${npr(s.buyZone[1])}` : "-"}
+                    <td className={`px-3 py-1.5 text-center text-xs tabular-nums ${rsiColor}`}>
+                      {s.rsi !== null ? s.rsi.toFixed(0) : "—"}
                     </td>
-                    <td className="px-3 py-1.5 text-right tabular-nums text-up">{npr(s.target1)}</td>
-                    <td className="px-3 py-1.5 text-right tabular-nums text-down">{npr(s.stopLoss)}</td>
+                    <td className="px-3 py-1.5 text-center text-xs font-semibold">
+                      {s.sar ? (
+                        <span className={s.sar.bullish ? "text-up" : "text-down"}>
+                          {s.sar.bullish ? "▼ Bull" : "▲ Bear"}
+                        </span>
+                      ) : <span className="text-muted">—</span>}
+                    </td>
+                    <td className="px-3 py-1.5 text-center text-xs font-semibold">
+                      {s.tmaSignal ? (
+                        <span className={
+                          s.tmaSignal === "golden" ? "text-up font-extrabold"
+                          : s.tmaSignal === "death" ? "text-down font-extrabold"
+                          : s.tmaSignal === "bullish" ? "text-up"
+                          : "text-down"
+                        }>
+                          {s.tmaSignal === "golden" ? "⭐ Golden"
+                            : s.tmaSignal === "death" ? "💀 Death"
+                            : s.tmaSignal === "bullish" ? "▲ Bull"
+                            : "▼ Bear"}
+                        </span>
+                      ) : <span className="text-muted">—</span>}
+                    </td>
+                    <td className="px-3 py-1.5 text-right tabular-nums text-down text-xs">
+                      {s.atrStopLoss !== null ? npr(s.atrStopLoss) : s.stopLoss !== null ? npr(s.stopLoss) : "—"}
+                    </td>
+                    <td className="px-3 py-1.5 text-right tabular-nums text-up text-xs">{npr(s.target1)}</td>
                     <td className="px-3 py-1.5 text-center text-xs font-semibold">
                       {s.broker?.bias === "accumulate" ? (
                         <span className="text-up">🟢 #{s.broker.buyerId}</span>
@@ -194,7 +251,7 @@ export default function Dashboard() {
               })}
               {signals.data && shown.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-3 py-6 text-center text-muted">
+                  <td colSpan={12} className="px-3 py-6 text-center text-muted">
                     No {sigFilter === "all" ? "" : sigFilter} signals right now.
                   </td>
                 </tr>
@@ -215,6 +272,7 @@ export default function Dashboard() {
             <thead className="bg-surface-2 text-xs uppercase text-muted">
               <tr>
                 <th className="px-3 py-2 text-left">Symbol</th>
+                <th className="px-3 py-2 text-left">Type</th>
                 <th className="px-3 py-2 text-center">Signal</th>
                 <th className="px-3 py-2 text-right">Entry</th>
                 <th className="px-3 py-2 text-right">SL</th>
@@ -224,12 +282,17 @@ export default function Dashboard() {
             </thead>
             <tbody>
               {signals.loading && !signals.data && (
-                <tr><td colSpan={6} className="px-3 py-6 text-center text-muted">Scanning…</td></tr>
+                <tr><td colSpan={7} className="px-3 py-6 text-center text-muted">Scanning…</td></tr>
               )}
               {breakouts.map((s) => (
                 <tr key={s.symbol} className="border-t border-border hover:bg-surface-2">
                   <td className="px-3 py-1.5">
                     <Link href={`/stock/${s.symbol}`} className="font-bold text-primary hover:underline">{s.symbol}</Link>
+                  </td>
+                  <td className="px-3 py-1.5">
+                    <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${TYPE_BADGE[classifySymbol(s.symbol, s.name)]}`}>
+                      {classifySymbol(s.symbol, s.name)}
+                    </span>
                   </td>
                   <td className="px-3 py-1.5 text-center">
                     <span className={`rounded-full px-2 py-0.5 text-xs font-extrabold ${s.breakout!.signal === "BUY" ? "bg-up text-white" : "bg-down text-white"}`}>
@@ -243,7 +306,7 @@ export default function Dashboard() {
                 </tr>
               ))}
               {signals.data && breakouts.length === 0 && (
-                <tr><td colSpan={6} className="px-3 py-6 text-center text-muted">No breakouts right now (market may be closed).</td></tr>
+                <tr><td colSpan={7} className="px-3 py-6 text-center text-muted">No breakouts right now (market may be closed).</td></tr>
               )}
             </tbody>
           </table>
@@ -267,27 +330,42 @@ function IndexCard({ name, value, change, perChange, big }: { name: string; valu
 }
 
 function MoverCard({ title, tone, rows }: { title: string; tone: "up" | "down"; rows: TopTenItem[] }) {
+  const chgClass = tone === "up" ? "text-up" : "text-down";
   return (
     <div className="rounded-xl border border-border bg-surface shadow-sm">
       <div className="flex items-center justify-between border-b border-border px-3 py-2 text-sm font-bold">
         <span>{title}</span>
-        <span className={tone === "up" ? "text-up" : "text-down"}>{tone === "up" ? "▲" : "▼"}</span>
+        <span className={chgClass}>{tone === "up" ? "▲" : "▼"}</span>
       </div>
       <div className="divide-y divide-border">
-        {rows.length === 0 && <div className="px-3 py-5 text-center text-xs text-muted">Loading…</div>}
-        {rows.slice(0, 6).map((r) => (
-          <Link
-            key={r.symbol}
-            href={`/stock/${r.symbol}`}
-            className="flex items-center justify-between gap-2 px-3 py-1.5 text-sm hover:bg-surface-2"
-          >
-            <span className="truncate font-semibold text-primary">{r.symbol}</span>
-            <span className="flex shrink-0 items-center gap-2 tabular-nums">
-              <span className="text-muted">{npr(r.ltp)}</span>
-              <span className={`font-semibold ${tone === "up" ? "text-up" : "text-down"}`}>{pct(chgOf(r))}</span>
-            </span>
-          </Link>
-        ))}
+        {rows.length === 0 && (
+          <div className="px-3 py-5 text-center text-xs text-muted">Loading…</div>
+        )}
+        {rows.slice(0, 10).map((r) => {
+          const chg = chgOf(r);
+          const ltp = ltpOf(r);
+          const sType = classifySymbol(r.symbol, r.securityName);
+          return (
+            <Link
+              key={r.symbol}
+              href={`/stock/${r.symbol}`}
+              className="flex items-center justify-between gap-2 px-3 py-1.5 text-sm hover:bg-surface-2"
+            >
+              <span className="flex min-w-0 items-center gap-1.5">
+                <span className="font-bold text-primary">{r.symbol}</span>
+                <span className={`hidden shrink-0 rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide sm:inline-block ${TYPE_BADGE[sType]}`}>
+                  {sType}
+                </span>
+              </span>
+              <span className="flex shrink-0 items-center gap-2 tabular-nums">
+                <span className="text-muted">{npr(ltp)}</span>
+                <span className={`w-14 text-right font-bold ${chgClass}`}>
+                  {chg > 0 ? "+" : ""}{pct(chg)}
+                </span>
+              </span>
+            </Link>
+          );
+        })}
       </div>
     </div>
   );

@@ -5,6 +5,7 @@ import { usePoll } from "@/lib/useLive";
 import { useLots, useSetups } from "@/lib/portfolio";
 import { generateSignal, type Candle } from "@/lib/signals";
 import type { LiveMarketData, MarketStatus, SecurityResponse } from "@/lib/types";
+import { classifySymbol, TYPE_BADGE } from "@/lib/types";
 import { npr, num, compact, pct, changeClass } from "@/lib/format";
 
 type LiveResp = { data: LiveMarketData[]; count: number };
@@ -130,6 +131,7 @@ export default function PortfolioPage() {
             <thead className="bg-surface-2 text-xs uppercase text-muted">
               <tr>
                 <th className="px-3 py-2 text-left">Symbol</th>
+                <th className="px-3 py-2 text-left">Type</th>
                 <th className="px-3 py-2 text-right">Qty</th>
                 <th className="px-3 py-2 text-right">WACC</th>
                 <th className="px-3 py-2 text-right">LTP</th>
@@ -147,6 +149,11 @@ export default function PortfolioPage() {
                   <tr key={r.symbol} className="border-t border-border hover:bg-surface-2">
                     <td className="px-3 py-2 font-bold">
                       <Link href={`/stock/${r.symbol}`} className="text-primary hover:underline">{r.symbol}</Link>
+                    </td>
+                    <td className="px-3 py-2">
+                      <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${TYPE_BADGE[classifySymbol(r.symbol)]}`}>
+                        {classifySymbol(r.symbol)}
+                      </span>
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">{num(r.qty)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{npr(r.wacc)}</td>
@@ -182,7 +189,7 @@ export default function PortfolioPage() {
                 );
               })}
               {holdings.rows.length === 0 && (
-                <tr><td colSpan={9} className="px-3 py-6 text-center text-muted">No holdings yet — add a buy above.</td></tr>
+                <tr><td colSpan={10} className="px-3 py-6 text-center text-muted">No holdings yet — add a buy above.</td></tr>
               )}
             </tbody>
           </table>

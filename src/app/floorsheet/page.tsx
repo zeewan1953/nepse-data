@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePoll } from "@/lib/useLive";
 import type { MarketStatus, FloorSheet, FloorSheetItem } from "@/lib/types";
+import { classifySymbol, TYPE_BADGE } from "@/lib/types";
 import { num, compact } from "@/lib/format";
 
 type Broker = { id: string; buyQty: number; buyAmt: number; sellQty: number; sellAmt: number; netQty: number; netAmt: number };
@@ -222,6 +223,7 @@ function BrokerSideTable({
           <thead className="sticky top-0 bg-surface-2 text-xs uppercase text-muted">
             <tr>
               <th className="px-3 py-2 text-left">Stock</th>
+              <th className="px-3 py-2 text-left">Type</th>
               <Th k="buyQty" label="Buy" />
               <Th k="sellQty" label="Sell" />
               <Th k="netQty" label="Net Qty" />
@@ -234,6 +236,11 @@ function BrokerSideTable({
                 <td className="px-3 py-1.5 font-bold">
                   <Link href={`/stock/${s.symbol}`} className="text-primary hover:underline">{s.symbol}</Link>
                 </td>
+                <td className="px-3 py-1.5">
+                  <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${TYPE_BADGE[classifySymbol(s.symbol, s.name)]}`}>
+                    {classifySymbol(s.symbol, s.name)}
+                  </span>
+                </td>
                 <td className="px-3 py-1.5 text-right tabular-nums text-up">{num(s.buyQty)}</td>
                 <td className="px-3 py-1.5 text-right tabular-nums text-down">{num(s.sellQty)}</td>
                 <td className={`px-3 py-1.5 text-right font-semibold tabular-nums ${s.netQty >= 0 ? "text-up" : "text-down"}`}>
@@ -244,7 +251,7 @@ function BrokerSideTable({
                 </td>
               </tr>
             ))}
-            {rows.length === 0 && <tr><td colSpan={5} className="px-3 py-5 text-center text-muted">None</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={6} className="px-3 py-5 text-center text-muted">None</td></tr>}
           </tbody>
         </table>
       </div>
@@ -429,6 +436,7 @@ function StockTable({ stocks }: { stocks: StockAgg[] }) {
           <thead className="sticky top-0 bg-surface-2 text-xs uppercase text-muted">
             <tr>
               <th className="px-3 py-2 text-left">Symbol</th>
+              <th className="px-3 py-2 text-left">Type</th>
               <th className="px-3 py-2 text-left">Company</th>
               <th className="px-3 py-2 text-right">Trades</th>
               <th className="px-3 py-2 text-right">Quantity</th>
@@ -447,11 +455,17 @@ function StockTable({ stocks }: { stocks: StockAgg[] }) {
 }
 
 function FragmentRow({ s, open, onToggle }: { s: StockAgg; open: boolean; onToggle: () => void }) {
+  const sType = classifySymbol(s.symbol, s.name);
   return (
     <>
       <tr className="cursor-pointer border-t border-border hover:bg-surface-2" onClick={onToggle}>
         <td className="px-3 py-1.5 font-bold text-primary">
           <Link href={`/stock/${s.symbol}`} className="hover:underline" onClick={(e) => e.stopPropagation()}>{s.symbol}</Link>
+        </td>
+        <td className="px-3 py-1.5">
+          <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${TYPE_BADGE[sType]}`}>
+            {sType}
+          </span>
         </td>
         <td className="max-w-[220px] truncate px-3 py-1.5 text-muted">{s.name}</td>
         <td className="px-3 py-1.5 text-right tabular-nums">{num(s.trades)}</td>
@@ -460,7 +474,7 @@ function FragmentRow({ s, open, onToggle }: { s: StockAgg; open: boolean; onTogg
       </tr>
       {open && (
         <tr className="border-t border-border bg-surface-2">
-          <td colSpan={5} className="px-3 py-2">
+          <td colSpan={6} className="px-3 py-2">
             <StockBrokers symbol={s.symbol} />
           </td>
         </tr>

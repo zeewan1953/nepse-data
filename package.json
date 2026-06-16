@@ -12,6 +12,7 @@
     "@anthropic-ai/sdk": "^0.104.1",
     "@libsql/client": "^0.17.3",
     "@rumess/nepse-api": "^1.0.5",
+    "groq-sdk": "^1.2.1",
     "lightweight-charts": "^5.2.0",
     "next": "16.2.7",
     "nodemailer": "^8.0.10",

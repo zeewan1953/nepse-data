@@ -1,5 +1,5 @@
 "use client";
-import { use, useEffect, useMemo, useState } from "react";
+import React, { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { SecurityResponse } from "@/lib/types";
 import { generateSignal, type Candle, type Signal } from "@/lib/signals";
@@ -72,6 +72,41 @@ export default function StockPage({
     () => (candles.length ? breakout(candles, ltp) : null),
     [candles, ltp],
   );
+
+  const [aiText, setAiText] = useState<string | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const aiAbortRef = useRef<AbortController | null>(null);
+
+  const runAnalysis = useCallback(async () => {
+    if (aiAbortRef.current) aiAbortRef.current.abort();
+    const ctrl = new AbortController();
+    aiAbortRef.current = ctrl;
+    setAiLoading(true);
+    setAiError(null);
+    setAiText("");
+    try {
+      const res = await fetch(`/api/analyse/${encodeURIComponent(sym)}`, { signal: ctrl.signal });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j?.error ?? `HTTP ${res.status}`);
+      }
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("No response body");
+      const decoder = new TextDecoder();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        setAiText((prev) => (prev ?? "") + decoder.decode(value, { stream: true }));
+      }
+    } catch (e) {
+      if ((e as Error).name !== "AbortError") {
+        setAiError((e as Error).message ?? "विश्लेषण असफल");
+      }
+    } finally {
+      setAiLoading(false);
+    }
+  }, [sym]);
 
   return (
     <div className="space-y-5">
@@ -146,104 +181,145 @@ export default function StockPage({
       {signal && (
         <section className="rounded-xl border border-border bg-surface shadow-sm">
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
-            <h2 className="font-bold">🎯 AI Signals</h2>
+            <h2 className="font-bold">🎯 AI Signals — {sym}</h2>
             <RecoBadge reco={signal.recommendation} />
           </div>
 
           <div className="space-y-4 p-4">
-            {/* Confidence */}
+            {/* Confidence bar */}
             <div>
               <div className="mb-1 flex justify-between text-xs font-semibold text-muted">
-                <span>Confidence</span>
+                <span>Weighted Confidence ({signal.factors.filter(f => f.verdict === "Bullish").length}B / {signal.factors.filter(f => f.verdict === "Bearish").length}S)</span>
                 <span>{signal.confidence}%</span>
               </div>
               <div className="h-2.5 w-full overflow-hidden rounded-full bg-surface-2">
                 <div
-                  className="h-full rounded-full"
+                  className="h-full rounded-full transition-all"
                   style={{
                     width: `${signal.confidence}%`,
                     background:
-                      signal.confidence >= 60
-                        ? "var(--up)"
-                        : signal.confidence >= 45
-                          ? "var(--accent)"
-                          : "var(--down)",
+                      signal.confidence >= 58 ? "var(--up)"
+                      : signal.confidence >= 42 ? "var(--accent)"
+                      : "var(--down)",
                   }}
                 />
               </div>
             </div>
 
-            {/* Levels */}
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              <Level
-                label="Buy Zone"
-                value={signal.buyZone ? `${npr(signal.buyZone[0])} – ${npr(signal.buyZone[1])}` : "-"}
-                tone="up"
-              />
-              <Level
-                label="Sell Zone"
-                value={signal.sellZone ? `${npr(signal.sellZone[0])} – ${npr(signal.sellZone[1])}` : "-"}
-                tone="down"
-              />
-              <Level label="Stop Loss" value={npr(signal.stopLoss)} tone="down" />
-              <Level label="Target 1" value={npr(signal.target1)} tone="up" />
-              <Level label="Target 2" value={npr(signal.target2)} tone="up" />
-              <Level
-                label="Trend / RSI"
-                value={`${signal.trend ?? "-"} · RSI ${signal.rsi !== null ? signal.rsi.toFixed(0) : "-"}`}
-              />
+            {/* ATR-based price levels */}
+            <div>
+              <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">ATR-Based Levels{signal.atr !== null ? ` (ATR ≈ ${signal.atr})` : ""}</div>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <Level label="ATR Stop Loss" value={signal.atrStopLoss !== null ? npr(signal.atrStopLoss) : npr(signal.stopLoss)} tone="down" />
+                <Level label="Target 1 (1:1)" value={signal.atrTarget1 !== null ? npr(signal.atrTarget1) : npr(signal.target1)} tone="up" />
+                <Level label="Target 2 (1:2)" value={signal.atrTarget2 !== null ? npr(signal.atrTarget2) : npr(signal.target2)} tone="up" />
+                <Level label="Target 3 (1:3)" value={signal.atrTarget3 !== null ? npr(signal.atrTarget3) : (signal.target3 !== undefined ? npr(signal.target3) : "-")} tone="up" />
+              </div>
+            </div>
+
+            {/* Moving averages row */}
+            <div>
+              <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">Moving Averages</div>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <MALevel label="EMA 20" value={signal.ema20} ltp={ltp} />
+                <MALevel label="SMA 50" value={signal.sma50} ltp={ltp} />
+                <MALevel label="SMA 200" value={signal.sma200} ltp={ltp} />
+                <div className="rounded-lg border border-border bg-surface-2 p-3">
+                  <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">TMA/DMA Cross</div>
+                  <div className={`mt-0.5 font-bold ${
+                    signal.tmaDmaCross === "golden" ? "text-up"
+                    : signal.tmaDmaCross === "death" ? "text-down"
+                    : signal.tmaDmaCross === "bullish" ? "text-up"
+                    : signal.tmaDmaCross === "bearish" ? "text-down"
+                    : ""
+                  }`}>
+                    {signal.tmaDmaCross === "golden" ? "⭐ Golden Cross"
+                      : signal.tmaDmaCross === "death" ? "💀 Death Cross"
+                      : signal.tmaDmaCross === "bullish" ? "▲ Bullish Zone"
+                      : signal.tmaDmaCross === "bearish" ? "▼ Bearish Zone"
+                      : "—"}
+                  </div>
+                  {signal.tmaValue !== null && <div className="text-[10px] text-muted">TMA {npr(signal.tmaValue)}</div>}
+                </div>
+              </div>
+            </div>
+
+            {/* Momentum row */}
+            <div>
+              <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">Momentum</div>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="rounded-lg border border-border bg-surface-2 p-3">
+                  <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">RSI 14</div>
+                  <div className={`mt-0.5 font-bold tabular-nums ${
+                    signal.rsi === null ? ""
+                    : signal.rsi < 30 ? "text-up"
+                    : signal.rsi > 70 ? "text-down"
+                    : signal.rsi > 55 ? "text-up"
+                    : signal.rsi < 45 ? "text-down"
+                    : "text-muted"
+                  }`}>
+                    {signal.rsi !== null ? signal.rsi.toFixed(0) : "—"}
+                  </div>
+                  {signal.rsi !== null && (
+                    <div className="text-[10px] text-muted">
+                      {signal.rsi < 30 ? "Oversold" : signal.rsi > 70 ? "Overbought" : signal.rsi > 55 ? "Bullish" : signal.rsi < 45 ? "Bearish" : "Neutral"}
+                    </div>
+                  )}
+                </div>
+                <div className="rounded-lg border border-border bg-surface-2 p-3">
+                  <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">MACD</div>
+                  <div className={`mt-0.5 font-bold tabular-nums ${signal.macd ? (signal.macd.hist >= 0 ? "text-up" : "text-down") : ""}`}>
+                    {signal.macd ? (signal.macd.hist >= 0 ? "Bullish" : "Bearish") : "—"}
+                  </div>
+                  {signal.macd && <div className="text-[10px] text-muted">Hist {signal.macd.hist.toFixed(2)}</div>}
+                </div>
+                <div className="rounded-lg border border-border bg-surface-2 p-3">
+                  <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">Parabolic SAR</div>
+                  <div className={`mt-0.5 font-bold ${ signal.sar?.bullish ? "text-up" : "text-down" }`}>
+                    {signal.sar ? (signal.sar.bullish ? "▼ Bull" : "▲ Bear") : "—"}
+                  </div>
+                  {signal.sar && <div className="text-[10px] text-muted">{npr(signal.sar.sar)}</div>}
+                </div>
+                <Level
+                  label="VWAP"
+                  value={signal.vwap !== null ? `${signal.vwap > ltp ? "▼ Below" : "▲ Above"} ${npr(signal.vwap)}` : "—"}
+                  tone={signal.vwap !== null ? (ltp > signal.vwap ? "up" : "down") : undefined}
+                />
+              </div>
             </div>
 
             {/* Support / resistance */}
             <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
-              <span className="text-muted">
-                Support <b className="text-up">{npr(signal.support)}</b>
-              </span>
-              <span className="text-muted">
-                Resistance <b className="text-down">{npr(signal.resistance)}</b>
-              </span>
+              <span className="text-muted">Support <b className="text-up">{npr(signal.support)}</b></span>
+              <span className="text-muted">Resistance <b className="text-down">{npr(signal.resistance)}</b></span>
+              {signal.riskReward !== null && <span className="text-muted">Risk:Reward <b className="text-foreground">1:{signal.riskReward}</b></span>}
+              {signal.week52Position !== null && <span className="text-muted">52W Position <b className="text-foreground">{signal.week52Position}%</b></span>}
             </div>
 
-            {/* Summary + extra metrics */}
+            {/* Summary */}
             <p className="rounded-lg bg-surface-2 p-3 text-sm">{signal.summary}</p>
-            <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted">
-              {signal.riskReward !== null && (
-                <span>Risk:Reward <b className="text-foreground">1:{signal.riskReward}</b></span>
-              )}
-              {signal.week52Position !== null && (
-                <span>52W Position <b className="text-foreground">{signal.week52Position}%</b></span>
-              )}
-              {signal.macd && (
-                <span>
-                  MACD{" "}
-                  <b className={signal.macd.hist >= 0 ? "text-up" : "text-down"}>
-                    {signal.macd.hist >= 0 ? "Bullish" : "Bearish"}
-                  </b>
-                </span>
-              )}
-            </div>
 
             {/* Deep analysis factors */}
             {signal.factors.length > 0 && (
               <div className="space-y-1.5">
                 <div className="text-xs font-semibold uppercase tracking-wide text-muted">
-                  Deep Analysis
+                  Deep Analysis — {signal.factors.length} indicators (weighted)
                 </div>
                 {signal.factors.map((f, i) => (
                   <div
                     key={i}
                     className="flex items-center justify-between gap-3 rounded-lg bg-surface-2 px-3 py-2 text-sm"
                   >
-                    <span>
-                      <b>{f.category}:</b> {f.note}
+                    <span className="min-w-0">
+                      <b>{f.category}</b>
+                      {f.weight !== undefined && <span className="ml-1 text-[10px] text-muted">(w={f.weight})</span>}
+                      {"  "}{f.note}
                     </span>
                     <span
                       className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${
-                        f.verdict === "Bullish"
-                          ? "bg-up-bg text-up"
-                          : f.verdict === "Bearish"
-                            ? "bg-down-bg text-down"
-                            : "bg-surface text-muted"
+                        f.verdict === "Bullish" ? "bg-up-bg text-up"
+                        : f.verdict === "Bearish" ? "bg-down-bg text-down"
+                        : "bg-surface text-muted"
                       }`}
                     >
                       {f.verdict}
@@ -259,6 +335,53 @@ export default function StockPage({
           </div>
         </section>
       )}
+
+      {/* AI Nepali Analysis */}
+      <section className="rounded-xl border border-border bg-surface shadow-sm">
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <h2 className="font-bold">🤖 AI विश्लेषण (Claude) — {sym}</h2>
+          <button
+            onClick={runAnalysis}
+            disabled={aiLoading || !data}
+            className="rounded-lg bg-primary px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-primary/80 disabled:opacity-50"
+          >
+            {aiLoading ? "विश्लेषण गर्दैछ…" : aiText ? "फेरि गर्नुस्" : "आजको विश्लेषण गर्नुस्"}
+          </button>
+        </div>
+
+        {!aiText && !aiLoading && !aiError && (
+          <div className="flex flex-col items-center justify-center gap-2 p-8 text-center text-muted">
+            <span className="text-3xl">🏹</span>
+            <p className="text-sm">उपरि बटन दबाउनुस् — Claude ले {sym} को सम्पूर्ण तकनिकल विश्लेषण नेपालीमा गर्नेछ।</p>
+          </div>
+        )}
+
+        {aiLoading && aiText === "" && (
+          <div className="flex items-center gap-2 p-6 text-sm text-muted">
+            <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            विश्लेषण र ट्याघ्नाइखेलाछ… (केही सेकेन्ड लाग्न सक्छ)
+          </div>
+        )}
+
+        {aiError && (
+          <div className="rounded-lg bg-down-bg m-4 p-3 text-sm text-down">
+            ⚠️ {aiError}
+          </div>
+        )}
+
+        {aiText && (
+          <div className="p-4">
+            <AiMarkdown text={aiText} />
+            {aiLoading && (
+              <span className="mt-2 inline-block h-4 w-0.5 animate-pulse bg-primary" />
+            )}
+          </div>
+        )}
+
+        <p className="border-t border-border px-4 py-2 text-[11px] text-muted">
+          AI विश्लेषण शिक्षाको लागि मात्र — लगानी गर्नुभन्दा आफैं विषेशज्ञसंग सलाह लिनुहोस्। Not financial advice.
+        </p>
+      </section>
 
       {/* Day stats + depth */}
       <div className="grid gap-4 lg:grid-cols-2">
@@ -313,6 +436,64 @@ function Level({
         {value}
       </div>
     </div>
+  );
+}
+
+function MALevel({ label, value, ltp }: { label: string; value: number | null; ltp: number }) {
+  const tone = value === null ? "" : ltp > value ? "text-up" : "text-down";
+  return (
+    <div className="rounded-lg border border-border bg-surface-2 p-3">
+      <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">{label}</div>
+      <div className={`mt-0.5 font-bold tabular-nums ${tone}`}>
+        {value !== null ? npr(value) : "—"}
+      </div>
+      {value !== null && (
+        <div className={`text-[10px] ${tone}`}>
+          {ltp > value ? "Price above" : "Price below"}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AiMarkdown({ text }: { text: string }) {
+  // Render the streamed markdown-like text with basic formatting:
+  // **bold**, headings (##/###), horizontal rules (---), bullet lists
+  const lines = text.split("\n");
+  return (
+    <div className="space-y-1.5 text-sm leading-relaxed">
+      {lines.map((line, i) => {
+        if (line.startsWith("### ")) {
+          return <h3 key={i} className="mt-3 font-bold text-foreground">{renderInline(line.slice(4))}</h3>;
+        }
+        if (line.startsWith("## ")) {
+          return <h2 key={i} className="mt-4 text-base font-extrabold text-foreground">{renderInline(line.slice(3))}</h2>;
+        }
+        if (line.startsWith("**") && line.endsWith("**") && line.length > 4) {
+          return <p key={i} className="font-bold text-foreground">{line.slice(2, -2)}</p>;
+        }
+        if (/^[-*] /.test(line)) {
+          return <li key={i} className="ml-4 list-disc">{renderInline(line.slice(2))}</li>;
+        }
+        if (/^---+$/.test(line.trim())) {
+          return <hr key={i} className="border-border my-2" />;
+        }
+        if (line.trim() === "") {
+          return <div key={i} className="h-1" />;
+        }
+        return <p key={i}>{renderInline(line)}</p>;
+      })}
+    </div>
+  );
+}
+
+function renderInline(text: string): React.ReactNode {
+  // Split on **bold** markers
+  const parts = text.split(/(\*\*[^*]+\*\*)/);
+  return parts.map((part, i) =>
+    part.startsWith("**") && part.endsWith("**")
+      ? <strong key={i}>{part.slice(2, -2)}</strong>
+      : part,
   );
 }
 
