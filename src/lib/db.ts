@@ -1,6 +1,96 @@
 import "server-only";
-import { supabaseAdmin } from "@/lib/supabase";
+import fs from "node:fs";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+import { createClient } from "@libsql/client";
+import type { InArgs } from "@libsql/client";
 
+// ─── Local SQLite database (auth + OHLC market data) ──────────────────────
+let localDbUrl: string;
+
+if (process.env.VERCEL === "1") {
+  localDbUrl = ":memory:";
+} else {
+  const dataDir = path.join(process.cwd(), "data");
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
+  }
+  localDbUrl = pathToFileURL(path.join(dataDir, "darisir.db")).href;
+}
+
+export const db = createClient({ url: localDbUrl });
+
+type SqlArgs = InArgs;
+
+// ─── Schema migrations ───────────────────────────────────────────────────
+async function migrateSchema(): Promise<void> {
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      email TEXT UNIQUE NOT NULL,
+      mobile TEXT,
+      name TEXT,
+      passwordHash TEXT NOT NULL,
+      verified INTEGER NOT NULL DEFAULT 0,
+      createdAt INTEGER NOT NULL
+    )
+  `);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      token TEXT PRIMARY KEY,
+      userId TEXT NOT NULL,
+      expiresAt INTEGER NOT NULL,
+      FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS otps (
+      email TEXT NOT NULL,
+      codeHash TEXT NOT NULL,
+      purpose TEXT NOT NULL,
+      expiresAt INTEGER NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      createdAt INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS live_ohlc (
+      symbol TEXT PRIMARY KEY,
+      openPrice REAL NOT NULL,
+      highPrice REAL NOT NULL,
+      lowPrice REAL NOT NULL,
+      averageTradedPrice REAL NOT NULL,
+      updatedAt INTEGER NOT NULL
+    )
+  `);
+
+  // Add createdAt column if missing
+  try {
+    await db.execute("ALTER TABLE otps ADD COLUMN createdAt INTEGER DEFAULT 0");
+  } catch {
+    // already exists
+  }
+}
+migrateSchema().catch(console.error);
+
+// ─── Query helpers ───────────────────────────────────────────────────────
+export async function execute(sql: string, args?: SqlArgs) {
+  return db.execute(sql, args);
+}
+
+export async function one<T = unknown>(sql: string, args?: SqlArgs): Promise<T | undefined> {
+  const result = await execute(sql, args);
+  return (result.rows[0] as T | undefined) ?? undefined;
+}
+
+export async function run(sql: string, args?: SqlArgs) {
+  return execute(sql, args);
+}
+
+// ─── OHLC market data ────────────────────────────────────────────────────
 type OhlcRow = {
   symbol: string;
   openPrice: number;
@@ -9,63 +99,38 @@ type OhlcRow = {
   averageTradedPrice: number;
 };
 
-type LiveEntry = {
-  symbol: string;
-  openPrice: number;
-  highPrice: number;
-  lowPrice: number;
-  averageTradedPrice: number;
-};
-
-/**
- * Save live market snapshot to Supabase `nepse` table.
- * Uses upsert on symbol (primary key).
- */
-export async function saveLiveSnapshot(live: Array<LiveEntry>): Promise<void> {
+export async function saveLiveSnapshot(live: Array<OhlcRow>): Promise<void> {
   if (!live.length) return;
 
-  const rows = live.map((row) => ({
-    symbol: row.symbol,
-    open_price: row.openPrice,
-    high_price: row.highPrice,
-    low_price: row.lowPrice,
-    average_traded_price: row.averageTradedPrice,
-    updated_at: new Date().toISOString(),
+  const statements = live.map((row) => ({
+    sql: `INSERT INTO live_ohlc(symbol, openPrice, highPrice, lowPrice, averageTradedPrice, updatedAt)
+          VALUES (?, ?, ?, ?, ?, ?)
+          ON CONFLICT(symbol) DO UPDATE SET
+            openPrice=excluded.openPrice,
+            highPrice=excluded.highPrice,
+            lowPrice=excluded.lowPrice,
+            averageTradedPrice=excluded.averageTradedPrice,
+            updatedAt=excluded.updatedAt`,
+    args: [row.symbol, row.openPrice, row.highPrice, row.lowPrice, row.averageTradedPrice, Date.now()],
   }));
 
-  // Supabase upsert in batches of 500 to avoid payload size limits
-  const BATCH = 500;
-  for (let i = 0; i < rows.length; i += BATCH) {
-    const batch = rows.slice(i, i + BATCH);
-    const { error } = await supabaseAdmin.from("nepse").upsert(batch, { onConflict: "symbol" });
-    if (error) {
-      console.error("saveLiveSnapshot batch error:", error.message);
-    }
-  }
+  await db.batch(statements, "write");
 }
 
-/**
- * Get OHLC data map from Supabase `nepse` table.
- */
 export async function getOhlcMap(): Promise<Map<string, OhlcRow>> {
-  const { data, error } = await supabaseAdmin
-    .from("nepse")
-    .select("symbol, open_price, high_price, low_price, average_traded_price");
-
-  if (error) {
-    console.error("getOhlcMap error:", error.message);
-    return new Map();
-  }
-
-  const map = new Map<string, OhlcRow>();
-  for (const row of data || []) {
-    map.set(String(row.symbol), {
-      symbol: String(row.symbol),
-      openPrice: Number(row.open_price ?? 0),
-      highPrice: Number(row.high_price ?? 0),
-      lowPrice: Number(row.low_price ?? 0),
-      averageTradedPrice: Number(row.average_traded_price ?? 0),
-    });
-  }
-  return map;
+  const result = await db.execute(
+    "SELECT symbol, openPrice, highPrice, lowPrice, averageTradedPrice FROM live_ohlc",
+  );
+  return new Map(
+    result.rows.map((row) => [
+      String(row.symbol),
+      {
+        symbol: String(row.symbol),
+        openPrice: Number(row.openPrice),
+        highPrice: Number(row.highPrice),
+        lowPrice: Number(row.lowPrice),
+        averageTradedPrice: Number(row.averageTradedPrice),
+      },
+    ]),
+  );
 }
