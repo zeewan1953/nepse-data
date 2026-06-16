@@ -1,7 +1,5 @@
-import { getUserByEmail, publicUser } from "@/lib/auth/users";
+import { getUserByEmail, markVerified, publicUser } from "@/lib/auth/users";
 import { verifyPassword } from "@/lib/auth/password";
-import { createOtp } from "@/lib/auth/otp";
-import { sendOtpEmail } from "@/lib/auth/mailer";
 import { createSession } from "@/lib/auth/session";
 
 export const runtime = "nodejs";
@@ -18,12 +16,8 @@ export async function POST(req: Request) {
       return Response.json({ error: "Invalid email or password." }, { status: 401 });
     }
 
-    // Unverified account: send a fresh OTP and ask the client to verify.
-    if (!user.verified) {
-      const code = await createOtp(email, "verify");
-      await sendOtpEmail(email, code);
-      return Response.json({ needOtp: true, email });
-    }
+    // Auto-verify on login (in case of legacy unverified accounts)
+    if (!user.verified) await markVerified(email);
 
     await createSession(user.id);
     return Response.json({ ok: true, user: publicUser(user) });

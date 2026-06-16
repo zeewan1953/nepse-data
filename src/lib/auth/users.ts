@@ -26,7 +26,7 @@ export async function createUser(input: {
   const id = randomBytes(12).toString("hex");
   await run(
     `INSERT INTO users(id, email, mobile, name, passwordHash, verified, createdAt)
-     VALUES(?,?,?,?,?,0,?)`,
+     VALUES(?,?,?,?,?,1,?)`,
     [id, input.email, input.mobile ?? null, input.name ?? null, hashPassword(input.password), Date.now()],
   );
   return id;

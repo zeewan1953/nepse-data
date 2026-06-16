@@ -1,51 +1,50 @@
 import "server-only";
 
-// Resend REST API — https://resend.com/docs/send-with-nodejs
-// Free tier: 100 emails/day, 3000/month
+// SMTP2GO REST API — https://www.smtp2go.com/docs/api-v3/email-send
+// Free tier: 1000 emails/month, NO domain verification needed
+// Sends to ANY email address from any sender address.
 
-const RESEND_API_URL = "https://api.resend.com/emails";
+const SMTP2GO_API_URL = "https://api.smtp2go.com/v3/email/send";
 
-const SENDER_EMAIL = "onboarding@resend.dev";
+const SENDER_EMAIL = "noreply@darisir.com";
 const SENDER_NAME = "DARI SIR";
 
-// ─── Shared Resend send helper ───────────────────────────────────────────────
-async function sendViaResend(
+// ─── Shared SMTP2GO send helper ──────────────────────────────────────────────
+async function sendViaSmtp2go(
   to: string,
   subject: string,
   html: string,
 ): Promise<{ sent: boolean }> {
-  const apiKey = process.env.RESEND_API_KEY;
+  const apiKey = process.env.SMTP2GO_API_KEY;
   if (!apiKey) {
-    console.log(`[DARI SIR] RESEND_API_KEY not set — email to ${to} not sent`);
+    console.log(`[DARI SIR] SMTP2GO_API_KEY not set — email to ${to} not sent`);
     return { sent: false };
   }
 
   try {
-    const res = await fetch(RESEND_API_URL, {
+    const res = await fetch(SMTP2GO_API_URL, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        from: `${SENDER_NAME} <${SENDER_EMAIL}>`,
+        api_key: apiKey,
+        sender: `${SENDER_NAME} <${SENDER_EMAIL}>`,
         to: [to],
         subject,
-        html,
+        html_body: html,
       }),
     });
 
-    if (!res.ok) {
-      const err = await res.text();
-      console.error(`Resend API ${res.status}:`, err);
+    const data = await res.json();
+
+    if (!data.data?.succeeded) {
+      console.error(`SMTP2GO API error:`, data.data?.error || JSON.stringify(data));
       return { sent: false };
     }
 
-    const data = await res.json();
-    console.log(`[DARI SIR] Email sent to ${to} — id: ${data.id}`);
+    console.log(`[DARI SIR] Email sent to ${to} — id: ${data.data?.email_id}`);
     return { sent: true };
   } catch (e) {
-    console.error("sendViaResend error:", (e as Error).message);
+    console.error("sendViaSmtp2go error:", (e as Error).message);
     return { sent: false };
   }
 }
@@ -55,7 +54,7 @@ export async function sendOtpEmail(
   to: string,
   code: string,
 ): Promise<{ sent: boolean }> {
-  return sendViaResend(
+  return sendViaSmtp2go(
     to,
     "Your DARI SIR Login OTP",
     `<div style="font-family:system-ui,-apple-system,sans-serif;max-width:480px;margin:0 auto;padding:32px 16px">
@@ -81,7 +80,7 @@ export async function sendPasswordChangedEmail(
 ): Promise<{ sent: boolean }> {
   const now = new Date().toLocaleString("en-US", { timeZone: "Asia/Kathmandu" });
 
-  return sendViaResend(
+  return sendViaSmtp2go(
     to,
     "DARI SIR — Password Changed Successfully",
     `<div style="font-family:system-ui,-apple-system,sans-serif;max-width:480px;margin:0 auto;padding:32px 16px">
