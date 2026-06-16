@@ -1,10 +1,13 @@
 "use client";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { Suspense } from "react";
 
-export default function LoginPage() {
+function LoginPageContent() {
   const router = useRouter();
+  const params = useSearchParams();
+  const from = params.get("from") || "/";
   const [step, setStep] = useState<"email" | "otp" | "forgot" | "reset-code">("email");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -47,7 +50,7 @@ export default function LoginPage() {
       if (j.devCode) setDevCode(j.devCode);
       setInfo(j.devCode ? "Email not configured — use code below" : `OTP sent to ${email}`);
     } else if (j.ok) {
-      router.push("/");
+      router.push(from);
       router.refresh();
     }
   }
@@ -56,7 +59,7 @@ export default function LoginPage() {
     e.preventDefault();
     const j = await post("/api/auth/verify-otp", { email, code });
     if (j?.ok) {
-      router.push("/");
+      router.push(from);
       router.refresh();
     }
   }
@@ -262,5 +265,13 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center"><span className="text-muted">Loading…</span></div>}>
+      <LoginPageContent />
+    </Suspense>
   );
 }
