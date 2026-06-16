@@ -1,55 +1,51 @@
 import "server-only";
 
-// Brevo (Sendinblue) REST API — sends to ANY recipient, no domain verification needed.
-// Free tier: 300 emails/day, no credit card required.
+// Resend REST API — https://resend.com/docs/send-with-nodejs
+// Free tier: 100 emails/day, 3000/month
 
-const BREVO_API_URL = "https://api.brevo.com/v3/smtp/email";
+const RESEND_API_URL = "https://api.resend.com/emails";
 
-function getApiKey(): string | undefined {
-  return process.env.BREVO_API_KEY;
-}
+const SENDER_EMAIL = "noreply@darisir.com";
+const SENDER_NAME = "DARI SIR";
 
-const SENDER = {
-  name: "DARI SIR",
-  email: "zeewangadtoula@gmail.com",
-};
-
-// ─── Shared Brevo send helper ─────────────────────────────────────────────
-async function sendViaBrevo(
+// ─── Shared Resend send helper ───────────────────────────────────────────────
+async function sendViaResend(
   to: string,
   subject: string,
   html: string,
 ): Promise<{ sent: boolean }> {
-  const apiKey = getApiKey();
+  const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
-    console.log(`[DARI SIR] BREVO_API_KEY not set — email to ${to} not sent`);
+    console.log(`[DARI SIR] RESEND_API_KEY not set — email to ${to} not sent`);
     return { sent: false };
   }
 
   try {
-    const res = await fetch(BREVO_API_URL, {
+    const res = await fetch(RESEND_API_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "api-key": apiKey,
+        Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        sender: SENDER,
-        to: [{ email: to }],
+        from: `${SENDER_NAME} <${SENDER_EMAIL}>`,
+        to: [to],
         subject,
-        htmlContent: html,
+        html,
       }),
     });
 
     if (!res.ok) {
       const err = await res.text();
-      console.error(`Brevo API ${res.status}:`, err);
+      console.error(`Resend API ${res.status}:`, err);
       return { sent: false };
     }
 
+    const data = await res.json();
+    console.log(`[DARI SIR] Email sent to ${to} — id: ${data.id}`);
     return { sent: true };
   } catch (e) {
-    console.error("sendViaBrevo error:", (e as Error).message);
+    console.error("sendViaResend error:", (e as Error).message);
     return { sent: false };
   }
 }
@@ -59,7 +55,7 @@ export async function sendOtpEmail(
   to: string,
   code: string,
 ): Promise<{ sent: boolean }> {
-  return sendViaBrevo(
+  return sendViaResend(
     to,
     "Your DARI SIR Login OTP",
     `<div style="font-family:system-ui,-apple-system,sans-serif;max-width:480px;margin:0 auto;padding:32px 16px">
@@ -85,7 +81,7 @@ export async function sendPasswordChangedEmail(
 ): Promise<{ sent: boolean }> {
   const now = new Date().toLocaleString("en-US", { timeZone: "Asia/Kathmandu" });
 
-  return sendViaBrevo(
+  return sendViaResend(
     to,
     "DARI SIR — Password Changed Successfully",
     `<div style="font-family:system-ui,-apple-system,sans-serif;max-width:480px;margin:0 auto;padding:32px 16px">
