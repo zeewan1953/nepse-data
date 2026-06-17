@@ -101,11 +101,16 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
         {nepse && (
-          <IndexCard name="NEPSE" value={nepse.currentValue ?? nepse.close} change={nepse.change} perChange={nepse.perChange} />
+          <IndexCard name="NEPSE" value={(nepse as any).currentValue ?? (nepse as any).close} change={(nepse as any).change ?? (nepse as any).points ?? 0} perChange={(nepse as any).perChange ?? (nepse as any).percentage ?? 0} />
         )}
-        {(indices.data?.subIndices ?? []).slice(0, 11).map((s) => (
-          <IndexCard key={s.id} name={s.index.replace(" Index", "")} value={s.currentValue} change={s.change} perChange={s.perChange} />
-        ))}
+        {(indices.data?.subIndices ?? []).slice(0, 11).map((s) => {
+          const value = (s as any).currentValue ?? (s as any).close ?? 0;
+          const change = (s as any).change ?? (s as any).points ?? 0;
+          const perChange = (s as any).perChange ?? (s as any).percentage ?? 0;
+          return (
+            <IndexCard key={s.index} name={s.index.replace(" Index", "")} value={value} change={change} perChange={perChange} />
+          );
+        })}
         {!indices.data && Array.from({ length: 8 }).map((_, i) => <div key={i} className="h-16 animate-pulse rounded-lg border border-border bg-surface-2" />)}
       </div>
 
