@@ -62,7 +62,8 @@ function formatVolume(n: number): string {
 
 function useMergedStocks(): { stocks: MergedStock[]; loading: boolean; error: string | null } {
   const hardcoded = useMemo(() => STOCKS.map(enriched), []);
-  const live = usePoll<{ data: LiveRow[]; count: number; source: string }>("/api/stocks", 2_000);
+  // Use /api/live (MeroLagani) as primary source - more reliable than NEPSE API
+  const live = usePoll<{ data: LiveRow[]; count: number; source: string }>("/api/live", 2_000);
 
   const stocks = useMemo<MergedStock[]>(() => {
     const liveMap = new Map<string, LiveRow>();
