@@ -10,7 +10,8 @@ const FILTERS = ["All", "BUY", "HOLD", "SELL"] as const;
 
 type LiveRow = {
   symbol: string;
-  securityName: string;
+  name: string;
+  securityName?: string;
   lastTradedPrice: number;
   percentageChange: number;
   totalTradeQuantity: number;
@@ -62,7 +63,7 @@ function useMergedStocks(): { stocks: MergedStock[]; loading: boolean; error: st
         ...s, hasFundamental: true,
         price: liveRow?.lastTradedPrice ?? s.price,
         change: liveRow?.percentageChange ?? s.change,
-        liveName: liveRow?.securityName ?? s.name,
+        liveName: liveRow?.name || liveRow?.securityName || s.name,
         liveVolume: liveRow?.totalTradeQuantity ?? 0,
       };
     });
@@ -71,7 +72,7 @@ function useMergedStocks(): { stocks: MergedStock[]; loading: boolean; error: st
       if (merged.some((s) => s.symbol === row.symbol)) return;
       merged.push({
         ...enriched({
-          id: `NEPSE-${row.symbol}`, symbol: row.symbol, name: row.securityName,
+          id: `NEPSE-${row.symbol}`, symbol: row.symbol, name: row.name || row.securityName || row.symbol,
           sector: "Other", price: row.lastTradedPrice, change: row.percentageChange,
           volume: formatVolume(row.totalTradeQuantity),
           current: { pe: 0, eps: 0, shares: "-", roe: 0, debt: "-", revenue: "-", profit: "-" },
@@ -81,7 +82,7 @@ function useMergedStocks(): { stocks: MergedStock[]; loading: boolean; error: st
           quarterly: { q1: 0, q1Change: 0, q2: 0, q2Change: 0, q3: 0, q3Change: 0, q4: 0, q4Change: 0 },
           news: "-",
         }),
-        hasFundamental: false, liveName: row.securityName, liveVolume: row.totalTradeQuantity,
+        hasFundamental: false, liveName: row.name || row.securityName || row.symbol, liveVolume: row.totalTradeQuantity,
       });
     });
 
@@ -118,7 +119,7 @@ export default function FundamentalPage() {
   const filtered = useMemo(() => {
     return data.filter((s) => {
       const query = q.toLowerCase();
-      const matchQ = !q || s.symbol.toLowerCase().includes(query) || s.name.toLowerCase().includes(query) || s.liveName.toLowerCase().includes(query) || s.id.toLowerCase().includes(query);
+      const matchQ = !q || s.symbol.toLowerCase().includes(query) || (s.name || "").toLowerCase().includes(query) || (s.liveName || "").toLowerCase().includes(query) || (s.id || "").toLowerCase().includes(query);
       const matchFilter = filter === "All" || (s.hasFundamental && s.verdict.label === filter);
       return matchQ && matchFilter;
     });
