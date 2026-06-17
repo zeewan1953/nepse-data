@@ -123,7 +123,7 @@ export default function Dashboard() {
       {/* Top AI Signals — compact table */}
       <section className="rounded-xl border border-border bg-surface shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
-          <h2 className="font-bold">🎯 Top AI Signals</h2>
+          <h2 className="font-bold">🎯 Top Signals</h2>
           <div className="flex items-center gap-1 rounded-lg bg-surface-2 p-0.5 text-xs font-semibold">
             {([
               ["all", `All ${allSignals.length || ""}`],
@@ -605,13 +605,13 @@ function StockPopup({ symbol, onClose }: { symbol: string; onClose: () => void }
     const rec = fullSignal?.recommendation ?? signalRow?.recommendation ?? "No Data";
     const conf = fullSignal?.confidence ?? signalRow?.confidence ?? 0;
     if (rec === "Strong Buy" || rec === "Buy") {
-      summaryLines.push(`🟢 Strong AI BUY signal with ${conf}% confidence`);
+      summaryLines.push(`🟢 Strong BUY signal with ${conf}% confidence`);
     } else if (rec === "Strong Sell" || rec === "Sell") {
-      summaryLines.push(`🔴 AI SELL signal with ${conf}% confidence`);
+      summaryLines.push(`🔴 SELL signal with ${conf}% confidence`);
     } else if (rec === "No Data") {
       summaryLines.push(`⏳ Computing signals from historical data...`);
     } else {
-      summaryLines.push(`🟡 Neutral — AI recommends HOLD (${conf}% confidence)`);
+      summaryLines.push(`🟡 Neutral — recommends HOLD (${conf}% confidence)`);
     }
     if (breakoutInfo) {
       if (breakoutInfo.signal === "BUY") summaryLines.push(`⚡ Breakout above resistance at ${npr(breakoutInfo.prevHigh)} — bullish`);
@@ -670,11 +670,11 @@ function StockPopup({ symbol, onClose }: { symbol: string; onClose: () => void }
                 </div>
               )}
 
-              {/* 🤖 AI Agent — Best Analysis Summary */}
+              {/* 🤖 Agent — Best Analysis Summary */}
               <div className="rounded-lg border border-primary/30 bg-primary/5 p-2.5">
                 <div className="mb-1.5 flex items-center gap-1.5">
                   <span className="text-sm">🤖</span>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-primary">AI Agent — Best Analysis</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-primary">Agent — Best Analysis</span>
                 </div>
                 <ul className="space-y-1">
                   {summaryLines.map((line, i) => (
@@ -723,7 +723,7 @@ function StockPopup({ symbol, onClose }: { symbol: string; onClose: () => void }
                 )}
               </div>
 
-              {/* 🎯 Top AI Signals - Full 13 Indicator Analysis */}
+              {/* 🎯 Top Signals - Full 13 Indicator Analysis */}
               <div className="rounded-lg border border-border p-2.5">
                 <div className="mb-1.5 flex items-center gap-1.5">
                   <span className="text-sm">🎯</span>

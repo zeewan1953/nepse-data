@@ -273,7 +273,7 @@ function AIAgent({ analysis, onRefresh, refreshing }: { analysis: Analysis | nul
   if (!analysis || analysis.totals.sampled === 0) {
     return (
       <section className="rounded-xl border border-primary/30 bg-surface p-4 shadow-sm">
-        <h2 className="font-bold">🤖 AI Agent — Broker Analysis</h2>
+        <h2 className="font-bold">🤖 Agent — Broker Analysis</h2>
         <p className="mt-1 text-sm text-muted">Market khulda (11am–3pm) floorsheet aaepachi auto insights dinchu.</p>
       </section>
     );
@@ -293,7 +293,7 @@ function AIAgent({ analysis, onRefresh, refreshing }: { analysis: Analysis | nul
   return (
     <section className="rounded-xl border border-primary/40 bg-gradient-to-br from-surface to-surface-2 p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="font-bold">🤖 AI Agent — Broker Analysis</h2>
+        <h2 className="font-bold">🤖 Agent — Broker Analysis</h2>
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted">auto from {analysis ? num(analysis.totals.sampled) : 0} trades</span>
           <button onClick={onRefresh} disabled={refreshing} className="rounded-lg border border-border bg-surface px-3 py-1 text-xs font-semibold text-primary hover:bg-surface-2 disabled:opacity-50">
