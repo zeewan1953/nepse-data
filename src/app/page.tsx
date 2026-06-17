@@ -5,6 +5,7 @@ import { usePoll } from "@/lib/useLive";
 import type { LiveMarketData, MarketStatus, NepseIndex, NepseSubIndex, TopTenItem } from "@/lib/types";
 import { classifySymbol, TYPE_BADGE } from "@/lib/types";
 import { npr, pct, changeClass, num } from "@/lib/format";
+import { generateSignal, type Signal } from "@/lib/signals";
 
 type IndicesResp = { index: NepseIndex[]; subIndices: NepseSubIndex[] };
 type MoversResp = { gainers: TopTenItem[]; losers: TopTenItem[] };
@@ -540,7 +541,17 @@ function StockPopup({ symbol, onClose }: { symbol: string; onClose: () => void }
     });
   }, [symbol]);
 
-  // Compute AI signal from history (local) - works even when market is closed
+  // Compute full AI signal from history using signal engine - works even when market is closed
+  const fullSignal = useMemo<Signal | null>(() => {
+    const candles = [...(sec?.history?.content ?? [])].sort((a, b) => a.businessDate.localeCompare(b.businessDate));
+    if (candles.length < 20) return null;
+    const ltp = fund?.marketPrice ?? sec?.details?.securityDailyTradeDto?.lastTradedPrice ?? candles.at(-1)?.closePrice ?? 0;
+    if (!ltp) return null;
+    const mapped = candles.map(c => ({ open: c.closePrice, high: c.highPrice, low: c.lowPrice, close: c.closePrice, volume: c.totalTradedQuantity }));
+    return generateSignal(mapped, ltp);
+  }, [sec, fund]);
+
+  // Simple signal for price/change display
   const localSignal = useMemo(() => {
     const candles = [...(sec?.history?.content ?? [])].sort((a, b) => a.businessDate.localeCompare(b.businessDate));
     if (candles.length < 3) return null;
@@ -548,15 +559,8 @@ function StockPopup({ symbol, onClose }: { symbol: string; onClose: () => void }
     const prev = sec?.details?.securityDailyTradeDto?.previousClose ?? candles.at(-2)?.closePrice ?? ltp;
     const change = ltp - prev;
     const changePct = prev ? (change / prev) * 100 : 0;
-    const recent = candles.slice(-5);
-    let bull = 0, bear = 0;
-    for (const c of recent) { if (c.closePrice > c.lowPrice * 1.005) bull++; else bear++; }
-    const ema20 = candles.slice(-20).reduce((s, c) => s + c.closePrice, 0) / Math.min(20, candles.length ? candles.length : 1);
-    if (ltp > ema20) bull++; else bear++;
-    const overall = bull > bear ? "BUY" : bull < bear ? "SELL" : "HOLD";
-    const conf = Math.round((Math.max(bull, bear) / Math.max(bull + bear, 1)) * 100);
-    return { ltp, change, changePct, bull, bear, overall, conf, ema20 };
-  }, [sec, fund, signalRow]);
+    return { ltp, change, changePct };
+  }, [sec, fund]);
 
   const breakoutInfo = useMemo(() => {
     const candles = [...(sec?.history?.content ?? [])].sort((a, b) => a.businessDate.localeCompare(b.businessDate)).slice(-60);
@@ -597,13 +601,15 @@ function StockPopup({ symbol, onClose }: { symbol: string; onClose: () => void }
 
   // AI Summary text — always build from available data
   const summaryLines: string[] = [];
-  if (localSignal || signalRow) {
-    const rec = signalRow?.recommendation ?? localSignal?.overall ?? "HOLD";
-    const conf = signalRow?.confidence ?? localSignal?.conf ?? 0;
-    if (rec === "BUY" || rec === "Strong Buy") {
+  if (fullSignal || signalRow) {
+    const rec = fullSignal?.recommendation ?? signalRow?.recommendation ?? "No Data";
+    const conf = fullSignal?.confidence ?? signalRow?.confidence ?? 0;
+    if (rec === "Strong Buy" || rec === "Buy") {
       summaryLines.push(`🟢 Strong AI BUY signal with ${conf}% confidence`);
-    } else if (rec === "SELL" || rec === "Strong Sell") {
+    } else if (rec === "Strong Sell" || rec === "Sell") {
       summaryLines.push(`🔴 AI SELL signal with ${conf}% confidence`);
+    } else if (rec === "No Data") {
+      summaryLines.push(`⏳ Computing signals from historical data...`);
     } else {
       summaryLines.push(`🟡 Neutral — AI recommends HOLD (${conf}% confidence)`);
     }
@@ -713,57 +719,124 @@ function StockPopup({ symbol, onClose }: { symbol: string; onClose: () => void }
                 )}
               </div>
 
-              {/* 🎯 Top AI Signals */}
+              {/* 🎯 Top AI Signals - Full 13 Indicator Analysis */}
               <div className="rounded-lg border border-border p-2.5">
                 <div className="mb-1.5 flex items-center gap-1.5">
                   <span className="text-sm">🎯</span>
                   <span className="text-[10px] font-bold uppercase tracking-wider text-muted">Top AI Signals</span>
+                  <span className="text-[8px] text-muted">(13 Indicators)</span>
                 </div>
-                <div className="flex flex-wrap gap-2 text-xs">
-                  {(signalRow || localSignal) ? (() => {
-                    const rec = signalRow?.recommendation ?? localSignal?.overall ?? "—";
-                    const conf = signalRow?.confidence ?? localSignal?.conf ?? 0;
-                    return (
-                      <>
-                        <div className={`flex-1 rounded-lg p-2 text-center ${rec === "BUY" || rec === "Strong Buy" ? "bg-up-bg" : rec === "SELL" || rec === "Strong Sell" ? "bg-down-bg" : "bg-surface-2"}`}>
-                          <div className="text-[9px] text-muted">Recommendation</div>
-                          <div className={`font-bold ${rec === "BUY" || rec === "Strong Buy" ? "text-up" : rec === "SELL" || rec === "Strong Sell" ? "text-down" : "text-foreground"}`}>{rec}</div>
+                {(fullSignal || signalRow) ? (() => {
+                  const sig = fullSignal;
+                  const rec = sig?.recommendation ?? signalRow?.recommendation ?? "No Data";
+                  const conf = sig?.confidence ?? signalRow?.confidence ?? 0;
+                  const bullFactors = sig?.factors.filter(f => f.verdict === "Bullish").length ?? 0;
+                  const bearFactors = sig?.factors.filter(f => f.verdict === "Bearish").length ?? 0;
+                  return (
+                    <>
+                      {/* Main Recommendation */}
+                      <div className="mb-2 flex items-center gap-2">
+                        <div className={`flex-1 rounded-lg p-2 text-center ${rec === "Strong Buy" || rec === "Buy" ? "bg-up-bg" : rec === "Strong Sell" || rec === "Sell" ? "bg-down-bg" : "bg-surface-2"}`}>
+                          <div className="text-[9px] text-muted">AI Recommendation</div>
+                          <div className={`text-sm font-bold ${rec === "Strong Buy" || rec === "Buy" ? "text-up" : rec === "Strong Sell" || rec === "Sell" ? "text-down" : "text-foreground"}`}>{rec}</div>
                           <div className="text-[9px] text-muted">{conf}% confidence</div>
                         </div>
-                        {signalRow?.trend && (
-                          <div className="flex-1 rounded-lg bg-surface-2 p-2 text-center">
-                            <div className="text-[9px] text-muted">Trend</div>
-                            <div className="font-bold">{signalRow.trend}</div>
-                          </div>
-                        )}
-                        {(signalRow?.rsi ?? 0) > 0 && (
-                          <div className="flex-1 rounded-lg bg-surface-2 p-2 text-center">
-                            <div className="text-[9px] text-muted">RSI</div>
-                            <div className={`font-bold ${(signalRow?.rsi ?? 0) > 70 ? "text-down" : (signalRow?.rsi ?? 0) < 30 ? "text-up" : "text-foreground"}`}>{(signalRow?.rsi ?? 0).toFixed(1)}</div>
-                          </div>
-                        )}
-                        {signalRow?.tmaSignal && (
-                          <div className="flex-1 rounded-lg bg-surface-2 p-2 text-center">
-                            <div className="text-[9px] text-muted">TMA/DMA</div>
-                            <div className={`font-bold ${signalRow.tmaSignal === "bullish" ? "text-up" : signalRow.tmaSignal === "bearish" ? "text-down" : "text-foreground"}`}>{signalRow.tmaSignal}</div>
-                          </div>
-                        )}
                         <div className="flex-1 rounded-lg bg-surface-2 p-2 text-center">
-                          <div className="text-[9px] text-muted">Bull vs Bear</div>
+                          <div className="text-[9px] text-muted">Factors</div>
                           <div className="flex items-center justify-center gap-1">
-                            <span className="text-xs font-bold text-up">▲{localSignal?.bull ?? 0}</span>
+                            <span className="text-xs font-bold text-up">▲{bullFactors}</span>
                             <span className="text-[9px] text-muted">/</span>
-                            <span className="text-xs font-bold text-down">▼{localSignal?.bear ?? 0}</span>
+                            <span className="text-xs font-bold text-down">▼{bearFactors}</span>
                           </div>
                         </div>
-                      </>
-                    );
-                  })() : (
-                    <div className="w-full py-2 text-center text-[10px] text-muted">⏳ Computing signals from historical data...</div>
-                  )}
-                </div>
-                {signalRow?.buyZone && (
-                  <div className="mt-1.5 text-center text-[10px] font-semibold text-up">{signalRow.buyZone}</div>
+                      </div>
+
+                      {/* Key Indicators Grid */}
+                      <div className="grid grid-cols-4 gap-1.5 text-xs">
+                        {sig?.rsi !== null && sig?.rsi !== undefined && (
+                          <div className="rounded bg-surface-2 p-1.5 text-center">
+                            <div className="text-[8px] text-muted">RSI</div>
+                            <div className={`text-[10px] font-bold ${sig.rsi > 70 ? "text-down" : sig.rsi < 30 ? "text-up" : "text-foreground"}`}>{sig.rsi.toFixed(0)}</div>
+                          </div>
+                        )}
+                        {sig?.macd && (
+                          <div className="rounded bg-surface-2 p-1.5 text-center">
+                            <div className="text-[8px] text-muted">MACD</div>
+                            <div className={`text-[10px] font-bold ${sig.macd.hist > 0 ? "text-up" : "text-down"}`}>{sig.macd.hist > 0 ? "+" : ""}{sig.macd.hist.toFixed(1)}</div>
+                          </div>
+                        )}
+                        {sig?.sar && (
+                          <div className="rounded bg-surface-2 p-1.5 text-center">
+                            <div className="text-[8px] text-muted">SAR</div>
+                            <div className={`text-[10px] font-bold ${sig.sar.bullish ? "text-up" : "text-down"}`}>{sig.sar.bullish ? "▲" : "▼"}</div>
+                          </div>
+                        )}
+                        {sig?.trend && (
+                          <div className="rounded bg-surface-2 p-1.5 text-center">
+                            <div className="text-[8px] text-muted">Trend</div>
+                            <div className={`text-[10px] font-bold ${sig.trend === "Up" ? "text-up" : sig.trend === "Down" ? "text-down" : "text-foreground"}`}>{sig.trend}</div>
+                          </div>
+                        )}
+                        {sig?.vwap !== null && sig?.vwap !== undefined && (
+                          <div className="rounded bg-surface-2 p-1.5 text-center">
+                            <div className="text-[8px] text-muted">VWAP</div>
+                            <div className={`text-[10px] font-bold ${ltp > sig.vwap ? "text-up" : "text-down"}`}>{npr(sig.vwap)}</div>
+                          </div>
+                        )}
+                        {sig?.atr !== null && sig?.atr !== undefined && (
+                          <div className="rounded bg-surface-2 p-1.5 text-center">
+                            <div className="text-[8px] text-muted">ATR</div>
+                            <div className="text-[10px] font-bold">{sig.atr.toFixed(1)}</div>
+                          </div>
+                        )}
+                        {sig?.tmaDmaCross && (
+                          <div className="rounded bg-surface-2 p-1.5 text-center">
+                            <div className="text-[8px] text-muted">TMA/DMA</div>
+                            <div className={`text-[10px] font-bold ${sig.tmaDmaCross === "golden" || sig.tmaDmaCross === "bullish" ? "text-up" : "text-down"}`}>
+                              {sig.tmaDmaCross === "golden" ? "⭐" : sig.tmaDmaCross === "death" ? "💀" : sig.tmaDmaCross === "bullish" ? "▲" : "▼"}
+                            </div>
+                          </div>
+                        )}
+                        {sig?.week52Position !== null && sig?.week52Position !== undefined && (
+                          <div className="rounded bg-surface-2 p-1.5 text-center">
+                            <div className="text-[8px] text-muted">52W Pos</div>
+                            <div className="text-[10px] font-bold">{sig.week52Position}%</div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Price Levels */}
+                      <div className="mt-2 grid grid-cols-3 gap-1.5 text-[10px]">
+                        {sig?.buyZone && (
+                          <div className="rounded bg-up-bg p-1.5 text-center">
+                            <div className="text-[8px] text-muted">Buy Zone</div>
+                            <div className="font-bold text-up">{npr(sig.buyZone[0])}–{npr(sig.buyZone[1])}</div>
+                          </div>
+                        )}
+                        {sig?.stopLoss && (
+                          <div className="rounded bg-down-bg p-1.5 text-center">
+                            <div className="text-[8px] text-muted">Stop Loss</div>
+                            <div className="font-bold text-down">{npr(sig.stopLoss)}</div>
+                          </div>
+                        )}
+                        {sig?.target1 && (
+                          <div className="rounded bg-surface-2 p-1.5 text-center">
+                            <div className="text-[8px] text-muted">Target</div>
+                            <div className="font-bold text-up">{npr(sig.target1)}</div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Risk/Reward */}
+                      {sig?.riskReward && (
+                        <div className="mt-1.5 text-center text-[9px] text-muted">
+                          Risk:Reward = <span className="font-bold text-foreground">1:{sig.riskReward.toFixed(1)}</span>
+                        </div>
+                      )}
+                    </>
+                  );
+                })() : (
+                  <div className="py-2 text-center text-[10px] text-muted">⏳ Need 20+ candles for full signal analysis</div>
                 )}
               </div>
 
