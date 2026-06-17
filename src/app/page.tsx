@@ -630,10 +630,15 @@ function StockPopup({ symbol, onClose }: { symbol: string; onClose: () => void }
     if (fund.bookValue > 0 && ltp > 0) {
       const ratio = ltp / fund.bookValue;
       if (ratio < 1) summaryLines.push(`💎 Trading below book value — potential bargain (P/BV ${fund.pbv.toFixed(2)})`);
+      else if (ratio > 3) summaryLines.push(`⚠️ Trading at ${ratio.toFixed(1)}x book value — premium valuation`);
     }
     if (fund.dividends.length > 0) {
       const avgDiv = fund.dividends.slice(0, 3).reduce((s, d) => s + d.value, 0) / Math.min(3, fund.dividends.length);
       if (avgDiv > 5) summaryLines.push(`💵 Strong dividend history averaging ${avgDiv.toFixed(1)}%`);
+      else if (avgDiv > 0) summaryLines.push(`💵 Dividend yield averaging ${avgDiv.toFixed(1)}%`);
+    }
+    if (fund.marketCap && fund.marketCap !== "0") {
+      summaryLines.push(`🏢 Market Cap: ${fund.marketCap}`);
     }
   }
   if (!summaryLines.length) summaryLines.push("📊 Data loading — check back during market hours for full analysis");
@@ -712,7 +717,7 @@ function StockPopup({ symbol, onClose }: { symbol: string; onClose: () => void }
                     )}
                   </div>
                 ) : (
-                  <div className="py-2 text-center text-[10px] text-muted">Not enough price data</div>
+                  <div className="py-2 text-center text-[10px] text-muted">⏳ Available during market hours</div>
                 )}
               </div>
 
@@ -723,7 +728,7 @@ function StockPopup({ symbol, onClose }: { symbol: string; onClose: () => void }
                   <span className="text-[10px] font-bold uppercase tracking-wider text-muted">Top AI Signals</span>
                 </div>
                 <div className="flex flex-wrap gap-2 text-xs">
-                  {(() => {
+                  {(signalRow || localSignal) ? (() => {
                     const rec = signalRow?.recommendation ?? localSignal?.overall ?? "—";
                     const conf = signalRow?.confidence ?? localSignal?.conf ?? 0;
                     return (
@@ -761,7 +766,9 @@ function StockPopup({ symbol, onClose }: { symbol: string; onClose: () => void }
                         </div>
                       </>
                     );
-                  })()}
+                  })() : (
+                    <div className="w-full py-2 text-center text-[10px] text-muted">⏳ AI signals available during market hours</div>
+                  )}
                 </div>
                 {signalRow?.buyZone && (
                   <div className="mt-1.5 text-center text-[10px] font-semibold text-up">{signalRow.buyZone}</div>
@@ -779,27 +786,27 @@ function StockPopup({ symbol, onClose }: { symbol: string; onClose: () => void }
                   <div className="grid grid-cols-4 gap-1.5 text-xs">
                     <div className="rounded bg-surface-2 p-1.5 text-center">
                       <span className="text-[9px] text-muted">EPS</span>
-                      <div className="font-bold">{fund.eps.toFixed(1)}</div>
+                      <div className="font-bold">{fund.eps > 0 ? fund.eps.toFixed(1) : "—"}</div>
                     </div>
                     <div className="rounded bg-surface-2 p-1.5 text-center">
                       <span className="text-[9px] text-muted">PE</span>
-                      <div className="font-bold">{fund.pe.toFixed(1)}</div>
+                      <div className="font-bold">{fund.pe > 0 ? fund.pe.toFixed(1) : "—"}</div>
                     </div>
                     <div className="rounded bg-surface-2 p-1.5 text-center">
                       <span className="text-[9px] text-muted">BV</span>
-                      <div className="font-bold">{fund.bookValue.toFixed(1)}</div>
+                      <div className="font-bold">{fund.bookValue > 0 ? fund.bookValue.toFixed(1) : "—"}</div>
                     </div>
                     <div className="rounded bg-surface-2 p-1.5 text-center">
                       <span className="text-[9px] text-muted">PBV</span>
-                      <div className="font-bold">{fund.pbv.toFixed(2)}</div>
+                      <div className="font-bold">{fund.pbv > 0 ? fund.pbv.toFixed(2) : "—"}</div>
                     </div>
                     <div className="rounded bg-surface-2 p-1.5 text-center">
                       <span className="text-[9px] text-muted">ROE</span>
-                      <div className="font-bold">{fund.roe.toFixed(1)}%</div>
+                      <div className="font-bold">{fund.roe > 0 ? `${fund.roe.toFixed(1)}%` : "—"}</div>
                     </div>
                     <div className="rounded bg-surface-2 p-1.5 text-center">
                       <span className="text-[9px] text-muted">D/E</span>
-                      <div className="font-bold">{fund.debtEquity.toFixed(2)}</div>
+                      <div className="font-bold">{fund.debtEquity > 0 ? fund.debtEquity.toFixed(2) : "—"}</div>
                     </div>
                     <div className="rounded bg-surface-2 p-1.5 text-center">
                       <span className="text-[9px] text-muted">Open</span>
@@ -862,7 +869,7 @@ function StockPopup({ symbol, onClose }: { symbol: string; onClose: () => void }
                     </div>
                   </div>
                 ) : (
-                  <div className="py-3 text-center text-[10px] text-muted">No broker activity data available</div>
+                  <div className="py-3 text-center text-[10px] text-muted">⏳ Broker data available during market hours</div>
                 )}
               </div>
 
