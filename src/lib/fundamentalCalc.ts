@@ -25,7 +25,7 @@ export function healthScore(stock: StockFundamental): number {
 }
 
 export function growthScore(stock: StockFundamental): number {
-  const fy = stock.fiveYear;
+  const fy = stock.threeYear;
   const revCagr = cagr(fy.revenue);
   const profitCagr = cagr(fy.profit);
   const epsCagr = cagr(fy.eps);
@@ -41,7 +41,7 @@ export function verdict(stock: StockFundamental): { label: "BUY" | "HOLD" | "SEL
   const h = healthScore(stock);
   const g = growthScore(stock);
   if (h >= 70 && g >= 70) {
-    return { label: "BUY", icon: "📈", reason: "Consistent 5-year growth with improving fundamentals and manageable debt." };
+    return { label: "BUY", icon: "📈", reason: "Consistent 3-year growth with improving fundamentals and manageable debt." };
   }
   if ((h >= 50 && g >= 50) || (h >= 70 && g < 50)) {
     return { label: "HOLD", icon: "➡️", reason: "Moderate fundamentals; hold for better earnings clarity or entry point." };
@@ -55,7 +55,7 @@ export function stars(score: number): string {
 }
 
 export function enriched(stock: StockFundamental) {
-  const fy = stock.fiveYear;
+  const fy = stock.threeYear;
   const h = healthScore(stock);
   const g = growthScore(stock);
   const v = verdict(stock);

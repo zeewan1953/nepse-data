@@ -76,7 +76,7 @@ function useMergedStocks(): { stocks: MergedStock[]; loading: boolean; error: st
           sector: "Other", price: row.lastTradedPrice, change: row.percentageChange,
           volume: formatVolume(row.totalTradeQuantity),
           current: { pe: 0, eps: 0, shares: "-", roe: 0, debt: "-", revenue: "-", profit: "-" },
-          fiveYear: { years: [], revenue: [], profit: [], eps: [], roe: [], debt: [], dividend: [] },
+          threeYear: { years: [], revenue: [], profit: [], eps: [], roe: [], debt: [], dividend: [] },
           ratios: { pb: 0, debtEquity: 0, currentRatio: 0, beta: 0, peg: 0 },
           holdings: { promoter: "-", fii: "-", dii: "-", public: "-", longTerm: "-" },
           quarterly: { q1: 0, q1Change: 0, q2: 0, q2Change: 0, q3: 0, q3Change: 0, q4: 0, q4Change: 0 },
@@ -97,7 +97,7 @@ export default function FundamentalPage() {
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("All");
   const [selected, setSelected] = useState<string>(data[0]?.symbol ?? "");
-  const [tab, setTab] = useState<"overview" | "5year">("overview");
+  const [tab, setTab] = useState<"overview" | "3year">("overview");
   const [external, setExternal] = useState<ExternalFundamental | null>(null);
   const [externalLoading, setExternalLoading] = useState(false);
 
@@ -242,10 +242,10 @@ export default function FundamentalPage() {
 
               {/* Tabs */}
               <div className="mb-3 flex gap-1 rounded-full border border-border bg-surface-2 p-1">
-                {(["overview", "5year"] as const).map((t) => (
+                {(["overview", "3year"] as const).map((t) => (
                   <button key={t} onClick={() => setTab(t)}
                     className={`flex-1 rounded-full py-1.5 text-xs font-semibold transition ${tab === t ? "bg-primary text-white" : "text-muted hover:text-foreground"}`}>
-                    {t === "overview" ? "Overview" : "5-Year"}
+                    {t === "overview" ? "Overview" : "3-Year"}
                   </button>
                 ))}
               </div>
@@ -254,12 +254,12 @@ export default function FundamentalPage() {
                 <div className="rounded-2xl border border-border bg-surface-2 p-6 text-center">
                   <div className="mb-2 text-2xl">📡</div>
                   <div className="text-sm font-bold text-foreground">Live data only</div>
-                  <div className="text-xs text-muted">5-year analysis not available for {selectedStock.symbol}</div>
+                  <div className="text-xs text-muted">3-year analysis not available for {selectedStock.symbol}</div>
                 </div>
               ) : tab === "overview" ? (
                 <OverviewTab stock={selectedStock} external={external} />
               ) : (
-                <FiveYearTab stock={selectedStock} />
+                <ThreeYearTab stock={selectedStock} />
               )}
             </div>
           </div>
@@ -341,9 +341,9 @@ function OverviewTab({ stock, external }: { stock: MergedStock; external: Extern
   );
 }
 
-function FiveYearTab({ stock }: { stock: MergedStock }) {
-  const fy = stock.fiveYear;
-  if (!fy.years.length) return <div className="py-6 text-center text-xs text-muted">No 5-year data available.</div>;
+function ThreeYearTab({ stock }: { stock: MergedStock }) {
+  const fy = stock.threeYear;
+  if (!fy.years.length) return <div className="py-6 text-center text-xs text-muted">No 3-year data available.</div>;
   return (
     <>
       <div className="mb-3 grid grid-cols-2 gap-2">
