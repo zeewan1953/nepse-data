@@ -296,16 +296,18 @@ export default function FundamentalPage() {
                 ))}
               </div>
 
-              {!selectedStock.hasFundamental ? (
-                <div className="rounded-2xl border border-border bg-surface-2 p-6 text-center">
-                  <div className="mb-2 text-2xl">📡</div>
-                  <div className="text-sm font-bold text-foreground">Live data only</div>
-                  <div className="text-xs text-muted">3-year analysis not available for {selectedStock.symbol}</div>
-                </div>
-              ) : tab === "overview" ? (
+              {/* Show Overview if we have external data OR hardcoded fundamental data */}
+              {tab === "overview" ? (
                 <OverviewTab stock={selectedStock} external={external} />
-              ) : (
+              ) : selectedStock.hasFundamental ? (
                 <ThreeYearTab stock={selectedStock} external={external} />
+              ) : (
+                <div className="rounded-2xl border border-border bg-surface-2 p-6 text-center">
+                  <div className="mb-2 text-2xl">📊</div>
+                  <div className="text-sm font-bold text-foreground">3-Year Data</div>
+                  <div className="text-xs text-muted">Detailed 3-year analysis available for select stocks only.</div>
+                  <div className="mt-3 text-xs text-muted">Switch to Overview tab for current metrics.</div>
+                </div>
               )}
             </div>
           </div>
@@ -319,8 +321,22 @@ function OverviewTab({ stock, external }: { stock: MergedStock; external: Extern
   const vColor = stock.verdict.label === "BUY" ? "bg-up text-white" : stock.verdict.label === "HOLD" ? "bg-amber-500 text-white" : "bg-down text-white";
   const price = external?.marketPrice || stock.price;
   const change = external?.change ?? stock.change;
+  const hasQuarterly = stock.quarterly.q1 !== 0 || stock.quarterly.q2 !== 0 || stock.quarterly.q3 !== 0 || stock.quarterly.q4 !== 0;
+  const hasHoldings = stock.holdings.promoter !== "-" || stock.holdings.fii !== "-";
   return (
     <>
+      {/* Data Source Badge */}
+      <div className="mb-3 flex items-center gap-2">
+        {external ? (
+          <span className="rounded-full bg-up-bg px-3 py-1 text-[10px] font-semibold text-up">✅ MeroLagani Data</span>
+        ) : stock.hasFundamental ? (
+          <span className="rounded-full bg-primary-bg px-3 py-1 text-[10px] font-semibold text-primary">📊 Fundamental Data</span>
+        ) : (
+          <span className="rounded-full bg-surface-2 px-3 py-1 text-[10px] font-semibold text-muted">📡 Live Market Data</span>
+        )}
+        {external?.sector && <span className="rounded-full bg-primary-bg px-3 py-1 text-[10px] font-semibold text-primary">{external.sector}</span>}
+      </div>
+
       <div className="mb-3 flex items-baseline gap-3">
         <span className="text-[26px] font-bold text-foreground">{npr(price)}</span>
         <span className={`rounded-full px-3 py-0.5 text-sm font-semibold ${changeClass(change)}`}>
@@ -364,29 +380,38 @@ function OverviewTab({ stock, external }: { stock: MergedStock; external: Extern
         </div>
       )}
 
-      <div className="mb-3">
-        <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-muted">📅 Quarterly EPS</div>
-        <div className="grid grid-cols-4 gap-1.5">
-          <QuarterItem label="Q1" value={stock.quarterly.q1} change={stock.quarterly.q1Change} />
-          <QuarterItem label="Q2" value={stock.quarterly.q2} change={stock.quarterly.q2Change} />
-          <QuarterItem label="Q3" value={stock.quarterly.q3} change={stock.quarterly.q3Change} />
-          <QuarterItem label="Q4" value={stock.quarterly.q4} change={stock.quarterly.q4Change} />
+      {/* Only show Quarterly EPS if we have data */}
+      {hasQuarterly && (
+        <div className="mb-3">
+          <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-muted">📅 Quarterly EPS</div>
+          <div className="grid grid-cols-4 gap-1.5">
+            <QuarterItem label="Q1" value={stock.quarterly.q1} change={stock.quarterly.q1Change} />
+            <QuarterItem label="Q2" value={stock.quarterly.q2} change={stock.quarterly.q2Change} />
+            <QuarterItem label="Q3" value={stock.quarterly.q3} change={stock.quarterly.q3Change} />
+            <QuarterItem label="Q4" value={stock.quarterly.q4} change={stock.quarterly.q4Change} />
+          </div>
         </div>
-      </div>
+      )}
 
-      <div className="mb-3 flex flex-wrap gap-2">
-        <Pill label="Promoter" value={stock.holdings.promoter} />
-        <Pill label="FII" value={stock.holdings.fii} />
-        <Pill label="DII" value={stock.holdings.dii} />
-        <Pill label="Public" value={stock.holdings.public} />
-        <Pill label="Long Term" value={stock.holdings.longTerm} />
-      </div>
+      {/* Only show Holdings if we have data */}
+      {hasHoldings && (
+        <div className="mb-3 flex flex-wrap gap-2">
+          <Pill label="Promoter" value={stock.holdings.promoter} />
+          <Pill label="FII" value={stock.holdings.fii} />
+          <Pill label="DII" value={stock.holdings.dii} />
+          <Pill label="Public" value={stock.holdings.public} />
+          <Pill label="Long Term" value={stock.holdings.longTerm} />
+        </div>
+      )}
 
-      <div className={`rounded-2xl ${vColor} p-3 text-center`}>
-        <div className="text-2xl">{stock.verdict.icon}</div>
-        <div className="text-lg font-bold">{stock.verdict.label}</div>
-        <div className="text-xs opacity-90">{stock.verdict.reason}</div>
-      </div>
+      {/* Only show Verdict if we have fundamental data */}
+      {stock.hasFundamental && (
+        <div className={`rounded-2xl ${vColor} p-3 text-center`}>
+          <div className="text-2xl">{stock.verdict.icon}</div>
+          <div className="text-lg font-bold">{stock.verdict.label}</div>
+          <div className="text-xs opacity-90">{stock.verdict.reason}</div>
+        </div>
+      )}
     </>
   );
 }
