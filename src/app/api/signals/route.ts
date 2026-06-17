@@ -156,9 +156,7 @@ export async function GET() {
 
     return Response.json({ signals: data, generatedAt: Date.now() });
   } catch (e) {
-    return Response.json(
-      { error: (e as Error)?.message ?? "Failed to compute signals" },
-      { status: 502 },
-    );
+    // Return empty signals instead of 502 so dashboard doesn't show error
+    return Response.json({ signals: [], generatedAt: Date.now(), source: "fallback", error: (e as Error)?.message });
   }
 }
