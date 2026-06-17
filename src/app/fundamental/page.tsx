@@ -138,14 +138,10 @@ export default function FundamentalPage() {
         <h1 className="flex items-center gap-2 text-xl font-bold text-foreground md:text-2xl">
           <span className="text-primary">📊</span> NEPSE Deep Fundamental
         </h1>
-        <div className="flex items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-muted">
-          <span className={`h-2 w-2 rounded-full animate-pulse ${error ? "bg-down" : "bg-up"}`} />
-          {error ? "API Error" : loading ? "Loading…" : "Live"}
-          <span className="hidden sm:inline">· auto 3s</span>
-        </div>
+
       </div>
 
-      {error && <div className="rounded-2xl border border-down bg-down/10 px-4 py-2 text-xs text-down">{error} — showing cached data.</div>}
+
 
       {/* Search + Filters row */}
       <div className="flex flex-col gap-3 md:flex-row md:items-center">
