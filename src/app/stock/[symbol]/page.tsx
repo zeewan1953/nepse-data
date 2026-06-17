@@ -5,6 +5,7 @@ import type { SecurityResponse } from "@/lib/types";
 import { generateSignal, type Candle, type Signal } from "@/lib/signals";
 import { breakout, type Breakout } from "@/tactical-analysis/calculation/breakout";
 import { npr, num, compact, pct, changeClass } from "@/lib/format";
+import { generateNepaliAnalysis } from "@/lib/nepaliAnalysis";
 
 export default function StockPage({
   params,
@@ -73,40 +74,20 @@ export default function StockPage({
     [candles, ltp],
   );
 
+  // Local AI analysis — no external API needed
   const [aiText, setAiText] = useState<string | null>(null);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiError, setAiError] = useState<string | null>(null);
-  const aiAbortRef = useRef<AbortController | null>(null);
+  const [aiVisible, setAiVisible] = useState(false);
 
-  const runAnalysis = useCallback(async () => {
-    if (aiAbortRef.current) aiAbortRef.current.abort();
-    const ctrl = new AbortController();
-    aiAbortRef.current = ctrl;
-    setAiLoading(true);
-    setAiError(null);
-    setAiText("");
-    try {
-      const res = await fetch(`/api/analyse/${encodeURIComponent(sym)}`, { signal: ctrl.signal });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error(j?.error ?? `HTTP ${res.status}`);
-      }
-      const reader = res.body?.getReader();
-      if (!reader) throw new Error("No response body");
-      const decoder = new TextDecoder();
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        setAiText((prev) => (prev ?? "") + decoder.decode(value, { stream: true }));
-      }
-    } catch (e) {
-      if ((e as Error).name !== "AbortError") {
-        setAiError((e as Error).message ?? "विश्लेषण असफल");
-      }
-    } finally {
-      setAiLoading(false);
-    }
-  }, [sym]);
+  const day52High = day.fiftyTwoWeekHigh ?? null;
+  const day52Low = day.fiftyTwoWeekLow ?? null;
+  const securityName = data?.details?.security?.securityName ?? sym;
+
+  const runAnalysis = useCallback(() => {
+    if (!signal) return;
+    const text = generateNepaliAnalysis(sym, securityName, ltp, signal, day52High, day52Low);
+    setAiText(text);
+    setAiVisible(true);
+  }, [sym, securityName, ltp, signal, day52High, day52Low]);
 
   return (
     <div className="space-y-5">
@@ -336,45 +317,30 @@ export default function StockPage({
         </section>
       )}
 
-      {/* AI Nepali Analysis */}
+      {/* AI Nepali Analysis — Local, No API */}
       <section className="rounded-xl border border-border bg-surface shadow-sm">
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
-          <h2 className="font-bold">🤖 AI विश्लेषण (Claude) — {sym}</h2>
+          <h2 className="font-bold">🤖 AI विश्लेषण — {sym}</h2>
           <button
             onClick={runAnalysis}
-            disabled={aiLoading || !data}
+            disabled={!signal}
             className="rounded-lg bg-primary px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-primary/80 disabled:opacity-50"
           >
-            {aiLoading ? "विश्लेषण गर्दैछ…" : aiText ? "फेरि गर्नुस्" : "आजको विश्लेषण गर्नुस्"}
+            {aiText ? "फेरि गर्नुस्" : "आजको विश्लेषण गर्नुस्"}
           </button>
         </div>
 
-        {!aiText && !aiLoading && !aiError && (
+        {!aiText && (
           <div className="flex flex-col items-center justify-center gap-2 p-8 text-center text-muted">
             <span className="text-3xl">🏹</span>
-            <p className="text-sm">उपरि बटन दबाउनुस् — Claude ले {sym} को सम्पूर्ण तकनिकल विश्लेषण नेपालीमा गर्नेछ।</p>
-          </div>
-        )}
-
-        {aiLoading && aiText === "" && (
-          <div className="flex items-center gap-2 p-6 text-sm text-muted">
-            <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-            विश्लेषण र ट्याघ्नाइखेलाछ… (केही सेकेन्ड लाग्न सक्छ)
-          </div>
-        )}
-
-        {aiError && (
-          <div className="rounded-lg bg-down-bg m-4 p-3 text-sm text-down">
-            ⚠️ {aiError}
+            <p className="text-sm">उपरि बटन दबाउनुस् — {sym} को सम्पूर्ण तकनिकल विश्लेषण नेपालीमा देखिनेछ।</p>
+            <p className="text-xs text-muted">(13 indicators को local analysis — कुनै AI API चाहिँदैन)</p>
           </div>
         )}
 
         {aiText && (
           <div className="p-4">
             <AiMarkdown text={aiText} />
-            {aiLoading && (
-              <span className="mt-2 inline-block h-4 w-0.5 animate-pulse bg-primary" />
-            )}
           </div>
         )}
 
