@@ -3,10 +3,10 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Vercel deployment URL for fallback when NEPSE is unreachable locally
+// Vercel deployment URL – always pull from here first
 const VERCEL_BASE = "https://nepse-data-sand.vercel.app";
 
-// Fallback data when NEPSE API is unreachable
+// Static fallback data
 const FALLBACK_INDEX = {
   index: "NEPSE Index",
   open: 2000,
@@ -35,14 +35,13 @@ const FALLBACK_SUB_INDICES = [
   { index: "Trading Index", open: 900, high: 920, low: 890, close: 910, points: 10, percentage: 1.11, turnover: 100000000, tradedShares: 1000000, totalTransactions: 1000 },
 ];
 
-// Fetch indices from Vercel deployment
-async function fetchIndicesFromVercel(): Promise<{
-  index: unknown[];
-  subIndices: unknown[];
-  source: string;
-} | null> {
+// Fetch indices from Vercel deployment as PRIMARY source
+async function fetchIndicesFromVercel(): Promise<{ index: unknown[]; subIndices: unknown[]; source: string } | null> {
   try {
-    const res = await fetch(`${VERCEL_BASE}/api/indices`, { signal: AbortSignal.timeout(8000) });
+    const res = await fetch(`${VERCEL_BASE}/api/indices`, {
+      signal: AbortSignal.timeout(8000),
+      headers: { "Accept": "application/json" },
+    });
     if (!res.ok) return null;
     const data = await res.json();
     if (data.index?.length > 0 || data.subIndices?.length > 0) {
@@ -55,6 +54,13 @@ async function fetchIndicesFromVercel(): Promise<{
 }
 
 export async function GET() {
+  // 1. Try Vercel first
+  const vercelIndices = await fetchIndicesFromVercel();
+  if (vercelIndices) {
+    return Response.json(vercelIndices);
+  }
+
+  // 2. Try direct NEPSE
   try {
     const nepse = getNepse();
     const [index, subIndices] = await cached("indices", 8_000, async () =>
@@ -63,43 +69,21 @@ export async function GET() {
         safeNepseCall(() => nepse.getNepseSubIndices(), "Sub Indices"),
       ]),
     );
-    
-    // Check if we got valid data or empty results
+
     const validIndex = index && typeof index === "object" && "close" in index;
     const validSubs = Array.isArray(subIndices) && subIndices.length > 0;
-    
+
     if (validIndex && validSubs) {
       return Response.json({ index: [index], subIndices });
     }
-    
-    // Try Vercel deployment before static fallback
-    const vercelIndices = await fetchIndicesFromVercel();
-    if (vercelIndices) {
-      return Response.json(vercelIndices);
-    }
-    
-    // Return static fallback data
-    return Response.json({ 
-      index: [FALLBACK_INDEX], 
-      subIndices: FALLBACK_SUB_INDICES,
-      source: "fallback"
-    });
-  } catch (e) {
-    // Try Vercel deployment on error
-    try {
-      const vercelIndices = await fetchIndicesFromVercel();
-      if (vercelIndices) {
-        return Response.json(vercelIndices);
-      }
-    } catch {
-      // Vercel fetch failed
-    }
-    // Return static fallback data on error
-    return Response.json({ 
-      index: [FALLBACK_INDEX], 
-      subIndices: FALLBACK_SUB_INDICES,
-      source: "fallback",
-      error: (e as Error)?.message
-    });
+  } catch {
+    // NEPSE failed
   }
+
+  // 3. Static fallback
+  return Response.json({
+    index: [FALLBACK_INDEX],
+    subIndices: FALLBACK_SUB_INDICES,
+    source: "fallback",
+  });
 }

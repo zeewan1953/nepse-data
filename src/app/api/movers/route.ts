@@ -4,22 +4,27 @@ import { getAllStocks } from "@/lib/db";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Vercel deployment URL for fallback when NEPSE is unreachable locally
+// Vercel deployment URL – always pull from here first
 const VERCEL_BASE = "https://nepse-data-sand.vercel.app";
 
 type Mover = { symbol: string; ltp: number; points: number; percentage: number; percentChange?: number; cp?: number };
 
-// Fetch movers from Vercel deployment
-async function fetchMoversFromVercel(): Promise<{
+type MoversResp = {
   gainers: Mover[];
   losers: Mover[];
   turnover: Mover[];
   volume: Mover[];
   transactions: Mover[];
   source: string;
-} | null> {
+};
+
+// Fetch movers from Vercel deployment as PRIMARY source
+async function fetchMoversFromVercel(): Promise<MoversResp | null> {
   try {
-    const res = await fetch(`${VERCEL_BASE}/api/movers`, { signal: AbortSignal.timeout(8000) });
+    const res = await fetch(`${VERCEL_BASE}/api/movers`, {
+      signal: AbortSignal.timeout(8000),
+      headers: { "Accept": "application/json" },
+    });
     if (!res.ok) return null;
     const data = await res.json();
     if (data.gainers?.length > 0 || data.losers?.length > 0) {
@@ -31,20 +36,13 @@ async function fetchMoversFromVercel(): Promise<{
   return null;
 }
 
-// Calculate movers from database stocks when NEPSE API is unreachable
-async function getMoversFromDb(): Promise<{
-  gainers: Mover[];
-  losers: Mover[];
-  turnover: Mover[];
-  volume: Mover[];
-  transactions: Mover[];
-  source: string;
-}> {
+// Calculate movers from database stocks when all else fails
+async function getMoversFromDb(): Promise<MoversResp> {
   const stocks = await getAllStocks().catch(() => []);
   if (!stocks.length) {
     return { gainers: [], losers: [], turnover: [], volume: [], transactions: [], source: "empty" };
   }
-  
+
   const mapped: Mover[] = stocks.map((s) => ({
     symbol: s.symbol,
     ltp: s.lastTradedPrice ?? 0,
@@ -53,19 +51,24 @@ async function getMoversFromDb(): Promise<{
     percentChange: s.percentageChange ?? 0,
     cp: 0,
   }));
-  
+
   const gainers = [...mapped].sort((a, b) => b.percentage - a.percentage).slice(0, 10);
   const losers = [...mapped].sort((a, b) => a.percentage - b.percentage).slice(0, 10);
-  const turnover = [...mapped].sort((a, b) => (b.ltp * 1000) - (a.ltp * 1000)).slice(0, 10);
-  const volume = [...mapped].sort((a, b) => (b.ltp * 1000) - (a.ltp * 1000)).slice(0, 10);
+  const turnover = [...mapped].sort((a, b) => b.ltp - a.ltp).slice(0, 10);
+  const volume = [...mapped].sort((a, b) => b.ltp - a.ltp).slice(0, 10);
   const transactions = [...mapped].sort((a, b) => b.ltp - a.ltp).slice(0, 10);
-  
+
   return { gainers, losers, turnover, volume, transactions, source: "database" };
 }
 
-// Top gainers, losers, by turnover, by volume (shares traded) and by number of
-// transactions — everything the dashboard needs in one round trip.
 export async function GET() {
+  // 1. Try Vercel first
+  const vercelMovers = await fetchMoversFromVercel();
+  if (vercelMovers) {
+    return Response.json(vercelMovers);
+  }
+
+  // 2. Try direct NEPSE
   try {
     const nepse = getNepse();
     const data = await cached("movers", 8_000, async () => {
@@ -78,38 +81,20 @@ export async function GET() {
       ]);
       return { gainers, losers, turnover, volume, transactions };
     });
-    
-    // Check if we got valid data
+
     const hasData = data.gainers?.length > 0 || data.losers?.length > 0;
     if (hasData) {
       return Response.json(data);
     }
-    
-    // Fallback to Vercel deployment
-    const vercelMovers = await fetchMoversFromVercel();
-    if (vercelMovers) {
-      return Response.json(vercelMovers);
-    }
-    
-    // Fallback to database stocks
-    const statsMovers = await getMoversFromDb();
-    return Response.json(statsMovers);
-  } catch (e) {
-    // Fallback to Vercel deployment on error
-    try {
-      const vercelMovers = await fetchMoversFromVercel();
-      if (vercelMovers) {
-        return Response.json(vercelMovers);
-      }
-    } catch {
-      // Vercel fetch failed
-    }
-    // Fallback to database stocks
-    try {
-      const statsMovers = await getMoversFromDb();
-      return Response.json(statsMovers);
-    } catch {
-      return Response.json({ gainers: [], losers: [], turnover: [], volume: [], transactions: [], source: "empty" });
-    }
+  } catch {
+    // NEPSE failed
+  }
+
+  // 3. Database fallback
+  try {
+    const dbMovers = await getMoversFromDb();
+    return Response.json(dbMovers);
+  } catch {
+    return Response.json({ gainers: [], losers: [], turnover: [], volume: [], transactions: [], source: "empty" });
   }
 }

@@ -10,9 +10,9 @@ type IndicesResp = { index: NepseIndex[]; subIndices: NepseSubIndex[] };
 // Sticky top summary bar: NEPSE index, daily change %, turnover, volume,
 // market status and overall market mood (advancers vs decliners).
 export default function SummaryBar() {
-  const status = usePoll<MarketStatus>("/api/market-status", 30_000);
+  const status = usePoll<MarketStatus>("/api/market-status", 2_000);
   const open = status.data?.isOpen?.toUpperCase() === "OPEN";
-  const interval = open ? 2_000 : 30_000;
+  const interval = 2_000;
   const indices = usePoll<IndicesResp>("/api/indices", interval);
   const live = usePoll<LiveResp>("/api/live", interval);
 
