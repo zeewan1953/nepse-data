@@ -99,18 +99,9 @@ export default function BrokerAnalysisPage() {
         </div>
       </div>
 
-      <div className="flex w-fit flex-wrap gap-1 rounded-full border border-border bg-surface p-1 shadow-sm">
-        {(["TODAY", "WEEK", "MONTH"] as const).map((r) => (
-          <button
-            key={r}
-            onClick={() => setRange(r)}
-            className={`rounded-full px-6 py-2 text-sm font-semibold transition ${
-              range === r ? "bg-primary text-white shadow" : "text-muted hover:bg-surface-2"
-            }`}
-          >
-            {r === "TODAY" ? "📅" : r === "WEEK" ? "🗓" : "📆"} {r}
-          </button>
-        ))}
+      <div className="flex items-center gap-3 rounded-full border border-border bg-surface px-5 py-2 shadow-sm">
+        <span className="text-sm font-semibold text-primary">📅 Today's Data</span>
+        <span className="text-xs text-muted">NEPSE floorsheet API provides current trading day only</span>
       </div>
 
       {loading && !data && <div className="rounded-[28px] border border-border bg-surface p-10 text-center text-muted">Loading broker #{brokerId}…</div>}
