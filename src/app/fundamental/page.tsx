@@ -246,7 +246,6 @@ export default function FundamentalPage() {
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1">
                   <span className="rounded-full border border-border bg-surface-2 px-3 py-1 text-xs font-semibold text-muted">{external?.sector || selectedStock.sector}</span>
-                  {external && <span className="text-[9px] text-muted">via {external.source}</span>}
                   {externalLoading && <span className="text-[9px] text-muted">loading…</span>}
                 </div>
               </div>
@@ -318,7 +317,7 @@ function OverviewTab({ stock, external }: { stock: MergedStock; external: Extern
 
       {external && external.dividends.length > 0 && (
         <div className="mb-3">
-          <div className="mb-2 text-xs font-semibold text-muted">📅 Dividend History (MeroLagani)</div>
+          <div className="mb-2 text-xs font-semibold text-muted">📅 Dividend History</div>
           <div className="flex flex-wrap gap-1.5">
             {external.dividends.slice(0, 5).map((d) => (
               <span key={d.fiscalYear} className="rounded-full border border-border bg-surface-2 px-2.5 py-1 text-[10px] font-medium text-foreground">
@@ -377,7 +376,7 @@ function ThreeYearTab({ stock, external }: { stock: MergedStock; external: Exter
       {/* Data Source Badge */}
       <div className="mb-3 flex items-center gap-2">
         <span className={`rounded-full px-3 py-1 text-[10px] font-semibold ${hasReal ? "bg-up-bg text-up" : "bg-surface-2 text-muted"}`}>
-          {hasReal ? "✅ Audited Data via MeroLagani" : "📊 Sample Data"}
+          {hasReal ? "✅ Audited Data" : "📊 Sample Data"}
         </span>
         {external?.sector && <span className="rounded-full bg-primary-bg px-3 py-1 text-[10px] font-semibold text-primary">{external.sector}</span>}
       </div>
@@ -468,7 +467,7 @@ function ThreeYearTab({ stock, external }: { stock: MergedStock; external: Exter
       {/* Historical Table from Sample Data */}
       {fy.years.length > 0 && !hasReal && (
         <div className="overflow-x-auto rounded-2xl border border-border">
-          <div className="mb-1 px-2 pt-2 text-[10px] font-semibold text-muted">Sample 3-Year Data (Real data loading from MeroLagani...)</div>
+          <div className="mb-1 px-2 pt-2 text-[10px] font-semibold text-muted">Sample 3-Year Data (Real data loading...)</div>
           <table className="w-full text-xs">
             <thead className="bg-surface-2 text-muted">
               <tr><th className="px-2 py-2 text-left">Year</th>{fy.years.map((y) => <th key={y} className="px-2 py-2 text-right">{y}</th>)}</tr>
@@ -488,7 +487,7 @@ function ThreeYearTab({ stock, external }: { stock: MergedStock; external: Exter
       {/* Dividend History from MeroLagani */}
       {external && external.dividends.length > 0 && (
         <div className="mt-3">
-          <div className="mb-2 text-xs font-semibold text-muted">📅 Dividend History (Audited via MeroLagani)</div>
+          <div className="mb-2 text-xs font-semibold text-muted">📅 Dividend History (Audited)</div>
           <div className="flex flex-wrap gap-1.5">
             {external.dividends.map((d) => (
               <span key={d.fiscalYear} className="rounded-full border border-border bg-surface-2 px-2.5 py-1 text-[10px] font-medium text-foreground">
