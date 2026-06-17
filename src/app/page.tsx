@@ -1,8 +1,8 @@
 "use client";
-import { useState } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import Link from "next/link";
 import { usePoll } from "@/lib/useLive";
-import type { MarketStatus, NepseIndex, NepseSubIndex, TopTenItem } from "@/lib/types";
+import type { LiveMarketData, MarketStatus, NepseIndex, NepseSubIndex, TopTenItem } from "@/lib/types";
 import { classifySymbol, TYPE_BADGE } from "@/lib/types";
 import { npr, pct, changeClass } from "@/lib/format";
 
@@ -67,6 +67,7 @@ export default function Dashboard() {
   const movers = usePoll<MoversResp>("/api/movers", interval);
   const signals = usePoll<SignalsResp>("/api/signals", open ? 5 * 60_000 : 10 * 60_000);
   const news = usePoll<NewsResp>("/api/news", 2_000);
+  const live = usePoll<{ data: LiveMarketData[]; count: number }>("/api/live", 30_000);
 
   const nepse =
     indices.data?.index?.find((i) => i.index === "NEPSE Index") ?? indices.data?.index?.[0];
@@ -91,12 +92,7 @@ export default function Dashboard() {
           <h1 className="text-3xl font-black text-foreground">DARI SIR</h1>
           <p className="text-sm text-muted">Nepal Stock Exchange — live dashboard</p>
         </div>
-        <Link
-          href="/market"
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700"
-        >
-          Market Watch →
-        </Link>
+        <StockSearch liveData={live.data ?? undefined} />
       </div>
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
@@ -431,6 +427,76 @@ function MoverCard({ title, tone, rows }: { title: string; tone: "up" | "down"; 
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function StockSearch({ liveData }: { liveData: { data: LiveMarketData[]; count: number } | undefined }) {
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const results = useMemo(() => {
+    if (!q.trim() || !liveData?.data) return [];
+    const query = q.toLowerCase();
+    return liveData.data
+      .filter((r) => r.symbol.toLowerCase().includes(query) || (r.securityName ?? "").toLowerCase().includes(query))
+      .slice(0, 8);
+  }, [q, liveData]);
+
+  return (
+    <div ref={ref} className="relative w-full sm:w-72">
+      <input
+        type="text"
+        value={q}
+        onChange={(e) => { setQ(e.target.value); setOpen(true); }}
+        onFocus={() => q.trim() && setOpen(true)}
+        placeholder="Search stock... (symbol or name)"
+        className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-primary placeholder:text-muted"
+      />
+      {open && results.length > 0 && (
+        <div className="absolute right-0 top-full z-50 mt-1 w-full overflow-hidden rounded-lg border border-border bg-surface shadow-lg">
+          {results.map((r) => {
+            const sType = classifySymbol(r.symbol, r.securityName);
+            return (
+              <Link
+                key={r.symbol}
+                href={`/stock/${encodeURIComponent(r.symbol)}`}
+                onClick={() => { setOpen(false); setQ(""); }}
+                className="flex items-center justify-between gap-2 px-3 py-2 text-sm hover:bg-surface-2"
+              >
+                <span className="flex items-center gap-2 min-w-0">
+                  <span className="font-bold text-primary">{r.symbol}</span>
+                  <span className={`rounded px-1 py-0.5 text-[9px] font-bold uppercase ${TYPE_BADGE[sType]}`}>{sType}</span>
+                  <span className="truncate text-xs text-muted">{(r.securityName ?? "").slice(0, 30)}</span>
+                </span>
+                <span className="flex items-center gap-2 shrink-0 tabular-nums">
+                  <span className="text-muted">{npr(r.lastTradedPrice)}</span>
+                  <span className={`w-14 text-right font-bold ${r.percentageChange >= 0 ? "text-up" : "text-down"}`}>
+                    {r.percentageChange >= 0 ? "+" : ""}{pct(r.percentageChange)}
+                  </span>
+                </span>
+              </Link>
+            );
+          })}
+          <Link
+            href={`/market?q=${encodeURIComponent(q)}`}
+            onClick={() => { setOpen(false); setQ(""); }}
+            className="block border-t border-border px-3 py-2 text-center text-xs font-semibold text-primary hover:bg-surface-2"
+          >
+            View all results →
+          </Link>
+        </div>
+      )}
     </div>
   );
 }
