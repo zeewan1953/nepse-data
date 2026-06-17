@@ -21,7 +21,7 @@ type Analysis = {
 export default function FloorsheetDashboard() {
   const status = usePoll<MarketStatus>("/api/market-status", 30_000);
   const open = status.data?.isOpen?.toUpperCase() === "OPEN";
-  const { data, error, loading, updatedAt } = usePoll<Analysis>(
+  const { data, error, loading, updatedAt, refresh } = usePoll<Analysis>(
     "/api/floorsheet/analysis",
     open ? 20_000 : 5 * 60_000,
   );
@@ -41,7 +41,7 @@ export default function FloorsheetDashboard() {
         </div>
       </div>
 
-      <AIAgent analysis={data ?? null} />
+      <AIAgent analysis={data ?? null} onRefresh={refresh} refreshing={loading} />
 
       <BrokerLookup />
 
@@ -262,7 +262,7 @@ function BrokerSideTable({
 type LiveResp = { data: { symbol: string; percentageChange: number; lastTradedPrice: number }[] };
 
 // AI agent: turns the raw floorsheet aggregation into plain-language insights.
-function AIAgent({ analysis }: { analysis: Analysis | null }) {
+function AIAgent({ analysis, onRefresh, refreshing }: { analysis: Analysis | null; onRefresh: () => void; refreshing: boolean }) {
   const live = usePoll<LiveResp>("/api/live", 60_000);
   const changeMap = useMemo(() => {
     const m = new Map<string, number>();
@@ -294,7 +294,12 @@ function AIAgent({ analysis }: { analysis: Analysis | null }) {
     <section className="rounded-xl border border-primary/40 bg-gradient-to-br from-surface to-surface-2 p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="font-bold">🤖 AI Agent — Broker Analysis</h2>
-        <span className="text-xs text-muted">auto from {num(analysis.totals.sampled)} trades</span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted">auto from {analysis ? num(analysis.totals.sampled) : 0} trades</span>
+          <button onClick={onRefresh} disabled={refreshing} className="rounded-lg border border-border bg-surface px-3 py-1 text-xs font-semibold text-primary hover:bg-surface-2 disabled:opacity-50">
+            {refreshing ? "⟳ Refreshing…" : "⟳ Refresh"}
+          </button>
+        </div>
       </div>
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
