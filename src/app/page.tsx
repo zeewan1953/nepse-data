@@ -302,7 +302,7 @@ export default function Dashboard() {
                   </td>
                   <td className="px-3 py-1.5 text-center">
                     <span className={`rounded-full px-2 py-0.5 text-xs font-extrabold ${s.breakout!.signal === "BUY" ? "bg-up text-white" : "bg-down text-white"}`}>
-                      {s.breakout!.signal}
+                      {s.breakout!.signal === "BUY" ? "🟢 LONG" : "🔴 SHORT"}
                     </span>
                   </td>
                   <td className="px-3 py-1.5 text-right tabular-nums">{npr(s.breakout!.entry)}</td>
@@ -692,8 +692,12 @@ function StockPopup({ symbol, onClose }: { symbol: string; onClose: () => void }
                 {breakoutInfo ? (
                   <div className="space-y-1.5 text-xs">
                     <div className="flex items-center gap-2">
-                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${breakoutInfo.signal === "BUY" ? "bg-up-bg text-up" : breakoutInfo.signal === "SELL" ? "bg-down-bg text-down" : "bg-surface-2 text-muted"}`}>
-                        {breakoutInfo.signal}
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                        breakoutInfo.signal === "BUY" ? "bg-up-bg text-up" : 
+                        breakoutInfo.signal === "SELL" ? "bg-down-bg text-down" : 
+                        "bg-surface-2 text-muted"
+                      }`}>
+                        {breakoutInfo.signal === "BUY" ? "🟢 LONG" : breakoutInfo.signal === "SELL" ? "🔴 SHORT" : "⏸ WAIT"}
                       </span>
                       <span className="text-muted">{breakoutInfo.confidence}% confidence</span>
                     </div>
