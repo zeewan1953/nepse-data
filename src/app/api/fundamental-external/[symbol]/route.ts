@@ -18,6 +18,26 @@ function parseDividends(html: string): { fiscalYear: string; value: number }[] {
   return items;
 }
 
+function extractFinancialTable(html: string): { label: string; values: string[] }[] {
+  const rows: { label: string; values: string[] }[] = [];
+  // Look for tables with financial data (Year, Revenue, Profit, EPS, etc.)
+  const tableRegex = /<table[^>]*class="[^"]*table[^"]*"[^>]*>([\s\S]*?)<\/table>/gi;
+  let tableMatch;
+  while ((tableMatch = tableRegex.exec(html)) !== null) {
+    const tableHtml = tableMatch[1];
+    const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+    let rowMatch;
+    while ((rowMatch = rowRegex.exec(tableHtml)) !== null) {
+      const rowHtml = rowMatch[1];
+      const cells = [...rowHtml.matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi)].map((c) => c[1].replace(/<[^>]+>/g, "").trim());
+      if (cells.length >= 2 && !cells[0].match(/^\d{4}/) && !cells[0].match(/^S\.N/)) {
+        rows.push({ label: cells[0], values: cells.slice(1) });
+      }
+    }
+  }
+  return rows;
+}
+
 export async function GET(_req: Request, ctx: { params: Promise<{ symbol: string }> }) {
   const { symbol: raw } = await ctx.params;
   const symbol = decodeURIComponent(raw).toUpperCase();
@@ -77,12 +97,41 @@ export async function GET(_req: Request, ctx: { params: Promise<{ symbol: string
     const capMatch = html.match(/Market Capitalization<\/td>\s*<td[^>]*>([^<]+)<\/td>/i);
     const marketCap = capMatch?.[1]?.trim() ?? "";
 
+    // Net Worth (Reserve & Surplus)
+    const reserveMatch = html.match(/Reserve &amp; Surplus<\/td>\s*<td[^>]*>([\d.,]+)/i);
+    const paidUpMatch = html.match(/Paid Up Capital<\/td>\s*<td[^>]*>([\d.,]+)/i);
+    const reserve = parseNumber(reserveMatch?.[1] ?? "0");
+    const paidUp = parseNumber(paidUpMatch?.[1] ?? "0");
+    const netWorth = reserve + paidUp;
+
+    // Total Debt (Borrowings)
+    const debtMatch = html.match(/Total Liabilities<\/td>\s*<td[^>]*>([\d.,]+)/i);
+    const totalDebt = parseNumber(debtMatch?.[1] ?? "0");
+
+    // Net Profit
+    const profitMatch = html.match(/Net Profit<\/td>\s*<td[^>]*>([\d.,]+)/i);
+    const netProfit = parseNumber(profitMatch?.[1] ?? "0");
+
+    // Revenue / Operating Income
+    const revenueMatch = html.match(/Operating Revenue<\/td>\s*<td[^>]*>([\d.,]+)/i);
+    const revenue = parseNumber(revenueMatch?.[1] ?? "0");
+
+    // ROE (calculated or from page)
+    const roeMatch = html.match(/ROE\s*\(%\)<\/td>\s*<td[^>]*>([\d.,]+)/i);
+    const roe = roeMatch ? parseNumber(roeMatch[1]) : (netWorth > 0 && netProfit > 0 ? (netProfit / netWorth) * 100 : 0);
+
+    // Debt to Equity
+    const debtEquity = netWorth > 0 ? totalDebt / netWorth : 0;
+
     // Dividends
     const dividends = parseDividends(html);
 
     // 52 week high/low
     const rangeMatch = html.match(/52 Weeks High - Low<\/td>\s*<td[^>]*>([^<]+)<\/td>/i);
     const weekRange = rangeMatch?.[1]?.trim() ?? "";
+
+    // Financial tables
+    const financials = extractFinancialTable(html);
 
     return Response.json({
       symbol,
@@ -98,6 +147,13 @@ export async function GET(_req: Request, ctx: { params: Promise<{ symbol: string
       marketCap,
       weekRange,
       dividends,
+      netWorth,
+      totalDebt,
+      netProfit,
+      revenue,
+      roe,
+      debtEquity,
+      financials,
       source: "merolagani.com",
     });
   } catch (e) {

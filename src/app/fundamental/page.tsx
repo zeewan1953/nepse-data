@@ -38,6 +38,13 @@ type ExternalFundamental = {
   marketCap: string;
   weekRange: string;
   dividends: { fiscalYear: string; value: number }[];
+  netWorth: number;
+  totalDebt: number;
+  netProfit: number;
+  revenue: number;
+  roe: number;
+  debtEquity: number;
+  financials: { label: string; values: string[] }[];
   source: string;
   error?: string;
 };
@@ -285,7 +292,7 @@ function OverviewTab({ stock, external }: { stock: MergedStock; external: Extern
       <div className="mb-3 grid grid-cols-2 gap-1.5 sm:grid-cols-4">
         <QuickStat label="P/E" value={external?.pe ? external.pe.toFixed(2) : stock.current.pe ? stock.current.pe.toFixed(1) : "-"} />
         <QuickStat label="EPS" value={external?.eps ? external.eps.toFixed(2) : stock.current.eps ? stock.current.eps.toFixed(1) : "-"} />
-        <QuickStat label="ROE" value={stock.current.roe ? `${stock.current.roe}%` : "-"} />
+        <QuickStat label="ROE" value={external?.roe ? `${external.roe.toFixed(1)}%` : stock.current.roe ? `${stock.current.roe}%` : "-"} />
         <QuickStat label="Volume" value={stock.liveVolume ? formatVolume(stock.liveVolume) : stock.volume} />
       </div>
 
@@ -295,9 +302,11 @@ function OverviewTab({ stock, external }: { stock: MergedStock; external: Extern
         {external?.bookValue ? <DeepItem label="Book Value" value={external.bookValue.toFixed(2)} color="green" /> : null}
         {external?.pbv ? <DeepItem label="P/BV" value={external.pbv.toFixed(2)} color="blue" /> :
           <DeepItem label="P/B" value={stock.ratios.pb ? stock.ratios.pb.toFixed(1) : "-"} color="blue" />}
-        <DeepItem label="Revenue" value={stock.current.revenue} color="blue" />
-        <DeepItem label="Net Profit" value={stock.current.profit} color="green" />
-        <DeepItem label="Total Debt" value={stock.current.debt} color="red" />
+        <DeepItem label="Revenue" value={external?.revenue ? `${npr(external.revenue)}` : stock.current.revenue} color="blue" />
+        <DeepItem label="Net Profit" value={external?.netProfit ? `${npr(external.netProfit)}` : stock.current.profit} color="green" />
+        <DeepItem label="Total Debt" value={external?.totalDebt ? `${npr(external.totalDebt)}` : stock.current.debt} color="red" />
+        <DeepItem label="Net Worth" value={external?.netWorth ? `${npr(external.netWorth)}` : "-"} color="purple" />
+        {external?.debtEquity ? <DeepItem label="D/E Ratio" value={external.debtEquity.toFixed(2)} color="orange" /> : null}
         {external?.weekRange && <DeepItem label="52W Range" value={external.weekRange} color="orange" />}
       </div>
 
