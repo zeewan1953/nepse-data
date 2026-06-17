@@ -320,7 +320,7 @@ export default function StockPage({
       {/* AI Nepali Analysis — Local, No API */}
       <section className="rounded-xl border border-border bg-surface shadow-sm">
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
-          <h2 className="font-bold">🤖 AI विश्लेषण — {sym}</h2>
+          <h2 className="font-bold">🤖 विश्लेषण — {sym}</h2>
           <button
             onClick={runAnalysis}
             disabled={!signal}
@@ -345,7 +345,7 @@ export default function StockPage({
         )}
 
         <p className="border-t border-border px-4 py-2 text-[11px] text-muted">
-          AI विश्लेषण शिक्षाको लागि मात्र — लगानी गर्नुभन्दा आफैं विषेशज्ञसंग सलाह लिनुहोस्। Not financial advice.
+          विश्लेषण शिक्षाको लागि मात्र — लगानी गर्नुभन्दा आफैं विषेशज्ञसंग सलाह लिनुहोस्। Not financial advice.
         </p>
       </section>
 

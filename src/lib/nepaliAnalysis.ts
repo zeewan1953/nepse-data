@@ -27,7 +27,7 @@ export function generateNepaliAnalysis(
   // === Current Status ===
   text += `**हालको अवस्था:**\n`;
   text += `- LTP: **${npr(ltp)}** | Trend: **${trendNepali}**\n`;
-  text += `- AI Recommendation: **${signal.recommendation}** (${signal.confidence}% confidence)\n`;
+  text += `- Recommendation: **${signal.recommendation}** (${signal.confidence}% confidence)\n`;
   if (signal.week52Position !== null) {
     text += `- 52W Position: **${signal.week52Position}%** `;
     if (signal.week52Position > 80) text += `(52W high को नजिक — overbought zone)`;
@@ -166,7 +166,7 @@ export function generateNepaliAnalysis(
     text += `🟡 **${symbol} HOLD/NEUTRAL** — ${signal.confidence}% confidence। Clear signal छैन, पर्खनुस् राम्रो।\n`;
   }
   text += `\n---\n\n`;
-  text += `⚠️ *AI विश्लेषण शिक्षाको लागि मात्र — लगानी गर्नुभन्दा आफैं विषेशज्ञसंग सलाह लिनुहोस्। Not financial advice.*`;
+  text += `⚠️ *विश्लेषण शिक्षाको लागि मात्र — लगानी गर्नुभन्दा आफैं विषेशज्ञसंग सलाह लिनुहोस्। Not financial advice.*`;
 
   return text;
 }
