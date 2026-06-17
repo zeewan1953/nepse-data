@@ -7,7 +7,6 @@ import { usePoll } from "@/lib/useLive";
 import { npr, pct, changeClass } from "@/lib/format";
 
 const FILTERS = ["All", "BUY", "HOLD", "SELL"] as const;
-const SECTORS = ["All", "Banking", "Energy", "Finance", "Healthcare", "Oil & Gas", "Other"] as const;
 
 type LiveRow = {
   symbol: string;
@@ -96,7 +95,6 @@ export default function FundamentalPage() {
   const { stocks: data, loading, error } = useMergedStocks();
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("All");
-  const [sector, setSector] = useState<(typeof SECTORS)[number]>("All");
   const [selected, setSelected] = useState<string>(data[0]?.symbol ?? "");
   const [tab, setTab] = useState<"overview" | "5year">("overview");
   const [external, setExternal] = useState<ExternalFundamental | null>(null);
@@ -122,10 +120,9 @@ export default function FundamentalPage() {
       const query = q.toLowerCase();
       const matchQ = !q || s.symbol.toLowerCase().includes(query) || s.name.toLowerCase().includes(query) || s.liveName.toLowerCase().includes(query) || s.id.toLowerCase().includes(query);
       const matchFilter = filter === "All" || (s.hasFundamental && s.verdict.label === filter);
-      const matchSector = sector === "All" || s.sector === sector;
-      return matchQ && matchFilter && matchSector;
+      return matchQ && matchFilter;
     });
-  }, [data, q, filter, sector]);
+  }, [data, q, filter]);
 
   const top10 = useMemo(() => data.filter((s) => s.hasFundamental).sort((a, b) => b.growthScore - a.growthScore).slice(0, 10), [data]);
   const selectedStock = useMemo(() => data.find((s) => s.symbol === selected) ?? data[0], [data, selected]);
@@ -167,16 +164,6 @@ export default function FundamentalPage() {
             </button>
           ))}
         </div>
-      </div>
-
-      {/* Sector filters */}
-      <div className="flex gap-1 overflow-x-auto rounded-full border border-border bg-surface p-1">
-        {SECTORS.map((s) => (
-          <button key={s} onClick={() => setSector(s)}
-            className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition ${sector === s ? "bg-primary text-white" : "text-muted hover:bg-surface-2"}`}>
-            {s}
-          </button>
-        ))}
       </div>
 
       {/* Main grid: left = stock list, right = detail */}
