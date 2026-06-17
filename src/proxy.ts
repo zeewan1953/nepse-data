@@ -15,6 +15,11 @@ const PUBLIC_API_PREFIXES = [
   "/api/fundamental-external/",
   "/api/live",
   "/api/stocks",
+  "/api/market-status",
+  "/api/indices",
+  "/api/movers",
+  "/api/signals",
+  "/api/index-graph",
 ];
 
 export function proxy(request: NextRequest) {

@@ -3,6 +3,9 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+// Vercel deployment URL for fallback when NEPSE is unreachable locally
+const VERCEL_BASE = "https://nepse-data-sand.vercel.app";
+
 // Fallback data when NEPSE API is unreachable
 const FALLBACK_INDEX = {
   index: "NEPSE Index",
@@ -32,6 +35,25 @@ const FALLBACK_SUB_INDICES = [
   { index: "Trading Index", open: 900, high: 920, low: 890, close: 910, points: 10, percentage: 1.11, turnover: 100000000, tradedShares: 1000000, totalTransactions: 1000 },
 ];
 
+// Fetch indices from Vercel deployment
+async function fetchIndicesFromVercel(): Promise<{
+  index: unknown[];
+  subIndices: unknown[];
+  source: string;
+} | null> {
+  try {
+    const res = await fetch(`${VERCEL_BASE}/api/indices`, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.index?.length > 0 || data.subIndices?.length > 0) {
+      return { ...data, source: "vercel" };
+    }
+  } catch {
+    // Vercel fetch failed
+  }
+  return null;
+}
+
 export async function GET() {
   try {
     const nepse = getNepse();
@@ -47,19 +69,34 @@ export async function GET() {
     const validSubs = Array.isArray(subIndices) && subIndices.length > 0;
     
     if (validIndex && validSubs) {
-      return Response.json({ index, subIndices });
+      return Response.json({ index: [index], subIndices });
     }
     
-    // Return fallback data
+    // Try Vercel deployment before static fallback
+    const vercelIndices = await fetchIndicesFromVercel();
+    if (vercelIndices) {
+      return Response.json(vercelIndices);
+    }
+    
+    // Return static fallback data
     return Response.json({ 
-      index: FALLBACK_INDEX, 
+      index: [FALLBACK_INDEX], 
       subIndices: FALLBACK_SUB_INDICES,
       source: "fallback"
     });
   } catch (e) {
-    // Return fallback data on error
+    // Try Vercel deployment on error
+    try {
+      const vercelIndices = await fetchIndicesFromVercel();
+      if (vercelIndices) {
+        return Response.json(vercelIndices);
+      }
+    } catch {
+      // Vercel fetch failed
+    }
+    // Return static fallback data on error
     return Response.json({ 
-      index: FALLBACK_INDEX, 
+      index: [FALLBACK_INDEX], 
       subIndices: FALLBACK_SUB_INDICES,
       source: "fallback",
       error: (e as Error)?.message

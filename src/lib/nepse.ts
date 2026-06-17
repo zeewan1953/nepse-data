@@ -17,15 +17,23 @@ export function getNepse(): Nepse {
 }
 
 // Wrap NEPSE calls with better error messages for network failures
+// Added 8-second timeout so fallback data kicks in quickly when NEPSE is unreachable
 export async function safeNepseCall<T>(fn: () => Promise<T>, context = "NEPSE API"): Promise<T> {
+  const timeoutMs = 8000;
   try {
-    return await fn();
+    const result = await Promise.race([
+      fn(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`Timeout: ${context} took more than ${timeoutMs / 1000}s to respond`)), timeoutMs)
+      ),
+    ]);
+    return result;
   } catch (e) {
     const err = e as Error;
     if (err.message?.includes("ENOTFOUND") || err.message?.includes("getaddrinfo")) {
       throw new Error(`Network error: Cannot reach nepalstock.com.np. Check your internet connection or try again later.`);
     }
-    if (err.message?.includes("ETIMEDOUT") || err.message?.includes("timeout")) {
+    if (err.message?.includes("ETIMEDOUT") || err.message?.includes("timeout") || err.message?.includes("Timeout")) {
       throw new Error(`Timeout: ${context} took too long to respond. NEPSE server may be slow or down.`);
     }
     throw err;

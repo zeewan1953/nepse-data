@@ -5,6 +5,9 @@ import type { LiveMarketData, Security } from "@rumess/nepse-api";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+// Vercel deployment URL for fallback when NEPSE is unreachable locally
+const VERCEL_BASE = "https://nepse-data-sand.vercel.app";
+
 // Keep the last good live snapshot in memory so the market watch keeps showing
 // every stock (with its last prices) even after the market closes and the live
 // feed empties out.
@@ -14,6 +17,21 @@ declare global {
 }
 
 type Ohlc = { openPrice: number; highPrice: number; lowPrice: number; averageTradedPrice: number };
+
+// Fetch from Vercel deployment as fallback
+async function fetchFromVercel(): Promise<{ rows: LiveMarketData[]; source: string } | null> {
+  try {
+    const res = await fetch(`${VERCEL_BASE}/api/live`, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.data?.length > 50) {
+      return { rows: data.data, source: "vercel" };
+    }
+  } catch {
+    // Vercel fetch failed
+  }
+  return null;
+}
 
 // Always returns EVERY listed company:
 //  - market open: live prices for all (and cached as the last snapshot)
@@ -72,31 +90,49 @@ async function loadAll(): Promise<{ rows: LiveMarketData[]; source: string }> {
     return { rows, source: stats.length ? "list+stats" : "list" };
   }
 
+  // Try Vercel deployment before snapshot/database fallback
+  const vercelData = await fetchFromVercel();
+  if (vercelData) {
+    globalThis.__lastLive = vercelData.rows;
+    try {
+      await saveLiveSnapshot(vercelData.rows);
+    } catch {
+      /* db optional */
+    }
+    return vercelData;
+  }
+
   if (globalThis.__lastLive?.length) {
     return { rows: globalThis.__lastLive, source: "snapshot" };
   }
 
-  // Final fallback: use database stocks table
+  // Final fallback: use database stocks table with OHLC data
   try {
-    const dbStocks = await getAllStocks();
+    const [dbStocks, ohlc] = await Promise.all([
+      getAllStocks(),
+      getOhlcMap(),
+    ]);
     if (dbStocks.length > 0) {
-      const rows = dbStocks.map((s) => ({
-        securityId: 0,
-        securityName: s.name,
-        symbol: s.symbol,
-        indexId: 0,
-        openPrice: 0,
-        highPrice: 0,
-        lowPrice: 0,
-        totalTradeQuantity: s.totalTradeQuantity,
-        totalTradeValue: 0,
-        lastTradedPrice: s.lastTradedPrice,
-        percentageChange: s.percentageChange,
-        lastUpdatedDateTime: "",
-        lastTradedVolume: 0,
-        previousClose: 0,
-        averageTradedPrice: 0,
-      })) satisfies LiveMarketData[];
+      const rows = dbStocks.map((s) => {
+        const o = ohlc.get(s.symbol);
+        return {
+          securityId: 0,
+          securityName: s.name,
+          symbol: s.symbol,
+          indexId: 0,
+          openPrice: o?.openPrice ?? 0,
+          highPrice: o?.highPrice ?? 0,
+          lowPrice: o?.lowPrice ?? 0,
+          totalTradeQuantity: s.totalTradeQuantity,
+          totalTradeValue: (s.totalTradeQuantity ?? 0) * (s.lastTradedPrice ?? 0),
+          lastTradedPrice: s.lastTradedPrice,
+          percentageChange: s.percentageChange,
+          lastUpdatedDateTime: "",
+          lastTradedVolume: 0,
+          previousClose: 0,
+          averageTradedPrice: o?.averageTradedPrice ?? 0,
+        };
+      }) satisfies LiveMarketData[];
       return { rows, source: "database" };
     }
   } catch {

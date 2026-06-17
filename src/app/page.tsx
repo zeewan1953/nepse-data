@@ -398,7 +398,7 @@ function MoverCard({ title, tone, rows }: { title: string; tone: "up" | "down"; 
       </div>
       <div className="divide-y divide-border">
         {rows.length === 0 && (
-          <div className="px-3 py-5 text-center text-xs text-muted">Loading…</div>
+          <div className="px-3 py-5 text-center text-xs text-muted">No data — market may be closed</div>
         )}
         {rows.slice(0, 10).map((r) => {
           const chg = chgOf(r);
