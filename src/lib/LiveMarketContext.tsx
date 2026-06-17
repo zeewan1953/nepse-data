@@ -36,7 +36,7 @@ const Ctx = createContext<LiveMarketCtx>({
 export function LiveMarketProvider({ children }: { children: React.ReactNode }) {
   const status = usePoll<MarketStatus>("/api/market-status", 30_000);
   const open = status.data?.isOpen?.toUpperCase() === "OPEN";
-  const interval = open ? 5_000 : 60_000;
+  const interval = open ? 2_000 : 30_000;
 
   const live = usePoll<LiveResp>("/api/live", interval);
 

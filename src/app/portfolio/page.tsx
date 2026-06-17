@@ -16,7 +16,7 @@ const PALETTE = ["#1d72d2", "#2c9bf0", "#0a8754", "#e0a800", "#d13438", "#7048e8
 export default function PortfolioPage() {
   const status = usePoll<MarketStatus>("/api/market-status", 30_000);
   const open = status.data?.isOpen?.toUpperCase() === "OPEN";
-  const live = usePoll<LiveResp>("/api/live", open ? 8_000 : 60_000);
+  const live = usePoll<LiveResp>("/api/live", open ? 2_000 : 30_000);
 
   const ltpMap = useMemo(() => {
     const m = new Map<string, number>();

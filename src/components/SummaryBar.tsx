@@ -12,7 +12,7 @@ type IndicesResp = { index: NepseIndex[]; subIndices: NepseSubIndex[] };
 export default function SummaryBar() {
   const status = usePoll<MarketStatus>("/api/market-status", 30_000);
   const open = status.data?.isOpen?.toUpperCase() === "OPEN";
-  const interval = open ? 8_000 : 60_000;
+  const interval = open ? 2_000 : 30_000;
   const indices = usePoll<IndicesResp>("/api/indices", interval);
   const live = usePoll<LiveResp>("/api/live", interval);
 

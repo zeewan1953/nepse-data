@@ -12,7 +12,7 @@ type LiveResp = { data: LiveMarketData[]; count: number };
 export default function BrokerAnalysisPage() {
   const status = usePoll<MarketStatus>("/api/market-status", 30_000);
   const open = status.data?.isOpen?.toUpperCase() === "OPEN";
-  const { data: liveData } = usePoll<LiveResp>("/api/live", open ? 5_000 : 60_000);
+  const { data: liveData } = usePoll<LiveResp>("/api/live", open ? 2_000 : 30_000);
 
   const [brokerId, setBrokerId] = useState(1);
   const [input, setInput] = useState("1");

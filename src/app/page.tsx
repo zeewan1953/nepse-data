@@ -62,7 +62,7 @@ function ltpOf(g: TopTenItem): number {
 export default function Dashboard() {
   const status = usePoll<MarketStatus>("/api/market-status", 30_000);
   const open = status.data?.isOpen?.toUpperCase() === "OPEN";
-  const interval = open ? 10_000 : 60_000;
+  const interval = open ? 2_000 : 30_000;
   const indices = usePoll<IndicesResp>("/api/indices", interval);
   const movers = usePoll<MoversResp>("/api/movers", interval);
   const signals = usePoll<SignalsResp>("/api/signals", open ? 5 * 60_000 : 10 * 60_000);
