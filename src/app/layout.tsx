@@ -35,7 +35,7 @@ export default function RootLayout({
         <ThemeProvider>
           <Nav />
           <SummaryBar />
-          <main className="mx-auto w-full max-w-7xl flex-1 px-3 py-4">{children}</main>
+          <main className="w-full flex-1 px-4 py-4">{children}</main>
         </ThemeProvider>
       </body>
     </html>

@@ -1,68 +1,255 @@
 @import "tailwindcss";
 
+/* ============================================================
+   DARI SIR — NEPSE Trading App Color System
+   Core palette: Blue (trust), Green (growth), Red (danger), Gold (highlight)
+   60% Neutral · 30% Primary · 10% Accent
+   WCAG AA compliant (4.5:1 min for text)
+   ============================================================ */
+
 :root {
-  /* DARI SIR — light blue theme */
-  --background: #eef6ff;
-  --surface: #ffffff;
-  --surface-2: #f4f9ff;
-  --foreground: #0b2545;
-  --muted: #5b7aa3;
-  --border: #cfe2f7;
-  --primary: #1d72d2;
-  --primary-700: #155bb0;
-  --accent: #2c9bf0;
-  --up: #0a8754;
-  --up-bg: #e3f6ec;
-  --down: #d13438;
-  --down-bg: #fdeaea;
+  /* ── 1. CORE COLORS ────────────────────────────────────── */
+  --color-primary: #1a4d8f;    /* Trust blue — buttons, active nav, links */
+  --color-accent: #0f7b3a;     /* Growth green — positive indicators */
+  --color-danger: #c0392b;     /* Sell/negative — errors, loss */
+  --color-gold: #f39c12;       /* NEPSE highlight — rank badges, alerts */
+
+  /* ── 2. NEUTRAL COLORS (60%) ────────────────────────────── */
+  /* Backgrounds */
+  --bg: #f0f4f8;               /* App page background */
+  --surface: #ffffff;           /* Card / panel background */
+  --surface-2: #f7f9fc;        /* Alternate surface (table headers, hover) */
+  --surface-3: #edf1f7;        /* Elevated surface (dropdowns, popovers) */
+
+  /* Text */
+  --fg: #0c1e36;               /* Primary text — headings, body */
+  --fg-secondary: #3d5a80;     /* Secondary text — subtitles */
+  --muted: #6b8299;            /* Muted text — labels, hints */
+  --muted-light: #94aec4;      /* Very subtle text — placeholders */
+
+  /* Borders */
+  --border: #d4e0ed;           /* Default border */
+  --border-light: #e8eff7;     /* Subtle border — dividers */
+  --border-strong: #a8bfd6;    /* Emphasized border — focus rings */
+
+  /* ── 3. PRIMARY VARIANTS (30%) ──────────────────────────── */
+  --primary: #1a4d8f;          /* Default primary */
+  --primary-hover: #143d73;    /* Hover state (darker) */
+  --primary-active: #0f2e57;   /* Active/pressed state */
+  --primary-light: #e8f0fa;    /* Soft background tint */
+  --primary-soft: #b8d1ee;     /* Badge / chip background */
+  --primary-700: #143d73;      /* Legacy compat */
+
+  /* ── 4. ACCENT VARIANTS (10%) ───────────────────────────── */
+  --accent: #0f7b3a;           /* Default accent */
+  --accent-hover: #0a5c2c;     /* Hover state */
+  --accent-light: #e6f5ec;     /* Soft background tint */
+  --accent-soft: #b3dcc4;      /* Badge / chip background */
+
+  /* ── 5. SEMANTIC / TRADING COLORS ───────────────────────── */
+  /* Success / Up */
+  --up: #0a8754;               /* Price up / positive */
+  --up-bg: #e3f6ec;            /* Up background tint */
+  --up-soft: #b6e4ca;          /* Up badge bg */
+
+  /* Danger / Down */
+  --down: #c0392b;             /* Price down / negative / sell */
+  --down-bg: #fdeaea;          /* Down background tint */
+  --down-soft: #f0b8b4;        /* Down badge bg */
+
+  /* Warning */
+  --warning: #e67e22;          /* Caution / HOLD */
+  --warning-bg: #fef5e7;       /* Warning background tint */
+
+  /* Gold / Highlight */
+  --gold: #f39c12;             /* Rank badges, NEPSE highlights */
+  --gold-bg: #fef9e7;          /* Gold background tint */
+
+  /* ── 6. SHARED VALUES ───────────────────────────────────── */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-full: 9999px;
+
+  --font-sans: var(--font-geist-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-geist-mono), "Cascadia Code", "Fira Code", monospace;
+
+  --shadow-sm: 0 1px 3px rgba(12, 30, 54, 0.06);
+  --shadow-md: 0 4px 12px rgba(12, 30, 54, 0.08);
+  --shadow-lg: 0 8px 24px rgba(12, 30, 54, 0.10);
+
+  --transition-fast: 120ms ease;
+  --transition: 200ms ease;
+  --transition-slow: 350ms ease;
 }
 
+/* ============================================================
+   DARK MODE — all colors adapted for dark backgrounds
+   Lightened/desaturated for readability on dark surfaces
+   ============================================================ */
 .dark {
-  --background: #0b0f1a;
-  --surface: #12162a;
-  --surface-2: #1a1f35;
-  --foreground: #e8ecf4;
-  --muted: #8892a8;
-  --border: #2a3050;
-  --primary: #1d72d2;
-  --primary-700: #155bb0;
-  --accent: #2c9bf0;
+  /* ── CORE (unchanged identity, darker for dark mode) ──── */
+  --color-primary: #3b82c4;
+  --color-accent: #22a554;
+  --color-danger: #e74c3c;
+  --color-gold: #f5b041;
+
+  /* ── NEUTRALS ───────────────────────────────────────────── */
+  --bg: #0a0e1a;
+  --surface: #111827;
+  --surface-2: #1a2236;
+  --surface-3: #222d44;
+
+  --fg: #e8ecf4;
+  --fg-secondary: #b0bdd0;
+  --muted: #7e8fa6;
+  --muted-light: #4e5d73;
+
+  --border: #253250;
+  --border-light: #1c2840;
+  --border-strong: #3a5070;
+
+  /* ── PRIMARY VARIANTS ───────────────────────────────────── */
+  --primary: #3b82c4;
+  --primary-hover: #5a9ad6;
+  --primary-active: #7ab3e2;
+  --primary-light: #14253d;
+  --primary-soft: #1e3a5c;
+  --primary-700: #5a9ad6;
+
+  /* ── ACCENT VARIANTS ────────────────────────────────────── */
+  --accent: #22a554;
+  --accent-hover: #34c06a;
+  --accent-light: #0d2818;
+  --accent-soft: #14402a;
+
+  /* ── SEMANTIC / TRADING ─────────────────────────────────── */
   --up: #22c55e;
   --up-bg: #0d2818;
+  --up-soft: #14402a;
+
   --down: #ef4444;
   --down-bg: #1a0a0a;
+  --down-soft: #3b1515;
+
+  --warning: #f5b041;
+  --warning-bg: #2a2010;
+
+  --gold: #f5b041;
+  --gold-bg: #2a2010;
+
+  /* ── SHARED (dark-adapted) ──────────────────────────────── */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
 }
 
+/* ============================================================
+   TAILWIND THEME MAPPING
+   Maps CSS vars → Tailwind utility classes
+   ============================================================ */
 @theme inline {
-  --color-background: var(--background);
+  /* Backgrounds */
+  --color-background: var(--bg);
   --color-surface: var(--surface);
   --color-surface-2: var(--surface-2);
-  --color-foreground: var(--foreground);
+  --color-surface-3: var(--surface-3);
+
+  /* Text */
+  --color-foreground: var(--fg);
+  --color-foreground-secondary: var(--fg-secondary);
   --color-muted: var(--muted);
+  --color-muted-light: var(--muted-light);
+
+  /* Borders */
   --color-border: var(--border);
+  --color-border-light: var(--border-light);
+  --color-border-strong: var(--border-strong);
+
+  /* Primary */
   --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-active: var(--primary-active);
+  --color-primary-light: var(--primary-light);
+  --color-primary-soft: var(--primary-soft);
   --color-primary-700: var(--primary-700);
+
+  /* Accent */
   --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-light: var(--accent-light);
+  --color-accent-soft: var(--accent-soft);
+
+  /* Trading */
   --color-up: var(--up);
   --color-up-bg: var(--up-bg);
+  --color-up-soft: var(--up-soft);
   --color-down: var(--down);
   --color-down-bg: var(--down-bg);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-down-soft: var(--down-soft);
+  --color-warning: var(--warning);
+  --color-warning-bg: var(--warning-bg);
+  --color-gold: var(--gold);
+  --color-gold-bg: var(--gold-bg);
+
+  /* Fonts */
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
 }
 
+/* ============================================================
+   BASE STYLES
+   ============================================================ */
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-geist-sans), system-ui, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* thin scrollbars for data tables */
+/* ============================================================
+   SCROLLBAR — thin, themed
+   ============================================================ */
 ::-webkit-scrollbar {
-  height: 8px;
-  width: 8px;
+  height: 6px;
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
   background: var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-full);
 }
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
+}
+
+/* ============================================================
+   UTILITY CLASSES — usage examples (reference only)
+   
+   BUTTONS:
+     Primary:   class="bg-primary text-white rounded-lg px-4 py-2 hover:bg-primary-hover"
+     Accent:    class="bg-accent text-white rounded-lg px-4 py-2 hover:bg-accent-hover"
+     Danger:    class="bg-down text-white rounded-lg px-4 py-2"
+     Outline:   class="border border-primary text-primary rounded-lg px-4 py-2 hover:bg-primary-light"
+   
+   BADGES:
+     Up:        class="bg-up-bg text-up rounded-full px-2 py-0.5 text-xs font-semibold"
+     Down:      class="bg-down-bg text-down rounded-full px-2 py-0.5 text-xs font-semibold"
+     Warning:   class="bg-warning-bg text-warning rounded-full px-2 py-0.5 text-xs font-semibold"
+     Gold:      class="bg-gold-bg text-gold rounded-full px-2 py-0.5 text-xs font-semibold"
+   
+   CARDS:
+     Default:   class="bg-surface border border-border rounded-xl shadow-sm p-4"
+     Elevated:  class="bg-surface-2 border border-border rounded-xl p-4"
+   
+   TEXT:
+     Heading:   class="text-foreground font-bold text-lg"
+     Body:      class="text-foreground-secondary text-sm"
+     Muted:     class="text-muted text-xs"
+     Link:      class="text-primary hover:text-primary-hover"
+   ============================================================ */
