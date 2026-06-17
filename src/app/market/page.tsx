@@ -75,15 +75,15 @@ export default function MarketPage() {
           <p className="text-sm text-muted">
             {data ? `${rows.length} / ${data.count} companies` : "Loading…"}
             {updatedAt && (
-              <> · updated {new Date(updatedAt).toLocaleTimeString("en-GB")}</>
+              <> · Last updated {new Date(updatedAt).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit" })}</>
             )}
-            {open ? " · auto-refresh 5s" : " · market closed"}
+            {open ? " · 🟢 Market Open (5s refresh)" : " · 🔴 Market Closed"}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {/* Type filter buttons */}
           <div className="flex items-center gap-0.5 rounded-lg bg-surface-2 p-0.5 text-xs font-semibold">
-            {(["ALL", "EQ", "DB", "MF", "PS"] as const).map((t) => (
+            {(["ALL", "EQ", "DB", "MF"] as const).map((t) => (
               <button
                 key={t}
                 onClick={() => setTypeFilter(t)}
@@ -144,10 +144,12 @@ export default function MarketPage() {
             )}
             {rows.map((r) => {
               const symbolLabel = r.symbol.replace(/\d+/g, "");
+              const chg = r.percentageChange;
+              const rowColor = chg > 0 ? "bg-up-bg/30" : chg < 0 ? "bg-down-bg/30" : "bg-blue-500/10";
               return (
                 <tr
                   key={r.symbol}
-                  className="border-t border-border hover:bg-surface-2"
+                  className={`border-t border-border hover:bg-surface-2 ${rowColor}`}
                 >
                   <td className="px-3 py-2 font-bold">
                     <Link href={`/stock/${r.symbol}`} className="text-primary hover:underline">
@@ -160,15 +162,15 @@ export default function MarketPage() {
                   <td className="max-w-[220px] truncate px-3 py-2 text-muted">
                     {r.securityName}
                   </td>
-                  <td className="px-3 py-2 text-right font-semibold tabular-nums">
+                  <td className={`px-3 py-2 text-right font-semibold tabular-nums ${changeClass(chg)}`}>
                     {npr(r.lastTradedPrice)}
                   </td>
                   <td
                     className={`px-3 py-2 text-right font-semibold tabular-nums ${changeClass(
-                      r.percentageChange,
+                      chg,
                     )}`}
                   >
-                    {pct(r.percentageChange)}
+                    {pct(chg)}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums text-muted">{npr(r.openPrice)}</td>
                   <td className="px-3 py-2 text-right tabular-nums text-up">{npr(r.highPrice)}</td>

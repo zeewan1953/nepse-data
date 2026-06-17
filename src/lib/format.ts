@@ -26,6 +26,6 @@ export function pct(n: number | null | undefined): string {
 }
 
 export function changeClass(n: number | null | undefined): string {
-  if (n === null || n === undefined || n === 0) return "text-muted";
+  if (n === null || n === undefined || n === 0) return "text-blue-500";
   return n > 0 ? "text-up" : "text-down";
 }
