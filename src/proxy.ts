@@ -17,7 +17,7 @@ const PUBLIC_API_PREFIXES = [
   "/api/stocks",
 ];
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
   if (PUBLIC_ROUTES.includes(pathname)) return NextResponse.next();
