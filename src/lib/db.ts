@@ -75,6 +75,18 @@ async function migrateSchema(): Promise<void> {
     )
   `);
 
+  // All NEPSE stocks for search
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS stocks (
+      symbol TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      lastTradedPrice REAL NOT NULL DEFAULT 0,
+      percentageChange REAL NOT NULL DEFAULT 0,
+      totalTradeQuantity REAL NOT NULL DEFAULT 0,
+      updatedAt INTEGER NOT NULL
+    )
+  `);
+
   // Add createdAt column if missing
   try {
     await db.execute("ALTER TABLE otps ADD COLUMN createdAt INTEGER DEFAULT 0");
@@ -148,4 +160,58 @@ export async function getOhlcMap(): Promise<Map<string, OhlcRow>> {
       },
     ]),
   );
+}
+
+// ─── Stock search table ────────────────────────────────────────────────────
+export type StockRow = {
+  symbol: string;
+  name: string;
+  lastTradedPrice: number;
+  percentageChange: number;
+  totalTradeQuantity: number;
+};
+
+export async function saveStocks(stocks: StockRow[]): Promise<void> {
+  if (!stocks.length) return;
+  const now = Date.now();
+  const statements = stocks.map((s) => ({
+    sql: `INSERT INTO stocks(symbol, name, lastTradedPrice, percentageChange, totalTradeQuantity, updatedAt)
+          VALUES (?, ?, ?, ?, ?, ?)
+          ON CONFLICT(symbol) DO UPDATE SET
+            name=excluded.name,
+            lastTradedPrice=excluded.lastTradedPrice,
+            percentageChange=excluded.percentageChange,
+            totalTradeQuantity=excluded.totalTradeQuantity,
+            updatedAt=excluded.updatedAt`,
+    args: [s.symbol, s.name, s.lastTradedPrice, s.percentageChange, s.totalTradeQuantity, now],
+  }));
+  await db.batch(statements, "write");
+}
+
+export async function searchStocks(q: string): Promise<StockRow[]> {
+  const query = `%${q}%`;
+  const result = await db.execute({
+    sql: "SELECT symbol, name, lastTradedPrice, percentageChange, totalTradeQuantity FROM stocks WHERE symbol LIKE ? OR name LIKE ? ORDER BY symbol LIMIT 50",
+    args: [query, query],
+  });
+  return result.rows.map((r) => ({
+    symbol: String(r.symbol),
+    name: String(r.name),
+    lastTradedPrice: Number(r.lastTradedPrice),
+    percentageChange: Number(r.percentageChange),
+    totalTradeQuantity: Number(r.totalTradeQuantity),
+  }));
+}
+
+export async function getAllStocks(): Promise<StockRow[]> {
+  const result = await db.execute(
+    "SELECT symbol, name, lastTradedPrice, percentageChange, totalTradeQuantity FROM stocks ORDER BY symbol",
+  );
+  return result.rows.map((r) => ({
+    symbol: String(r.symbol),
+    name: String(r.name),
+    lastTradedPrice: Number(r.lastTradedPrice),
+    percentageChange: Number(r.percentageChange),
+    totalTradeQuantity: Number(r.totalTradeQuantity),
+  }));
 }

@@ -50,7 +50,7 @@ function formatVolume(n: number): string {
 
 function useMergedStocks(): { stocks: MergedStock[]; loading: boolean; error: string | null } {
   const hardcoded = useMemo(() => STOCKS.map(enriched), []);
-  const live = usePoll<{ data: LiveRow[]; count: number; source: string }>("/api/live", 3_000);
+  const live = usePoll<{ data: LiveRow[]; count: number; source: string }>("/api/stocks", 3_000);
 
   const stocks = useMemo<MergedStock[]>(() => {
     const liveMap = new Map<string, LiveRow>();

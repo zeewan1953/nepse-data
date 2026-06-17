@@ -14,6 +14,7 @@ const PUBLIC_API_PREFIXES = [
   "/api/news",
   "/api/fundamental-external/",
   "/api/live",
+  "/api/stocks",
 ];
 
 export function middleware(request: NextRequest) {
