@@ -4,7 +4,7 @@ import Link from "next/link";
 import { STOCKS } from "@/lib/fundamentalData";
 import { enriched, stars, type EnrichedStock } from "@/lib/fundamentalCalc";
 import { usePoll } from "@/lib/useLive";
-import { npr, pct, changeClass } from "@/lib/format";
+import { npr, pct, changeClass, compact } from "@/lib/format";
 
 const FILTERS = ["All", "BUY", "HOLD", "SELL"] as const;
 
@@ -44,7 +44,11 @@ type ExternalFundamental = {
   revenue: number;
   roe: number;
   debtEquity: number;
-  financials: { label: string; values: string[] }[];
+  yearYield?: string;
+  avg120?: string;
+  totalPaidup?: string;
+  paidupValue?: string;
+  listedShares?: string;
   source: string;
   error?: string;
 };
@@ -302,12 +306,14 @@ function OverviewTab({ stock, external }: { stock: MergedStock; external: Extern
         {external?.bookValue ? <DeepItem label="Book Value" value={external.bookValue.toFixed(2)} color="green" /> : null}
         {external?.pbv ? <DeepItem label="P/BV" value={external.pbv.toFixed(2)} color="blue" /> :
           <DeepItem label="P/B" value={stock.ratios.pb ? stock.ratios.pb.toFixed(1) : "-"} color="blue" />}
+        {external?.yearYield && <DeepItem label="1Y Yield" value={external.yearYield} color="green" />}
+        {external?.avg120 && <DeepItem label="120D Avg" value={external.avg120} color="blue" />}
+        {external?.weekRange && <DeepItem label="52W Range" value={external.weekRange} color="orange" />}
         <DeepItem label="Revenue" value={external?.revenue ? `${npr(external.revenue)}` : stock.current.revenue} color="blue" />
         <DeepItem label="Net Profit" value={external?.netProfit ? `${npr(external.netProfit)}` : stock.current.profit} color="green" />
         <DeepItem label="Total Debt" value={external?.totalDebt ? `${npr(external.totalDebt)}` : stock.current.debt} color="red" />
-        <DeepItem label="Net Worth" value={external?.netWorth ? `${npr(external.netWorth)}` : "-"} color="purple" />
+        <DeepItem label="Net Worth" value={external?.netWorth ? `${compact(external.netWorth)}` : "-"} color="purple" />
         {external?.debtEquity ? <DeepItem label="D/E Ratio" value={external.debtEquity.toFixed(2)} color="orange" /> : null}
-        {external?.weekRange && <DeepItem label="52W Range" value={external.weekRange} color="orange" />}
       </div>
 
       {external && external.dividends.length > 0 && (
@@ -414,7 +420,7 @@ function ThreeYearTab({ stock, external }: { stock: MergedStock; external: Exter
             </tr>
             <tr className="hover:bg-surface-2">
               <td className="px-3 py-2 font-medium">Net Worth</td>
-              <td className="px-3 py-2 text-right font-bold text-primary">{latestNetWorth > 0 ? `Rs. ${npr(latestNetWorth)}` : "-"}</td>
+              <td className="px-3 py-2 text-right font-bold text-primary">{latestNetWorth > 0 ? `Rs. ${compact(latestNetWorth)}` : "-"}</td>
               {hasReal && <td className="px-3 py-2 text-right text-[10px] text-muted">Audited</td>}
             </tr>
             <tr className="hover:bg-surface-2">

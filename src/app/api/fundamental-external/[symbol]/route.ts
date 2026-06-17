@@ -7,35 +7,69 @@ function parseNumber(s: string): number {
   return isNaN(n) ? 0 : n;
 }
 
+// Extract value from MeroLagani's main metrics table:
+// <th style="width: 200px;">Label\r\n  </th>\r\n  <td class="">\r\n  VALUE\r\n  ...
+function extractField(html: string, label: string): string {
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // First try: extract everything between <td> and </td>, strip HTML tags, get first value
+  const fullRegex = new RegExp(
+    `<th[^>]*>\\s*${escaped}[\\s\\r\\n]*<\\/th>\\s*<td[^>]*>([\\s\\S]*?)<\\/td>`,
+    "is"
+  );
+  const fullMatch = html.match(fullRegex);
+  if (fullMatch?.[1]) {
+    // Strip all HTML tags and get the text content
+    const text = fullMatch[1].replace(/<[^>]+>/g, "").trim();
+    // Get first line/value (before any newline or space-separated metadata)
+    const firstLine = text.split(/[\r\n]+/)[0].trim();
+    if (firstLine) return firstLine;
+  }
+  return "";
+}
+
 function parseDividends(html: string): { fiscalYear: string; value: number }[] {
   const items: { fiscalYear: string; value: number }[] = [];
-  // Match rows like: 12.50% (FY: 078-079)
-  const regex = /([\d.]+)%\s*\(FY:\s*(\d{3}-\d{3})\)/g;
+  const regex = /<td class="text-center">\s*([\d.]+%)\s*<\/td>\s*<td class="text-center text-primary">\(FY:\s*([\d-]+)\)/gi;
   let m;
   while ((m = regex.exec(html)) !== null) {
-    items.push({ value: parseFloat(m[1]), fiscalYear: m[2] });
+    const val = parseFloat(m[1]);
+    if (val > 0) {
+      items.push({ value: val, fiscalYear: m[2] });
+    }
   }
   return items;
 }
 
-function extractFinancialTable(html: string): { label: string; values: string[] }[] {
-  const rows: { label: string; values: string[] }[] = [];
-  // Look for tables with financial data (Year, Revenue, Profit, EPS, etc.)
-  const tableRegex = /<table[^>]*class="[^"]*table[^"]*"[^>]*>([\s\S]*?)<\/table>/gi;
-  let tableMatch;
-  while ((tableMatch = tableRegex.exec(html)) !== null) {
-    const tableHtml = tableMatch[1];
-    const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
-    let rowMatch;
-    while ((rowMatch = rowRegex.exec(tableHtml)) !== null) {
-      const rowHtml = rowMatch[1];
-      const cells = [...rowHtml.matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi)].map((c) => c[1].replace(/<[^>]+>/g, "").trim());
-      if (cells.length >= 2 && !cells[0].match(/^\d{4}/) && !cells[0].match(/^S\.N/)) {
-        rows.push({ label: cells[0], values: cells.slice(1) });
-      }
-    }
+// Extract from About tab:
+// <th>\n<span title="Company Name">Company Name</span></th>\n\n<td>VALUE</td>
+function extractAboutField(html: string, title: string): string {
+  const escaped = title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const regex = new RegExp(
+    `<span title="${escaped}">[^<]*<\\/span><\\/th>\\s*<td>([^<]+)<\\/td>`,
+    "is"
+  );
+  const m = html.match(regex);
+  return m?.[1]?.trim() ?? "";
+}
+
+// Extract Company Name from page title or About tab
+function extractName(html: string, symbol: string): string {
+  // Try About tab first (most reliable)
+  const aboutName = extractAboutField(html, "Company Name");
+  if (aboutName) return aboutName;
+  
+  // Try page title: <title>Company Name (SYMBOL) - MeroLagani</title>
+  const titleMatch = html.match(new RegExp(`<title>([^<]*?)\\s*\\(${symbol}\\)`, "i"));
+  if (titleMatch?.[1]) {
+    let name = titleMatch[1].trim();
+    // Remove "merolagani - " prefix if present
+    name = name.replace(/^merolagani\s*-\s*/i, "");
+    return name;
   }
-  return rows;
+  
+  // Try h2/h3 with company name
+  const hMatch = html.match(new RegExp(`<h[2-4][^>]*>\\s*([^<]+?)\\s*\\(${symbol}\\)`, "i"));
+  return hMatch?.[1]?.trim() ?? "";
 }
 
 export async function GET(_req: Request, ctx: { params: Promise<{ symbol: string }> }) {
@@ -59,84 +93,67 @@ export async function GET(_req: Request, ctx: { params: Promise<{ symbol: string
     const html = await res.text();
 
     // Company name
-    const titleMatch = html.match(/<h[1-6][^>]*>\s*([^<]+?)\s*\(\s*${symbol}\s*\)\s*<\/h[1-6]>/i);
-    const nameMatch = html.match(/Company Name<\/td>\s*<td[^>]*>([^<]+)<\/td>/i);
-    const name = titleMatch?.[1]?.trim() ?? nameMatch?.[1]?.trim() ?? "";
+    const name = extractName(html, symbol);
 
     // Sector
-    const sectorMatch = html.match(/Sector<\/td>\s*<td[^>]*>([^<]+)<\/td>/i);
-    const sector = sectorMatch?.[1]?.trim() ?? "";
+    const sector = extractField(html, "Sector");
 
     // Shares outstanding
-    const sharesMatch = html.match(/Shares Outstanding<\/td>\s*<td[^>]*>([^<]+)<\/td>/i);
-    const sharesOutstanding = sharesMatch?.[1]?.trim() ?? "";
+    const sharesOutstanding = extractField(html, "Shares Outstanding");
 
     // Market price / LTP
-    const priceMatch = html.match(/Market Price<\/td>\s*<td[^>]*>([^<]+)<\/td>/i);
-    const marketPrice = parseNumber(priceMatch?.[1] ?? "0");
+    const marketPrice = parseNumber(extractField(html, "Market Price"));
 
     // % Change
-    const changeMatch = html.match(/% Change<\/td>\s*<td[^>]*>([^<]+)<\/td>/i);
-    const change = parseNumber(changeMatch?.[1] ?? "0");
+    const change = parseNumber(extractField(html, "% Change"));
 
     // EPS
-    const epsMatch = html.match(/EPS<\/td>\s*<td[^>]*>([\d.,]+)/i);
-    const eps = parseNumber(epsMatch?.[1] ?? "0");
+    const eps = parseNumber(extractField(html, "EPS"));
 
-    // PE
-    const peMatch = html.match(/P\/E Ratio<\/td>\s*<td[^>]*>([\d.,]+)/i);
-    const pe = parseNumber(peMatch?.[1] ?? "0");
+    // PE Ratio
+    const pe = parseNumber(extractField(html, "P/E Ratio"));
 
-    // Book Value / PBV
-    const bvMatch = html.match(/Book Value<\/td>\s*<td[^>]*>([\d.,]+)/i);
-    const pbvMatch = html.match(/PBV<\/td>\s*<td[^>]*>([\d.,]+)/i);
-    const bookValue = parseNumber(bvMatch?.[1] ?? "0");
-    const pbv = parseNumber(pbvMatch?.[1] ?? "0");
+    // Book Value
+    const bookValue = parseNumber(extractField(html, "Book Value"));
 
-    // Market cap
-    const capMatch = html.match(/Market Capitalization<\/td>\s*<td[^>]*>([^<]+)<\/td>/i);
-    const marketCap = capMatch?.[1]?.trim() ?? "";
+    // PBV
+    const pbv = parseNumber(extractField(html, "PBV"));
 
-    // Net Worth (Reserve & Surplus)
-    const reserveMatch = html.match(/Reserve &amp; Surplus<\/td>\s*<td[^>]*>([\d.,]+)/i);
-    const paidUpMatch = html.match(/Paid Up Capital<\/td>\s*<td[^>]*>([\d.,]+)/i);
-    const reserve = parseNumber(reserveMatch?.[1] ?? "0");
-    const paidUp = parseNumber(paidUpMatch?.[1] ?? "0");
-    const netWorth = reserve + paidUp;
+    // Market Capitalization
+    const marketCap = extractField(html, "Market Capitalization");
 
-    // Total Debt (Borrowings)
-    const debtMatch = html.match(/Total Liabilities<\/td>\s*<td[^>]*>([\d.,]+)/i);
-    const totalDebt = parseNumber(debtMatch?.[1] ?? "0");
+    // 52 week high/low
+    const weekRange = extractField(html, "52 Weeks High - Low");
 
-    // Net Profit
-    const profitMatch = html.match(/Net Profit<\/td>\s*<td[^>]*>([\d.,]+)/i);
-    const netProfit = parseNumber(profitMatch?.[1] ?? "0");
+    // 1 Year Yield
+    const yearYield = extractField(html, "1 Year Yield");
 
-    // Revenue / Operating Income
-    const revenueMatch = html.match(/Operating Revenue<\/td>\s*<td[^>]*>([\d.,]+)/i);
-    const revenue = parseNumber(revenueMatch?.[1] ?? "0");
+    // 120 Day Average
+    const avg120 = extractField(html, "120 Day Average");
 
-    // ROE (calculated or from page)
-    const roeMatch = html.match(/ROE\s*\(%\)<\/td>\s*<td[^>]*>([\d.,]+)/i);
-    const roe = roeMatch ? parseNumber(roeMatch[1]) : (netWorth > 0 && netProfit > 0 ? (netProfit / netWorth) * 100 : 0);
-
-    // Debt to Equity
-    const debtEquity = netWorth > 0 ? totalDebt / netWorth : 0;
+    // About tab fields
+    const totalPaidup = extractAboutField(html, "Total Paidup Value");
+    const paidupValue = extractAboutField(html, "Paidup Value");
+    const listedShares = extractAboutField(html, "Listed Shares");
+    const aboutSector = extractAboutField(html, "Sector");
 
     // Dividends
     const dividends = parseDividends(html);
 
-    // 52 week high/low
-    const rangeMatch = html.match(/52 Weeks High - Low<\/td>\s*<td[^>]*>([^<]+)<\/td>/i);
-    const weekRange = rangeMatch?.[1]?.trim() ?? "";
+    // Net Worth = Total Paidup Value
+    const netWorth = parseNumber(totalPaidup);
 
-    // Financial tables
-    const financials = extractFinancialTable(html);
+    // These are not available on the CompanyDetail page
+    const totalDebt = 0;
+    const netProfit = 0;
+    const revenue = 0;
+    const roe = 0;
+    const debtEquity = 0;
 
     return Response.json({
       symbol,
       name,
-      sector,
+      sector: sector || aboutSector,
       sharesOutstanding,
       marketPrice,
       change,
@@ -153,7 +170,11 @@ export async function GET(_req: Request, ctx: { params: Promise<{ symbol: string
       revenue,
       roe,
       debtEquity,
-      financials,
+      yearYield,
+      avg120,
+      totalPaidup,
+      paidupValue,
+      listedShares,
       source: "merolagani.com",
     });
   } catch (e) {
