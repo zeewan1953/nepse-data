@@ -509,15 +509,21 @@ type FundData = {
   sharesOutstanding: string; netWorth: number; totalDebt: number;
   netProfit: number; revenue: number; roe: number; debtEquity: number;
   dividends: { fiscalYear: string; value: number }[];
+  marketPrice: number; change: number; yearYield: string; avg120: string;
 };
 type SecData = {
   details: { securityDailyTradeDto?: { openPrice: number; highPrice: number; lowPrice: number; previousClose: number; lastTradedPrice: number; fiftyTwoWeekHigh: number; fiftyTwoWeekLow: number; totalTradeQuantity: number; marketCap: number }; securityPriceVolumeDto?: { paidUpValue: number; totalPaidupCapital: string } } | null;
   history: { content: { businessDate: string; closePrice: number; highPrice: number; lowPrice: number; totalTradedQuantity: number }[] } | null;
 };
+type BrokerFlow = { buyerId: string; buyerNet: number; sellerId: string; sellerNet: number; bias: "accumulate" | "distribute" | "neutral" } | null;
+
+const parseNumber = (s: string): number => { const n = Number(s.replace(/[^0-9.\-]/g, "")); return isNaN(n) ? 0 : n; };
 
 function StockPopup({ symbol, onClose }: { symbol: string; onClose: () => void }) {
   const [fund, setFund] = useState<FundData | null>(null);
   const [sec, setSec] = useState<SecData | null>(null);
+  const [broker, setBroker] = useState<BrokerFlow>(null);
+  const [signalRow, setSignalRow] = useState<SignalRow | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -525,34 +531,49 @@ function StockPopup({ symbol, onClose }: { symbol: string; onClose: () => void }
     Promise.all([
       fetch(`/api/fundamental-external/${encodeURIComponent(symbol)}`).then(r => r.ok ? r.json() : null).catch(() => null),
       fetch(`/api/security/${encodeURIComponent(symbol)}`).then(r => r.ok ? r.json() : null).catch(() => null),
-    ]).then(([f, s]) => {
+      fetch(`/api/signals`).then(r => r.ok ? r.json() : null).catch(() => null),
+    ]).then(([f, s, sig]) => {
       setFund(f);
       setSec(s);
+      const found = sig?.signals?.find((x: { symbol: string }) => x.symbol === symbol) ?? null;
+      setSignalRow(found);
+      setBroker(found?.broker ?? null);
       setLoading(false);
     });
   }, [symbol]);
 
-  const signalInfo = useMemo(() => {
-    if (!sec?.history?.content?.length) return null;
-    const candles = [...sec.history.content].sort((a, b) => a.businessDate.localeCompare(b.businessDate)).slice(-100);
-    const ltp = sec.details?.securityDailyTradeDto?.lastTradedPrice ?? candles.at(-1)?.closePrice ?? 0;
-    const prev = sec.details?.securityDailyTradeDto?.previousClose ?? candles.at(-2)?.closePrice ?? 0;
+  // Compute AI signal from history (local)
+  const localSignal = useMemo(() => {
+    if (!sec?.history?.content?.length && !signalRow) {
+      // Use historical data or signal row
+      if (!sec?.history?.content?.length) return null;
+    }
+    const candles = [...(sec?.history?.content ?? [])].sort((a, b) => a.businessDate.localeCompare(b.businessDate));
+    if (candles.length < 5) return null;
+    const ltp = fund?.marketPrice ?? sec?.details?.securityDailyTradeDto?.lastTradedPrice ?? candles.at(-1)?.closePrice ?? 0;
+    const prev = sec?.details?.securityDailyTradeDto?.previousClose ?? candles.at(-2)?.closePrice ?? ltp;
     const change = ltp - prev;
     const changePct = prev ? (change / prev) * 100 : 0;
+    const recent = candles.slice(-5);
     let bull = 0, bear = 0;
-    const last5 = candles.slice(-5);
-    for (const c of last5) { if (c.closePrice > c.lowPrice * 1.01) bull++; else bear++; }
-    const ema20 = candles.slice(-20).reduce((s, c) => s + c.closePrice, 0) / Math.min(20, candles.length);
+    for (const c of recent) { if (c.closePrice > c.lowPrice * 1.005) bull++; else bear++; }
+    const ema20 = candles.slice(-20).reduce((s, c) => s + c.closePrice, 0) / Math.min(20, candles.length ? candles.length : 1);
     if (ltp > ema20) bull++; else bear++;
     const overall = bull > bear ? "BUY" : bull < bear ? "SELL" : "HOLD";
-    const conf = Math.round((Math.max(bull, bear) / (bull + bear)) * 100);
+    const conf = Math.round((Math.max(bull, bear) / Math.max(bull + bear, 1)) * 100);
     return { ltp, change, changePct, bull, bear, overall, conf, ema20 };
-  }, [sec]);
+  }, [sec, fund, signalRow]);
 
   const breakoutInfo = useMemo(() => {
-    if (!sec?.history?.content?.length) return null;
-    const candles = [...sec.history.content].sort((a, b) => a.businessDate.localeCompare(b.businessDate)).slice(-60);
-    const ltp = sec.details?.securityDailyTradeDto?.lastTradedPrice ?? candles.at(-1)?.closePrice ?? 0;
+    const candles = [...(sec?.history?.content ?? [])].sort((a, b) => a.businessDate.localeCompare(b.businessDate)).slice(-60);
+    if (candles.length < 10) {
+      // Fallback to signal row
+      if (signalRow?.breakout) {
+        return { signal: signalRow.breakout.signal, prevHigh: signalRow.breakout.entry, prevLow: signalRow.breakout.sl ?? 0, confidence: signalRow.breakout.confidence };
+      }
+      return null;
+    }
+    const ltp = fund?.marketPrice ?? sec?.details?.securityDailyTradeDto?.lastTradedPrice ?? candles.at(-1)?.closePrice ?? 0;
     const highs = candles.slice(0, -1).map(c => c.highPrice);
     const lows = candles.slice(0, -1).map(c => c.lowPrice);
     const prevHigh = Math.max(...highs);
@@ -560,12 +581,62 @@ function StockPopup({ symbol, onClose }: { symbol: string; onClose: () => void }
     const above = ltp > prevHigh;
     const below = ltp < prevLow;
     return { signal: above ? "BUY" : below ? "SELL" : "WAIT", prevHigh, prevLow, confidence: above || below ? 75 : 20 };
-  }, [sec]);
+  }, [sec, fund, signalRow]);
 
   const daily = sec?.details?.securityDailyTradeDto;
-  const ltp = signalInfo?.ltp ?? daily?.lastTradedPrice ?? 0;
-  const chg = signalInfo?.change ?? 0;
-  const chgPct = signalInfo?.changePct ?? 0;
+
+  // Best price: MeroLagani fund > NEPSE daily > signal row > history
+  const ltp = fund?.marketPrice ?? signalRow?.ltp ?? daily?.lastTradedPrice ?? (sec?.history?.content?.length ? [...sec.history.content].sort((a,b) => a.businessDate.localeCompare(b.businessDate)).at(-1)?.closePrice ?? 0 : 0);
+  const chg = fund?.change ?? signalRow?.change ?? localSignal?.change ?? 0;
+  const chgPct = localSignal?.changePct ?? (ltp && chg ? (chg / ltp) * 100 : 0);
+  const open = daily?.openPrice;
+  const vol = daily?.totalTradeQuantity;
+  const prevClose = daily?.previousClose;
+  const high52 = daily?.fiftyTwoWeekHigh;
+  const low52 = daily?.fiftyTwoWeekLow;
+
+  // Parse 52W range from fund if not in daily
+  const fundWeekParts = fund?.weekRange?.split("-")?.map(s => parseNumber(s.trim())) ?? [];
+  const from52 = high52 ?? fundWeekParts[1] ?? 0;
+  const to52 = low52 ?? fundWeekParts[0] ?? 0;
+
+  // AI Summary text — always build from available data
+  const summaryLines: string[] = [];
+  if (localSignal || signalRow) {
+    const rec = signalRow?.recommendation ?? localSignal?.overall ?? "HOLD";
+    const conf = signalRow?.confidence ?? localSignal?.conf ?? 0;
+    if (rec === "BUY" || rec === "Strong Buy") {
+      summaryLines.push(`🟢 Strong AI BUY signal with ${conf}% confidence`);
+    } else if (rec === "SELL" || rec === "Strong Sell") {
+      summaryLines.push(`🔴 AI SELL signal with ${conf}% confidence`);
+    } else {
+      summaryLines.push(`🟡 Neutral — AI recommends HOLD (${conf}% confidence)`);
+    }
+    if (breakoutInfo) {
+      if (breakoutInfo.signal === "BUY") summaryLines.push(`⚡ Breakout above resistance at ${npr(breakoutInfo.prevHigh)} — bullish`);
+      else if (breakoutInfo.signal === "SELL") summaryLines.push(`⚡ Breakdown below support at ${npr(breakoutInfo.prevLow)} — bearish`);
+      else summaryLines.push(`⚡ No breakout — trading within ${npr(breakoutInfo.prevLow)}–${npr(breakoutInfo.prevHigh)} range`);
+    }
+    if (broker) {
+      summaryLines.push(broker.bias === "accumulate" ? `🏦 Brokers accumulating — net buyer ${num(broker.buyerNet)} qty` : broker.bias === "distribute" ? `🏦 Brokers distributing — net seller ${num(broker.sellerNet)} qty` : `🏦 Brokers neutral — balanced flow`);
+    }
+  }
+  // Always add fundamental-driven summary
+  if (fund) {
+    if (fund.pe > 0 && fund.pe < 15) summaryLines.push(`📊 Undervalued (PE ${fund.pe.toFixed(1)}) — below market average`);
+    else if (fund.pe > 30) summaryLines.push(`📊 Overvalued (PE ${fund.pe.toFixed(1)}) — above market average`);
+    else if (fund.pe > 0) summaryLines.push(`📊 Fairly valued (PE ${fund.pe.toFixed(1)})`);
+    if (fund.eps > 0) summaryLines.push(`💰 EPS ${fund.eps.toFixed(1)} — ${fund.eps > 20 ? "strong" : "moderate"} earnings`);
+    if (fund.bookValue > 0 && ltp > 0) {
+      const ratio = ltp / fund.bookValue;
+      if (ratio < 1) summaryLines.push(`💎 Trading below book value — potential bargain (P/BV ${fund.pbv.toFixed(2)})`);
+    }
+    if (fund.dividends.length > 0) {
+      const avgDiv = fund.dividends.slice(0, 3).reduce((s, d) => s + d.value, 0) / Math.min(3, fund.dividends.length);
+      if (avgDiv > 5) summaryLines.push(`💵 Strong dividend history averaging ${avgDiv.toFixed(1)}%`);
+    }
+  }
+  if (!summaryLines.length) summaryLines.push("📊 Data loading — check back during market hours for full analysis");
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
@@ -586,73 +657,214 @@ function StockPopup({ symbol, onClose }: { symbol: string; onClose: () => void }
             <div className="py-8 text-center text-sm text-muted">Loading...</div>
           ) : (
             <div className="space-y-3">
-              {/* Price */}
-              <div className="flex items-baseline gap-3">
-                <span className="text-2xl font-black tabular-nums">{npr(ltp)}</span>
-                <span className={`text-sm font-bold ${chg >= 0 ? "text-up" : "text-down"}`}>
-                  {chg >= 0 ? "+" : ""}{npr(chg)} ({pct(chgPct)})
-                </span>
+              {/* Price Row */}
+              {ltp > 0 && (
+                <div className="flex items-baseline gap-3">
+                  <span className="text-2xl font-black tabular-nums">{npr(ltp)}</span>
+                  <span className={`text-sm font-bold ${chg >= 0 ? "text-up" : "text-down"}`}>
+                    {chg >= 0 ? "+" : ""}{npr(chg)} ({pct(chgPct)})
+                  </span>
+                </div>
+              )}
+
+              {/* 🤖 AI Agent — Best Analysis Summary */}
+              <div className="rounded-lg border border-primary/30 bg-primary/5 p-2.5">
+                <div className="mb-1.5 flex items-center gap-1.5">
+                  <span className="text-sm">🤖</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-primary">AI Agent — Best Analysis</span>
+                </div>
+                <ul className="space-y-1">
+                  {summaryLines.map((line, i) => (
+                    <li key={i} className="text-[11px] leading-tight text-foreground">{line}</li>
+                  ))}
+                </ul>
               </div>
 
-              {/* Signals row */}
-              <div className="flex gap-2">
-                {signalInfo && (
-                  <div className={`flex-1 rounded-lg border p-2 text-center ${signalInfo.overall === "BUY" ? "border-up-bg bg-up-bg" : signalInfo.overall === "SELL" ? "border-down-bg bg-down-bg" : "border-border bg-surface-2"}`}>
-                    <div className="text-[9px] font-semibold text-muted">AI Signal</div>
-                    <div className={`text-sm font-bold ${signalInfo.overall === "BUY" ? "text-up" : signalInfo.overall === "SELL" ? "text-down" : "text-foreground"}`}>{signalInfo.overall}</div>
-                    <div className="text-[9px] text-muted">{signalInfo.conf}% conf</div>
+              {/* ⚡ Breakout Signals */}
+              <div className="rounded-lg border border-border p-2.5">
+                <div className="mb-1.5 flex items-center gap-1.5">
+                  <span className="text-sm">⚡</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted">Breakout Signals</span>
+                </div>
+                {breakoutInfo ? (
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${breakoutInfo.signal === "BUY" ? "bg-up-bg text-up" : breakoutInfo.signal === "SELL" ? "bg-down-bg text-down" : "bg-surface-2 text-muted"}`}>
+                        {breakoutInfo.signal}
+                      </span>
+                      <span className="text-muted">{breakoutInfo.confidence}% confidence</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded bg-surface-2 p-1.5 text-center">
+                        <span className="text-[9px] text-muted">Entry / Resistance</span>
+                        <div className="font-bold tabular-nums">{npr(breakoutInfo.prevHigh)}</div>
+                      </div>
+                      <div className="rounded bg-surface-2 p-1.5 text-center">
+                        <span className="text-[9px] text-muted">Support / SL</span>
+                        <div className="font-bold tabular-nums">{npr(breakoutInfo.prevLow)}</div>
+                      </div>
+                    </div>
+                    {signalRow?.breakout?.tp1 && (
+                      <div className="rounded bg-surface-2 p-1.5 text-center text-xs">
+                        <span className="text-[9px] text-muted">🎯 Target 1</span>
+                        <div className="font-bold tabular-nums text-up">{npr(signalRow.breakout.tp1)}</div>
+                      </div>
+                    )}
                   </div>
+                ) : (
+                  <div className="py-2 text-center text-[10px] text-muted">Not enough price data</div>
                 )}
-                {breakoutInfo && (
-                  <div className={`flex-1 rounded-lg border p-2 text-center ${breakoutInfo.signal === "BUY" ? "border-up-bg bg-up-bg" : breakoutInfo.signal === "SELL" ? "border-down-bg bg-down-bg" : "border-border bg-surface-2"}`}>
-                    <div className="text-[9px] font-semibold text-muted">Breakout</div>
-                    <div className={`text-sm font-bold ${breakoutInfo.signal === "BUY" ? "text-up" : breakoutInfo.signal === "SELL" ? "text-down" : "text-foreground"}`}>{breakoutInfo.signal}</div>
-                    <div className="text-[9px] text-muted">{breakoutInfo.confidence}% conf</div>
+              </div>
+
+              {/* 🎯 Top AI Signals */}
+              <div className="rounded-lg border border-border p-2.5">
+                <div className="mb-1.5 flex items-center gap-1.5">
+                  <span className="text-sm">🎯</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted">Top AI Signals</span>
+                </div>
+                <div className="flex flex-wrap gap-2 text-xs">
+                  {(() => {
+                    const rec = signalRow?.recommendation ?? localSignal?.overall ?? "—";
+                    const conf = signalRow?.confidence ?? localSignal?.conf ?? 0;
+                    return (
+                      <>
+                        <div className={`flex-1 rounded-lg p-2 text-center ${rec === "BUY" || rec === "Strong Buy" ? "bg-up-bg" : rec === "SELL" || rec === "Strong Sell" ? "bg-down-bg" : "bg-surface-2"}`}>
+                          <div className="text-[9px] text-muted">Recommendation</div>
+                          <div className={`font-bold ${rec === "BUY" || rec === "Strong Buy" ? "text-up" : rec === "SELL" || rec === "Strong Sell" ? "text-down" : "text-foreground"}`}>{rec}</div>
+                          <div className="text-[9px] text-muted">{conf}% confidence</div>
+                        </div>
+                        {signalRow?.trend && (
+                          <div className="flex-1 rounded-lg bg-surface-2 p-2 text-center">
+                            <div className="text-[9px] text-muted">Trend</div>
+                            <div className="font-bold">{signalRow.trend}</div>
+                          </div>
+                        )}
+                        {(signalRow?.rsi ?? 0) > 0 && (
+                          <div className="flex-1 rounded-lg bg-surface-2 p-2 text-center">
+                            <div className="text-[9px] text-muted">RSI</div>
+                            <div className={`font-bold ${(signalRow?.rsi ?? 0) > 70 ? "text-down" : (signalRow?.rsi ?? 0) < 30 ? "text-up" : "text-foreground"}`}>{(signalRow?.rsi ?? 0).toFixed(1)}</div>
+                          </div>
+                        )}
+                        {signalRow?.tmaSignal && (
+                          <div className="flex-1 rounded-lg bg-surface-2 p-2 text-center">
+                            <div className="text-[9px] text-muted">TMA/DMA</div>
+                            <div className={`font-bold ${signalRow.tmaSignal === "bullish" ? "text-up" : signalRow.tmaSignal === "bearish" ? "text-down" : "text-foreground"}`}>{signalRow.tmaSignal}</div>
+                          </div>
+                        )}
+                        <div className="flex-1 rounded-lg bg-surface-2 p-2 text-center">
+                          <div className="text-[9px] text-muted">Bull vs Bear</div>
+                          <div className="flex items-center justify-center gap-1">
+                            <span className="text-xs font-bold text-up">▲{localSignal?.bull ?? 0}</span>
+                            <span className="text-[9px] text-muted">/</span>
+                            <span className="text-xs font-bold text-down">▼{localSignal?.bear ?? 0}</span>
+                          </div>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+                {signalRow?.buyZone && (
+                  <div className="mt-1.5 text-center text-[10px] font-semibold text-up">{signalRow.buyZone}</div>
+                )}
+              </div>
+
+              {/* 📊 Fundamental Analysis */}
+              {fund && (
+                <div className="rounded-lg border border-border p-2.5">
+                  <div className="mb-1.5 flex items-center gap-1.5">
+                    <span className="text-sm">📊</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted">Fundamental Analysis</span>
+                    {fund.name && <span className="truncate text-[9px] text-muted">{fund.name}</span>}
                   </div>
-                )}
-                {signalInfo && (
-                  <div className="flex-1 rounded-lg border border-border bg-surface-2 p-2 text-center">
-                    <div className="text-[9px] font-semibold text-muted">Mood</div>
-                    <div className="flex items-center justify-center gap-1 pt-0.5">
-                      <span className="text-xs font-bold text-up">▲{signalInfo.bull}</span>
-                      <span className="text-[9px] text-muted">vs</span>
-                      <span className="text-xs font-bold text-down">▼{signalInfo.bear}</span>
+                  <div className="grid grid-cols-4 gap-1.5 text-xs">
+                    <div className="rounded bg-surface-2 p-1.5 text-center">
+                      <span className="text-[9px] text-muted">EPS</span>
+                      <div className="font-bold">{fund.eps.toFixed(1)}</div>
+                    </div>
+                    <div className="rounded bg-surface-2 p-1.5 text-center">
+                      <span className="text-[9px] text-muted">PE</span>
+                      <div className="font-bold">{fund.pe.toFixed(1)}</div>
+                    </div>
+                    <div className="rounded bg-surface-2 p-1.5 text-center">
+                      <span className="text-[9px] text-muted">BV</span>
+                      <div className="font-bold">{fund.bookValue.toFixed(1)}</div>
+                    </div>
+                    <div className="rounded bg-surface-2 p-1.5 text-center">
+                      <span className="text-[9px] text-muted">PBV</span>
+                      <div className="font-bold">{fund.pbv.toFixed(2)}</div>
+                    </div>
+                    <div className="rounded bg-surface-2 p-1.5 text-center">
+                      <span className="text-[9px] text-muted">ROE</span>
+                      <div className="font-bold">{fund.roe.toFixed(1)}%</div>
+                    </div>
+                    <div className="rounded bg-surface-2 p-1.5 text-center">
+                      <span className="text-[9px] text-muted">D/E</span>
+                      <div className="font-bold">{fund.debtEquity.toFixed(2)}</div>
+                    </div>
+                    <div className="rounded bg-surface-2 p-1.5 text-center">
+                      <span className="text-[9px] text-muted">Open</span>
+                      <div className="font-bold tabular-nums">{open ? npr(open) : prevClose ? npr(prevClose) : "—"}</div>
+                    </div>
+                    <div className="rounded bg-surface-2 p-1.5 text-center">
+                      <span className="text-[9px] text-muted">Volume</span>
+                      <div className="font-bold tabular-nums">{vol ? num(vol) : "—"}</div>
                     </div>
                   </div>
+                  <div className="mt-1.5 grid grid-cols-3 gap-1.5 text-[10px]">
+                    {(from52 || to52) && (
+                      <div className="rounded bg-surface-2 p-1 text-center">
+                        <span className="text-muted">52W Range</span>
+                        <div className="font-bold tabular-nums">{from52 ? npr(from52) : "—"}–{to52 ? npr(to52) : "—"}</div>
+                      </div>
+                    )}
+                    {fund.marketCap && (
+                      <div className="rounded bg-surface-2 p-1 text-center">
+                        <span className="text-muted">Market Cap</span>
+                        <div className="font-bold truncate">{fund.marketCap}</div>
+                      </div>
+                    )}
+                    {fund.dividends.length > 0 && (
+                      <div className="rounded bg-surface-2 p-1 text-center">
+                        <span className="text-muted">Dividend</span>
+                        <div className="font-bold">{fund.dividends[0].value}% (FY {fund.dividends[0].fiscalYear})</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* 🏦 🤖 Broker Analysis */}
+              <div className="rounded-lg border border-border p-2.5">
+                <div className="mb-1.5 flex items-center gap-1.5">
+                  <span className="text-sm">🏦</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted">Broker Analysis</span>
+                  {broker && (
+                    <span className={`ml-auto rounded-full px-2 py-0.5 text-[8px] font-bold uppercase ${
+                      broker.bias === "accumulate" ? "bg-up-bg text-up" :
+                      broker.bias === "distribute" ? "bg-down-bg text-down" :
+                      "bg-surface-2 text-muted"
+                    }`}>
+                      {broker.bias}
+                    </span>
+                  )}
+                </div>
+                {broker ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="rounded bg-up-bg p-2">
+                      <div className="text-[9px] text-muted">Top Accumulator</div>
+                      <div className="font-bold text-xs">Broker {broker.buyerId}</div>
+                      <div className="text-[10px] text-up">Net Buy +{num(broker.buyerNet)}</div>
+                    </div>
+                    <div className="rounded bg-down-bg p-2">
+                      <div className="text-[9px] text-muted">Top Distributor</div>
+                      <div className="font-bold text-xs">Broker {broker.sellerId}</div>
+                      <div className="text-[10px] text-down">Net Sell {num(broker.sellerNet)}</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="py-3 text-center text-[10px] text-muted">No broker activity data available</div>
                 )}
               </div>
-
-              {/* Fundamental */}
-              {fund && (
-                <div className="grid grid-cols-4 gap-1.5 text-xs">
-                  <div className="rounded-lg bg-surface-2 p-1.5 text-center"><span className="text-[9px] text-muted">EPS</span><div className="font-bold">{fund.eps.toFixed(1)}</div></div>
-                  <div className="rounded-lg bg-surface-2 p-1.5 text-center"><span className="text-[9px] text-muted">PE</span><div className="font-bold">{fund.pe.toFixed(1)}</div></div>
-                  <div className="rounded-lg bg-surface-2 p-1.5 text-center"><span className="text-[9px] text-muted">BV</span><div className="font-bold">{fund.bookValue.toFixed(1)}</div></div>
-                  <div className="rounded-lg bg-surface-2 p-1.5 text-center"><span className="text-[9px] text-muted">PBV</span><div className="font-bold">{fund.pbv.toFixed(2)}</div></div>
-                  <div className="rounded-lg bg-surface-2 p-1.5 text-center"><span className="text-[9px] text-muted">ROE</span><div className="font-bold">{fund.roe.toFixed(1)}%</div></div>
-                  <div className="rounded-lg bg-surface-2 p-1.5 text-center"><span className="text-[9px] text-muted">D/E</span><div className="font-bold">{fund.debtEquity.toFixed(2)}</div></div>
-                  <div className="rounded-lg bg-surface-2 p-1.5 text-center"><span className="text-[9px] text-muted">Open</span><div className="font-bold tabular-nums">{npr(daily?.openPrice)}</div></div>
-                  <div className="rounded-lg bg-surface-2 p-1.5 text-center"><span className="text-[9px] text-muted">Vol</span><div className="font-bold tabular-nums">{num(daily?.totalTradeQuantity)}</div></div>
-                </div>
-              )}
-
-              {/* Breakout levels */}
-              {breakoutInfo && (
-                <div className="flex gap-2 text-xs">
-                  <div className="flex-1 rounded-lg bg-surface-2 p-2 text-center">
-                    <span className="text-[9px] text-muted">Resistance</span>
-                    <div className="font-bold text-down tabular-nums">{npr(breakoutInfo.prevHigh)}</div>
-                  </div>
-                  <div className="flex-1 rounded-lg bg-surface-2 p-2 text-center">
-                    <span className="text-[9px] text-muted">Support</span>
-                    <div className="font-bold text-up tabular-nums">{npr(breakoutInfo.prevLow)}</div>
-                  </div>
-                  <div className="flex-1 rounded-lg bg-surface-2 p-2 text-center">
-                    <span className="text-[9px] text-muted">52W H/L</span>
-                    <div className="font-bold tabular-nums text-[10px]">{npr(daily?.fiftyTwoWeekHigh)} / {npr(daily?.fiftyTwoWeekLow)}</div>
-                  </div>
-                </div>
-              )}
 
               {/* Full analysis link */}
               <Link href={`/stock/${encodeURIComponent(symbol)}`} onClick={onClose} className="block w-full rounded-lg bg-primary py-2 text-center text-xs font-semibold text-white hover:bg-primary-700">
