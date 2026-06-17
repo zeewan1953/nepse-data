@@ -301,8 +301,8 @@ function OverviewTab({ stock, external }: { stock: MergedStock; external: Extern
       </div>
 
       <div className="mb-3 grid grid-cols-2 gap-1.5 sm:grid-cols-4">
-        {external?.marketCap && <DeepItem label="Market Cap" value={external.marketCap} color="purple" />}
-        <DeepItem label="Shares" value={external?.sharesOutstanding || stock.current.shares} color="blue" />
+        {external?.marketCap && <DeepItem label="Market Cap" value={compact(parseFloat(external.marketCap.replace(/,/g, "")))} color="purple" />}
+        <DeepItem label="Shares" value={external?.sharesOutstanding ? compact(parseFloat(external.sharesOutstanding.replace(/,/g, ""))) : stock.current.shares} color="blue" />
         {external?.bookValue ? <DeepItem label="Book Value" value={external.bookValue.toFixed(2)} color="green" /> : null}
         {external?.pbv ? <DeepItem label="P/BV" value={external.pbv.toFixed(2)} color="blue" /> :
           <DeepItem label="P/B" value={stock.ratios.pb ? stock.ratios.pb.toFixed(1) : "-"} color="blue" />}
