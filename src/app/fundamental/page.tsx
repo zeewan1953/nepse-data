@@ -3,30 +3,110 @@ import { useState, useMemo } from "react";
 import Link from "next/link";
 import { STOCKS } from "@/lib/fundamentalData";
 import { enriched, stars, type EnrichedStock } from "@/lib/fundamentalCalc";
+import { usePoll } from "@/lib/useLive";
 import { npr, pct, changeClass } from "@/lib/format";
 
 const FILTERS = ["All", "BUY", "HOLD", "SELL"] as const;
-const SECTORS = ["All", "Banking", "Energy", "Finance", "Healthcare", "Oil & Gas"] as const;
+const SECTORS = ["All", "Banking", "Energy", "Finance", "Healthcare", "Oil & Gas", "Other"] as const;
+
+type LiveRow = {
+  symbol: string;
+  securityName: string;
+  lastTradedPrice: number;
+  percentageChange: number;
+  totalTradeQuantity: number;
+  lastUpdatedDateTime?: string;
+};
+
+type MergedStock = EnrichedStock & {
+  hasFundamental: boolean;
+  liveName: string;
+  liveVolume: number;
+};
+
+function useMergedStocks(): { stocks: MergedStock[]; loading: boolean; error: string | null } {
+  const hardcoded = useMemo(() => STOCKS.map(enriched), []);
+  const live = usePoll<{ data: LiveRow[]; count: number; source: string }>("/api/live", 5_000);
+
+  const stocks = useMemo<MergedStock[]>(() => {
+    const liveMap = new Map<string, LiveRow>();
+    (live.data?.data ?? []).forEach((row) => liveMap.set(row.symbol, row));
+
+    // Start with hardcoded stocks, overlay live prices
+    const merged: MergedStock[] = hardcoded.map((s) => {
+      const liveRow = liveMap.get(s.symbol);
+      return {
+        ...s,
+        hasFundamental: true,
+        price: liveRow?.lastTradedPrice ?? s.price,
+        change: liveRow?.percentageChange ?? s.change,
+        liveName: liveRow?.securityName ?? s.name,
+        liveVolume: liveRow?.totalTradeQuantity ?? 0,
+      };
+    });
+
+    // Add API-only stocks
+    (live.data?.data ?? []).forEach((row) => {
+      if (merged.some((s) => s.symbol === row.symbol)) return;
+      merged.push({
+        ...enriched({
+          id: `NEPSE-${row.symbol}`,
+          symbol: row.symbol,
+          name: row.securityName,
+          sector: "Other",
+          price: row.lastTradedPrice,
+          change: row.percentageChange,
+          volume: formatVolume(row.totalTradeQuantity),
+          current: { pe: 0, eps: 0, shares: "-", roe: 0, debt: "-", revenue: "-", profit: "-" },
+          fiveYear: { years: [], revenue: [], profit: [], eps: [], roe: [], debt: [], dividend: [] },
+          ratios: { pb: 0, debtEquity: 0, currentRatio: 0, beta: 0, peg: 0 },
+          holdings: { promoter: "-", fii: "-", dii: "-", public: "-", longTerm: "-" },
+          quarterly: { q1: 0, q1Change: 0, q2: 0, q2Change: 0, q3: 0, q3Change: 0, q4: 0, q4Change: 0 },
+          news: "-",
+        }),
+        hasFundamental: false,
+        liveName: row.securityName,
+        liveVolume: row.totalTradeQuantity,
+      });
+    });
+
+    return merged.sort((a, b) => b.growthScore - a.growthScore);
+  }, [hardcoded, live.data]);
+
+  return { stocks, loading: live.loading, error: live.error };
+}
+
+function formatVolume(n: number): string {
+  if (!n) return "-";
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(2)}K`;
+  return n.toString();
+}
 
 export default function FundamentalPage() {
-  const data = useMemo(() => STOCKS.map(enriched), []);
+  const { stocks: data, loading, error } = useMergedStocks();
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("All");
   const [sector, setSector] = useState<(typeof SECTORS)[number]>("All");
-  const [selected, setSelected] = useState<string>(data[0].symbol);
+  const [selected, setSelected] = useState<string>(data[0]?.symbol ?? "");
   const [tab, setTab] = useState<"overview" | "5year">("overview");
 
   const filtered = useMemo(() => {
     return data.filter((s) => {
-      const matchQ = !q || s.symbol.toLowerCase().includes(q.toLowerCase()) || s.name.toLowerCase().includes(q.toLowerCase()) || s.id.toLowerCase().includes(q.toLowerCase());
-      const matchFilter = filter === "All" || s.verdict.label === filter;
+      const query = q.toLowerCase();
+      const matchQ = !q || s.symbol.toLowerCase().includes(query) || s.name.toLowerCase().includes(query) || s.liveName.toLowerCase().includes(query) || s.id.toLowerCase().includes(query);
+      const matchFilter = filter === "All" || (s.hasFundamental && s.verdict.label === filter);
       const matchSector = sector === "All" || s.sector === sector;
       return matchQ && matchFilter && matchSector;
     });
   }, [data, q, filter, sector]);
 
-  const top10 = useMemo(() => [...data].sort((a, b) => b.growthScore - a.growthScore).slice(0, 10), [data]);
+  const top10 = useMemo(() => data.filter((s) => s.hasFundamental).sort((a, b) => b.growthScore - a.growthScore).slice(0, 10), [data]);
   const selectedStock = useMemo(() => data.find((s) => s.symbol === selected) ?? data[0], [data, selected]);
+
+  if (loading && !data.length) {
+    return <div className="p-8 text-center text-sm text-muted">Loading market data…</div>;
+  }
 
   return (
     <div className="mx-auto max-w-[540px] space-y-3">
@@ -36,10 +116,12 @@ export default function FundamentalPage() {
           <span className="text-primary">📊</span> NEPSE Deep Fundamental
         </h1>
         <div className="flex items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-muted">
-          <span className="h-2 w-2 rounded-full bg-up animate-pulse" />
-          Offline
+          <span className={`h-2 w-2 rounded-full animate-pulse ${error ? "bg-down" : "bg-up"}`} />
+          {error ? "API Error" : loading ? "Loading…" : "Live"}
         </div>
       </div>
+
+      {error && <div className="rounded-2xl border border-down bg-down/10 px-4 py-2 text-xs text-down">{error} — showing cached/hardcoded data.</div>}
 
       {/* Search */}
       <div className="flex items-center gap-2 rounded-full border border-border bg-surface px-4 py-2 shadow-sm">
@@ -47,7 +129,7 @@ export default function FundamentalPage() {
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search symbol, name, or ID…"
+          placeholder="Search symbol or company name…"
           className="flex-1 bg-transparent text-sm font-medium text-foreground outline-none"
         />
         {q && <button onClick={() => setQ("")} className="text-xs text-muted hover:text-foreground">✕</button>}
@@ -59,9 +141,7 @@ export default function FundamentalPage() {
           <button
             key={f}
             onClick={() => setFilter(f)}
-            className={`whitespace-nowrap rounded-full px-4 py-1.5 text-xs font-semibold transition ${
-              filter === f ? "bg-primary text-white" : "text-muted hover:bg-surface-2"
-            }`}
+            className={`whitespace-nowrap rounded-full px-4 py-1.5 text-xs font-semibold transition ${filter === f ? "bg-primary text-white" : "text-muted hover:bg-surface-2"}`}
           >
             {f}
           </button>
@@ -74,9 +154,7 @@ export default function FundamentalPage() {
           <button
             key={s}
             onClick={() => setSector(s)}
-            className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-              sector === s ? "bg-primary text-white" : "text-muted hover:bg-surface-2"
-            }`}
+            className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition ${sector === s ? "bg-primary text-white" : "text-muted hover:bg-surface-2"}`}
           >
             {s}
           </button>
@@ -94,14 +172,12 @@ export default function FundamentalPage() {
         <div className="grid grid-cols-2 gap-2">
           {top10.map((s, idx) => {
             const rankClass = idx === 0 ? "bg-amber-500" : idx === 1 ? "bg-slate-400" : idx === 2 ? "bg-amber-600" : "bg-primary";
-            const isSelected = selectedStock.symbol === s.symbol;
+            const isSelected = selectedStock?.symbol === s.symbol;
             return (
               <button
                 key={s.symbol}
                 onClick={() => { setSelected(s.symbol); setTab("overview"); }}
-                className={`flex items-center gap-2.5 rounded-2xl border p-2.5 text-left transition ${
-                  isSelected ? "border-primary bg-surface-2" : "border-border bg-surface-2 hover:bg-surface-2/80"
-                }`}
+                className={`flex items-center gap-2.5 rounded-2xl border p-2.5 text-left transition ${isSelected ? "border-primary bg-surface-2" : "border-border bg-surface-2 hover:bg-surface-2/80"}`}
               >
                 <span className={`grid h-5.5 w-5.5 place-items-center rounded-full text-[10px] font-bold text-white ${rankClass}`}>{idx + 1}</span>
                 <div className="min-w-0 flex-1">
@@ -118,6 +194,32 @@ export default function FundamentalPage() {
         </div>
       </div>
 
+      {/* Search results */}
+      {q && (
+        <div className="rounded-3xl border border-border bg-surface p-4 shadow-sm">
+          <h3 className="mb-2 text-sm font-bold text-foreground">Search Results</h3>
+          <div className="space-y-1.5 max-h-64 overflow-y-auto">
+            {filtered.slice(0, 20).map((s) => (
+              <button
+                key={s.symbol}
+                onClick={() => { setSelected(s.symbol); setQ(""); setTab("overview"); }}
+                className="flex w-full items-center justify-between rounded-2xl border border-border bg-surface-2 px-3 py-2 text-left hover:bg-surface-2/80"
+              >
+                <div>
+                  <div className="text-sm font-bold text-foreground">{s.symbol}</div>
+                  <div className="text-[10px] text-muted">{s.hasFundamental ? s.name : s.liveName}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-sm font-bold text-foreground">{npr(s.price)}</div>
+                  <div className={`text-[11px] font-semibold ${changeClass(s.change)}`}>{s.change > 0 ? "+" : ""}{pct(s.change)}</div>
+                </div>
+              </button>
+            ))}
+            {!filtered.length && <div className="py-4 text-center text-xs text-muted">No stocks found.</div>}
+          </div>
+        </div>
+      )}
+
       {/* Detail Card */}
       {selectedStock && (
         <div className="rounded-3xl border border-border bg-surface p-4 shadow-sm">
@@ -127,7 +229,7 @@ export default function FundamentalPage() {
                 <Link href={`/stock/${selectedStock.symbol}`} className="hover:underline">{selectedStock.symbol}</Link>
                 <span className="text-xs font-normal text-muted">{selectedStock.id}</span>
               </h3>
-              <p className="text-xs text-muted">{selectedStock.name}</p>
+              <p className="text-xs text-muted">{selectedStock.hasFundamental ? selectedStock.name : selectedStock.liveName}</p>
             </div>
             <span className="rounded-full border border-border bg-surface-2 px-3 py-1 text-xs font-semibold text-muted">{selectedStock.sector}</span>
           </div>
@@ -138,16 +240,20 @@ export default function FundamentalPage() {
               <button
                 key={t}
                 onClick={() => setTab(t)}
-                className={`flex-1 rounded-full py-1.5 text-xs font-semibold transition ${
-                  tab === t ? "bg-primary text-white" : "text-muted hover:text-foreground"
-                }`}
+                className={`flex-1 rounded-full py-1.5 text-xs font-semibold transition ${tab === t ? "bg-primary text-white" : "text-muted hover:text-foreground"}`}
               >
                 {t === "overview" ? "Overview" : "5-Year"}
               </button>
             ))}
           </div>
 
-          {tab === "overview" ? (
+          {!selectedStock.hasFundamental ? (
+            <div className="rounded-2xl border border-border bg-surface-2 p-6 text-center">
+              <div className="mb-2 text-2xl">📡</div>
+              <div className="text-sm font-bold text-foreground">Live data only</div>
+              <div className="text-xs text-muted">5-year fundamental analysis is not available for {selectedStock.symbol} yet.</div>
+            </div>
+          ) : tab === "overview" ? (
             <OverviewTab stock={selectedStock} />
           ) : (
             <FiveYearTab stock={selectedStock} />
@@ -158,7 +264,7 @@ export default function FundamentalPage() {
   );
 }
 
-function OverviewTab({ stock }: { stock: EnrichedStock }) {
+function OverviewTab({ stock }: { stock: MergedStock }) {
   const vColor = stock.verdict.label === "BUY" ? "bg-up text-white" : stock.verdict.label === "HOLD" ? "bg-amber-500 text-white" : "bg-down text-white";
   return (
     <>
@@ -170,21 +276,21 @@ function OverviewTab({ stock }: { stock: EnrichedStock }) {
       </div>
 
       <div className="mb-3 grid grid-cols-4 gap-1.5">
-        <QuickStat label="P/E" value={stock.current.pe.toFixed(1)} />
-        <QuickStat label="EPS" value={stock.current.eps.toFixed(1)} />
-        <QuickStat label="ROE" value={`${stock.current.roe}%`} />
-        <QuickStat label="Volume" value={stock.volume} />
+        <QuickStat label="P/E" value={stock.current.pe ? stock.current.pe.toFixed(1) : "-"} />
+        <QuickStat label="EPS" value={stock.current.eps ? stock.current.eps.toFixed(1) : "-"} />
+        <QuickStat label="ROE" value={stock.current.roe ? `${stock.current.roe}%` : "-"} />
+        <QuickStat label="Volume" value={stock.liveVolume ? formatVolume(stock.liveVolume) : stock.volume} />
       </div>
 
       <div className="mb-3 grid grid-cols-2 gap-2">
         <DeepItem label="Revenue" value={stock.current.revenue} color="blue" />
         <DeepItem label="Net Profit" value={stock.current.profit} color="green" />
         <DeepItem label="Total Debt" value={stock.current.debt} color="red" />
-        <DeepItem label="P/B" value={stock.ratios.pb.toFixed(1)} color="blue" />
-        <DeepItem label="Debt/Eq" value={stock.ratios.debtEquity.toFixed(2)} color="orange" />
-        <DeepItem label="Current Ratio" value={stock.ratios.currentRatio.toFixed(2)} color="blue" />
-        <DeepItem label="Beta" value={stock.ratios.beta.toFixed(1)} color="purple" />
-        <DeepItem label="PEG" value={stock.ratios.peg.toFixed(1)} color="purple" />
+        <DeepItem label="P/B" value={stock.ratios.pb ? stock.ratios.pb.toFixed(1) : "-"} color="blue" />
+        <DeepItem label="Debt/Eq" value={stock.ratios.debtEquity ? stock.ratios.debtEquity.toFixed(2) : "-"} color="orange" />
+        <DeepItem label="Current Ratio" value={stock.ratios.currentRatio ? stock.ratios.currentRatio.toFixed(2) : "-"} color="blue" />
+        <DeepItem label="Beta" value={stock.ratios.beta ? stock.ratios.beta.toFixed(1) : "-"} color="purple" />
+        <DeepItem label="PEG" value={stock.ratios.peg ? stock.ratios.peg.toFixed(1) : "-"} color="purple" />
       </div>
 
       <div className="mb-3">
@@ -216,8 +322,11 @@ function OverviewTab({ stock }: { stock: EnrichedStock }) {
   );
 }
 
-function FiveYearTab({ stock }: { stock: EnrichedStock }) {
+function FiveYearTab({ stock }: { stock: MergedStock }) {
   const fy = stock.fiveYear;
+  if (!fy.years.length) {
+    return <div className="py-6 text-center text-xs text-muted">No 5-year data available.</div>;
+  }
   return (
     <>
       <div className="mb-3 grid grid-cols-2 gap-2">
@@ -279,8 +388,8 @@ function QuarterItem({ label, value, change }: { label: string; value: number; c
   return (
     <div className="rounded-xl border border-border bg-surface-2 py-2 text-center">
       <div className="text-[9px] font-semibold text-muted">{label}</div>
-      <div className="text-[13px] font-bold text-foreground">{value.toFixed(1)}</div>
-      <div className={`text-[9px] font-semibold ${change >= 0 ? "text-up" : "text-down"}`}>{change > 0 ? "+" : ""}{change}%</div>
+      <div className="text-[13px] font-bold text-foreground">{value ? value.toFixed(1) : "-"}</div>
+      {value !== 0 && <div className={`text-[9px] font-semibold ${change >= 0 ? "text-up" : "text-down"}`}>{change > 0 ? "+" : ""}{change}%</div>}
     </div>
   );
 }
