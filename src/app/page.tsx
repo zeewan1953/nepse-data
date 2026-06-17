@@ -542,14 +542,10 @@ function StockPopup({ symbol, onClose }: { symbol: string; onClose: () => void }
     });
   }, [symbol]);
 
-  // Compute AI signal from history (local)
+  // Compute AI signal from history (local) - works even when market is closed
   const localSignal = useMemo(() => {
-    if (!sec?.history?.content?.length && !signalRow) {
-      // Use historical data or signal row
-      if (!sec?.history?.content?.length) return null;
-    }
     const candles = [...(sec?.history?.content ?? [])].sort((a, b) => a.businessDate.localeCompare(b.businessDate));
-    if (candles.length < 5) return null;
+    if (candles.length < 3) return null;
     const ltp = fund?.marketPrice ?? sec?.details?.securityDailyTradeDto?.lastTradedPrice ?? candles.at(-1)?.closePrice ?? 0;
     const prev = sec?.details?.securityDailyTradeDto?.previousClose ?? candles.at(-2)?.closePrice ?? ltp;
     const change = ltp - prev;
@@ -566,7 +562,7 @@ function StockPopup({ symbol, onClose }: { symbol: string; onClose: () => void }
 
   const breakoutInfo = useMemo(() => {
     const candles = [...(sec?.history?.content ?? [])].sort((a, b) => a.businessDate.localeCompare(b.businessDate)).slice(-60);
-    if (candles.length < 10) {
+    if (candles.length < 5) {
       // Fallback to signal row
       if (signalRow?.breakout) {
         return { signal: signalRow.breakout.signal, prevHigh: signalRow.breakout.entry, prevLow: signalRow.breakout.sl ?? 0, confidence: signalRow.breakout.confidence };
@@ -584,13 +580,14 @@ function StockPopup({ symbol, onClose }: { symbol: string; onClose: () => void }
   }, [sec, fund, signalRow]);
 
   const daily = sec?.details?.securityDailyTradeDto;
+  const lastCandle = sec?.history?.content?.length ? [...sec.history.content].sort((a,b) => a.businessDate.localeCompare(b.businessDate)).at(-1) : null;
 
   // Best price: MeroLagani fund > NEPSE daily > signal row > history
-  const ltp = fund?.marketPrice ?? signalRow?.ltp ?? daily?.lastTradedPrice ?? (sec?.history?.content?.length ? [...sec.history.content].sort((a,b) => a.businessDate.localeCompare(b.businessDate)).at(-1)?.closePrice ?? 0 : 0);
+  const ltp = fund?.marketPrice ?? signalRow?.ltp ?? daily?.lastTradedPrice ?? lastCandle?.closePrice ?? 0;
   const chg = fund?.change ?? signalRow?.change ?? localSignal?.change ?? 0;
   const chgPct = localSignal?.changePct ?? (ltp && chg ? (chg / ltp) * 100 : 0);
-  const open = daily?.openPrice;
-  const vol = daily?.totalTradeQuantity;
+  const open = daily?.openPrice ?? lastCandle?.closePrice; // Use last close as proxy for open
+  const vol = daily?.totalTradeQuantity ?? lastCandle?.totalTradedQuantity;
   const prevClose = daily?.previousClose;
   const high52 = daily?.fiftyTwoWeekHigh;
   const low52 = daily?.fiftyTwoWeekLow;
@@ -717,7 +714,7 @@ function StockPopup({ symbol, onClose }: { symbol: string; onClose: () => void }
                     )}
                   </div>
                 ) : (
-                  <div className="py-2 text-center text-[10px] text-muted">⏳ Available during market hours</div>
+                  <div className="py-2 text-center text-[10px] text-muted">⏳ Insufficient historical data for breakout analysis</div>
                 )}
               </div>
 
@@ -767,7 +764,7 @@ function StockPopup({ symbol, onClose }: { symbol: string; onClose: () => void }
                       </>
                     );
                   })() : (
-                    <div className="w-full py-2 text-center text-[10px] text-muted">⏳ AI signals available during market hours</div>
+                    <div className="w-full py-2 text-center text-[10px] text-muted">⏳ Computing signals from historical data...</div>
                   )}
                 </div>
                 {signalRow?.buyZone && (
