@@ -167,6 +167,29 @@ export default function FundamentalPage() {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
         {/* Left column: Top 10 + search results */}
         <div className="min-w-0 flex-1 space-y-4">
+          {/* Search results — shown first when typing */}
+          {q && (
+            <div className="rounded-2xl border border-border bg-surface p-4 shadow-sm">
+              <h3 className="mb-2 text-sm font-bold text-foreground">Search Results — <span className="text-muted font-normal">{filtered.length} found</span></h3>
+              <div className="grid gap-2 xs:grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-2 xl:grid-cols-3">
+                {filtered.slice(0, 30).map((s) => (
+                  <button key={s.symbol} onClick={() => { setSelected(s.symbol); setQ(""); setTab("overview"); }}
+                    className="flex items-center justify-between rounded-xl border border-border bg-surface-2 px-3 py-2 text-left hover:bg-surface-2/80">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-bold text-foreground">{s.symbol}</div>
+                      <div className="truncate text-[10px] text-muted">{s.hasFundamental ? s.name : s.liveName}</div>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <div className="text-sm font-bold text-foreground">{npr(s.price)}</div>
+                      <div className={`text-[11px] font-semibold ${changeClass(s.change)}`}>{s.change > 0 ? "+" : ""}{pct(s.change)}</div>
+                    </div>
+                  </button>
+                ))}
+                {!filtered.length && <div className="col-span-full py-8 text-center text-xs text-muted">No stocks found.</div>}
+              </div>
+            </div>
+          )}
+
           {/* Top 10 */}
           <div className="rounded-2xl border border-border bg-surface p-4 shadow-sm">
             <div className="mb-3 flex items-center justify-between">
@@ -196,29 +219,6 @@ export default function FundamentalPage() {
               })}
             </div>
           </div>
-
-          {/* Search results */}
-          {q && (
-            <div className="rounded-2xl border border-border bg-surface p-4 shadow-sm">
-              <h3 className="mb-2 text-sm font-bold text-foreground">Search Results — <span className="text-muted font-normal">{filtered.length} found</span></h3>
-              <div className="grid gap-2 xs:grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-2 xl:grid-cols-3">
-                {filtered.slice(0, 30).map((s) => (
-                  <button key={s.symbol} onClick={() => { setSelected(s.symbol); setQ(""); setTab("overview"); }}
-                    className="flex items-center justify-between rounded-xl border border-border bg-surface-2 px-3 py-2 text-left hover:bg-surface-2/80">
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-bold text-foreground">{s.symbol}</div>
-                      <div className="truncate text-[10px] text-muted">{s.hasFundamental ? s.name : s.liveName}</div>
-                    </div>
-                    <div className="shrink-0 text-right">
-                      <div className="text-sm font-bold text-foreground">{npr(s.price)}</div>
-                      <div className={`text-[11px] font-semibold ${changeClass(s.change)}`}>{s.change > 0 ? "+" : ""}{pct(s.change)}</div>
-                    </div>
-                  </button>
-                ))}
-                {!filtered.length && <div className="col-span-full py-8 text-center text-xs text-muted">No stocks found.</div>}
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Right column: Detail Card */}
