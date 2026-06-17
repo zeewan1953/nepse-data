@@ -8,6 +8,7 @@ import type { MarketStatus } from "@/lib/types";
 const links = [
   { href: "/", label: "Dashboard" },
   { href: "/market", label: "Market" },
+  { href: "/fundamental", label: "Fundamental" },
   { href: "/floorsheet", label: "Floorsheet" },
   { href: "/broker", label: "Broker" },
   { href: "/portfolio", label: "Portfolio" },
