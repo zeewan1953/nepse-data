@@ -162,7 +162,7 @@ export default function StockPage({
       {signal && (
         <section className="rounded-xl border border-border bg-surface shadow-sm">
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
-            <h2 className="font-bold">🎯 AI Signals — {sym}</h2>
+            <h2 className="font-bold">🎯 Signals — {sym}</h2>
             <RecoBadge reco={signal.recommendation} />
           </div>
 
