@@ -62,26 +62,61 @@ function formatVolume(n: number): string {
 
 function useMergedStocks(): { stocks: MergedStock[]; loading: boolean; error: string | null } {
   const hardcoded = useMemo(() => STOCKS.map(enriched), []);
-  // Use /api/live (MeroLagani) as primary source - more reliable than NEPSE API
+  // Use /api/stocks for FULL stock list (all 300+ listed companies)
+  const allStocks = usePoll<{ data: LiveRow[]; count: number; source: string }>("/api/stocks", 5_000);
+  // Use /api/live for live price overlay (actively traded stocks)
   const live = usePoll<{ data: LiveRow[]; count: number; source: string }>("/api/live", 2_000);
 
   const stocks = useMemo<MergedStock[]>(() => {
+    // Build live price map from /api/live (MeroLagani - real-time prices)
     const liveMap = new Map<string, LiveRow>();
     (live.data?.data ?? []).forEach((row) => liveMap.set(row.symbol, row));
 
+    // Build full stock list from /api/stocks (NEPSE security list - all companies)
+    const allStocksMap = new Map<string, LiveRow>();
+    (allStocks.data?.data ?? []).forEach((row) => allStocksMap.set(row.symbol, row));
+
+    // Start with hardcoded fundamental data
     const merged: MergedStock[] = hardcoded.map((s) => {
+      // Prefer live price, fallback to allStocks price, then hardcoded
       const liveRow = liveMap.get(s.symbol);
+      const allRow = allStocksMap.get(s.symbol);
       return {
         ...s, hasFundamental: true,
-        price: liveRow?.lastTradedPrice ?? s.price,
-        change: liveRow?.percentageChange ?? s.change,
-        liveName: liveRow?.name || liveRow?.securityName || s.name,
-        liveVolume: liveRow?.totalTradeQuantity ?? 0,
+        price: liveRow?.lastTradedPrice ?? allRow?.lastTradedPrice ?? s.price,
+        change: liveRow?.percentageChange ?? allRow?.percentageChange ?? s.change,
+        liveName: liveRow?.name || allRow?.name || liveRow?.securityName || allRow?.securityName || s.name,
+        liveVolume: liveRow?.totalTradeQuantity ?? allRow?.totalTradeQuantity ?? 0,
       };
     });
 
+    // Add stocks from /api/stocks (full security list) that aren't in hardcoded
+    const existingSymbols = new Set(merged.map(s => s.symbol));
+    (allStocks.data?.data ?? []).forEach((row) => {
+      if (existingSymbols.has(row.symbol)) return;
+      existingSymbols.add(row.symbol);
+      // Check if we have live price for this stock
+      const liveRow = liveMap.get(row.symbol);
+      merged.push({
+        ...enriched({
+          id: `NEPSE-${row.symbol}`, symbol: row.symbol, name: row.name || row.securityName || row.symbol,
+          sector: "Other", price: liveRow?.lastTradedPrice ?? row.lastTradedPrice, change: liveRow?.percentageChange ?? row.percentageChange,
+          volume: formatVolume(liveRow?.totalTradeQuantity ?? row.totalTradeQuantity),
+          current: { pe: 0, eps: 0, shares: "-", roe: 0, debt: "-", revenue: "-", profit: "-" },
+          threeYear: { years: [], revenue: [], profit: [], eps: [], roe: [], debt: [], dividend: [] },
+          ratios: { pb: 0, debtEquity: 0, currentRatio: 0, beta: 0, peg: 0 },
+          holdings: { promoter: "-", fii: "-", dii: "-", public: "-", longTerm: "-" },
+          quarterly: { q1: 0, q1Change: 0, q2: 0, q2Change: 0, q3: 0, q3Change: 0, q4: 0, q4Change: 0 },
+          news: "-",
+        }),
+        hasFundamental: false, liveName: liveRow?.name || row.name || row.securityName || row.symbol, liveVolume: liveRow?.totalTradeQuantity ?? row.totalTradeQuantity,
+      });
+    });
+
+    // Also add any live stocks not in allStocks (shouldn't happen but just in case)
     (live.data?.data ?? []).forEach((row) => {
-      if (merged.some((s) => s.symbol === row.symbol)) return;
+      if (existingSymbols.has(row.symbol)) return;
+      existingSymbols.add(row.symbol);
       merged.push({
         ...enriched({
           id: `NEPSE-${row.symbol}`, symbol: row.symbol, name: row.name || row.securityName || row.symbol,
@@ -99,9 +134,9 @@ function useMergedStocks(): { stocks: MergedStock[]; loading: boolean; error: st
     });
 
     return merged.sort((a, b) => b.growthScore - a.growthScore);
-  }, [hardcoded, live.data]);
+  }, [hardcoded, allStocks.data, live.data]);
 
-  return { stocks, loading: live.loading, error: live.error };
+  return { stocks, loading: allStocks.loading && live.loading, error: allStocks.error || live.error };
 }
 
 export default function FundamentalPage() {
