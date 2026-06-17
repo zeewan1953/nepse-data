@@ -266,7 +266,7 @@ export default function FundamentalPage() {
               ) : tab === "overview" ? (
                 <OverviewTab stock={selectedStock} external={external} />
               ) : (
-                <ThreeYearTab stock={selectedStock} />
+                <ThreeYearTab stock={selectedStock} external={external} />
               )}
             </div>
           </div>
@@ -350,38 +350,148 @@ function OverviewTab({ stock, external }: { stock: MergedStock; external: Extern
   );
 }
 
-function ThreeYearTab({ stock }: { stock: MergedStock }) {
+function ThreeYearTab({ stock, external }: { stock: MergedStock; external: ExternalFundamental | null }) {
   const fy = stock.threeYear;
-  if (!fy.years.length) return <div className="py-6 text-center text-xs text-muted">No 3-year data available.</div>;
+  const hasReal = external && (external.revenue > 0 || external.netProfit > 0 || external.eps > 0);
+  
+  if (!fy.years.length && !hasReal) return <div className="py-6 text-center text-xs text-muted">No financial data available.</div>;
+  
+  // Use real MeroLagani data for the latest year if available
+  const latestRevenue = hasReal ? external.revenue : (fy.revenue[fy.revenue.length - 1] || 0);
+  const latestProfit = hasReal ? external.netProfit : (fy.profit[fy.profit.length - 1] || 0);
+  const latestEps = hasReal ? external.eps : (fy.eps[fy.eps.length - 1] || 0);
+  const latestRoe = hasReal ? external.roe : (fy.roe[fy.roe.length - 1] || 0);
+  const latestDebt = hasReal ? external.totalDebt : (fy.debt[fy.debt.length - 1] || 0);
+  const latestNetWorth = hasReal ? external.netWorth : 0;
+  const latestDebtEquity = hasReal ? external.debtEquity : 0;
+  const latestDividend = external?.dividends?.[0]?.value || (fy.dividend[fy.dividend.length - 1] || 0);
+  
   return (
     <>
+      {/* Data Source Badge */}
+      <div className="mb-3 flex items-center gap-2">
+        <span className={`rounded-full px-3 py-1 text-[10px] font-semibold ${hasReal ? "bg-up-bg text-up" : "bg-surface-2 text-muted"}`}>
+          {hasReal ? "✅ Audited Data via MeroLagani" : "📊 Sample Data"}
+        </span>
+        {external?.sector && <span className="rounded-full bg-primary-bg px-3 py-1 text-[10px] font-semibold text-primary">{external.sector}</span>}
+      </div>
+
       <div className="mb-3 grid grid-cols-2 gap-2">
         <ScoreCard label="Health Score" score={stock.healthScore} />
         <ScoreCard label="Growth Score" score={stock.growthScore} />
       </div>
-      <div className="mb-3 space-y-2">
-        <ProgressBar label="Revenue CAGR" value={stock.revenueCAGR} />
-        <ProgressBar label="Profit CAGR" value={stock.profitCAGR} />
-        <ProgressBar label="EPS CAGR" value={stock.epsCAGR} />
-        <ProgressBar label="Avg ROE" value={stock.avgROE} />
-        <ProgressBar label="Debt Change" value={stock.debtChange} negativeIsGood />
-        <ProgressBar label="Dividend Growth" value={stock.dividendGrowth} />
-      </div>
-      <div className="overflow-x-auto rounded-2xl border border-border">
+      
+      {/* Real Audited Financial Metrics */}
+      <div className="mb-3 overflow-x-auto rounded-2xl border border-border">
         <table className="w-full text-xs">
           <thead className="bg-surface-2 text-muted">
-            <tr><th className="px-2 py-2 text-left">Year</th>{fy.years.map((y) => <th key={y} className="px-2 py-2 text-right">{y}</th>)}</tr>
+            <tr>
+              <th className="px-3 py-2 text-left font-semibold">Metric</th>
+              <th className="px-3 py-2 text-right font-semibold">Value</th>
+              {hasReal && <th className="px-3 py-2 text-right font-semibold">Source</th>}
+            </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            <YearRow label="Revenue (Cr)" values={fy.revenue} />
-            <YearRow label="Profit (Cr)" values={fy.profit} />
-            <YearRow label="EPS" values={fy.eps} />
-            <YearRow label="ROE (%)" values={fy.roe} suffix="%" />
-            <YearRow label="Debt (Cr)" values={fy.debt} />
-            <YearRow label="Dividend" values={fy.dividend} />
+            <tr className="hover:bg-surface-2">
+              <td className="px-3 py-2 font-medium">Revenue</td>
+              <td className="px-3 py-2 text-right font-bold text-foreground">{latestRevenue > 0 ? `Rs. ${npr(latestRevenue)}` : "-"}</td>
+              {hasReal && <td className="px-3 py-2 text-right text-[10px] text-muted">Audited</td>}
+            </tr>
+            <tr className="hover:bg-surface-2">
+              <td className="px-3 py-2 font-medium">Net Profit</td>
+              <td className="px-3 py-2 text-right font-bold text-up">{latestProfit > 0 ? `Rs. ${npr(latestProfit)}` : "-"}</td>
+              {hasReal && <td className="px-3 py-2 text-right text-[10px] text-muted">Audited</td>}
+            </tr>
+            <tr className="hover:bg-surface-2">
+              <td className="px-3 py-2 font-medium">EPS</td>
+              <td className="px-3 py-2 text-right font-bold text-foreground">{latestEps > 0 ? `Rs. ${latestEps.toFixed(2)}` : "-"}</td>
+              {hasReal && <td className="px-3 py-2 text-right text-[10px] text-muted">Audited</td>}
+            </tr>
+            <tr className="hover:bg-surface-2">
+              <td className="px-3 py-2 font-medium">ROE (%)</td>
+              <td className="px-3 py-2 text-right font-bold text-foreground">{latestRoe > 0 ? `${latestRoe.toFixed(1)}%` : "-"}</td>
+              {hasReal && <td className="px-3 py-2 text-right text-[10px] text-muted">Audited</td>}
+            </tr>
+            <tr className="hover:bg-surface-2">
+              <td className="px-3 py-2 font-medium">Net Worth</td>
+              <td className="px-3 py-2 text-right font-bold text-primary">{latestNetWorth > 0 ? `Rs. ${npr(latestNetWorth)}` : "-"}</td>
+              {hasReal && <td className="px-3 py-2 text-right text-[10px] text-muted">Audited</td>}
+            </tr>
+            <tr className="hover:bg-surface-2">
+              <td className="px-3 py-2 font-medium">Total Debt</td>
+              <td className="px-3 py-2 text-right font-bold text-down">{latestDebt > 0 ? `Rs. ${npr(latestDebt)}` : "-"}</td>
+              {hasReal && <td className="px-3 py-2 text-right text-[10px] text-muted">Audited</td>}
+            </tr>
+            <tr className="hover:bg-surface-2">
+              <td className="px-3 py-2 font-medium">D/E Ratio</td>
+              <td className="px-3 py-2 text-right font-bold text-foreground">{latestDebtEquity > 0 ? latestDebtEquity.toFixed(2) : "-"}</td>
+              {hasReal && <td className="px-3 py-2 text-right text-[10px] text-muted">Calculated</td>}
+            </tr>
+            <tr className="hover:bg-surface-2">
+              <td className="px-3 py-2 font-medium">Dividend</td>
+              <td className="px-3 py-2 text-right font-bold text-foreground">{latestDividend > 0 ? `${latestDividend}%` : "-"}</td>
+              {hasReal && <td className="px-3 py-2 text-right text-[10px] text-muted">Audited</td>}
+            </tr>
+            <tr className="hover:bg-surface-2">
+              <td className="px-3 py-2 font-medium">P/E Ratio</td>
+              <td className="px-3 py-2 text-right font-bold text-foreground">{external?.pe ? external.pe.toFixed(2) : "-"}</td>
+              {hasReal && <td className="px-3 py-2 text-right text-[10px] text-muted">Audited</td>}
+            </tr>
+            <tr className="hover:bg-surface-2">
+              <td className="px-3 py-2 font-medium">Book Value</td>
+              <td className="px-3 py-2 text-right font-bold text-foreground">{external?.bookValue ? `Rs. ${external.bookValue.toFixed(2)}` : "-"}</td>
+              {hasReal && <td className="px-3 py-2 text-right text-[10px] text-muted">Audited</td>}
+            </tr>
           </tbody>
         </table>
       </div>
+
+      {/* CAGR Progress Bars - only show if we have sample data */}
+      {fy.years.length > 0 && (
+        <div className="mb-3 space-y-2">
+          <div className="mb-1 text-[10px] font-semibold text-muted">Growth Metrics {hasReal ? "(Current Year)" : "(Sample Data)"}</div>
+          <ProgressBar label="Revenue CAGR" value={stock.revenueCAGR} />
+          <ProgressBar label="Profit CAGR" value={stock.profitCAGR} />
+          <ProgressBar label="EPS CAGR" value={stock.epsCAGR} />
+          <ProgressBar label="Avg ROE" value={stock.avgROE} />
+          <ProgressBar label="Debt Change" value={stock.debtChange} negativeIsGood />
+          <ProgressBar label="Dividend Growth" value={stock.dividendGrowth} />
+        </div>
+      )}
+
+      {/* Historical Table from Sample Data */}
+      {fy.years.length > 0 && !hasReal && (
+        <div className="overflow-x-auto rounded-2xl border border-border">
+          <div className="mb-1 px-2 pt-2 text-[10px] font-semibold text-muted">Sample 3-Year Data (Real data loading from MeroLagani...)</div>
+          <table className="w-full text-xs">
+            <thead className="bg-surface-2 text-muted">
+              <tr><th className="px-2 py-2 text-left">Year</th>{fy.years.map((y) => <th key={y} className="px-2 py-2 text-right">{y}</th>)}</tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              <YearRow label="Revenue (Cr)" values={fy.revenue} />
+              <YearRow label="Profit (Cr)" values={fy.profit} />
+              <YearRow label="EPS" values={fy.eps} />
+              <YearRow label="ROE (%)" values={fy.roe} suffix="%" />
+              <YearRow label="Debt (Cr)" values={fy.debt} />
+              <YearRow label="Dividend" values={fy.dividend} />
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Dividend History from MeroLagani */}
+      {external && external.dividends.length > 0 && (
+        <div className="mt-3">
+          <div className="mb-2 text-xs font-semibold text-muted">📅 Dividend History (Audited via MeroLagani)</div>
+          <div className="flex flex-wrap gap-1.5">
+            {external.dividends.map((d) => (
+              <span key={d.fiscalYear} className="rounded-full border border-border bg-surface-2 px-2.5 py-1 text-[10px] font-medium text-foreground">
+                FY {d.fiscalYear}: {d.value}%
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
     </>
   );
 }
