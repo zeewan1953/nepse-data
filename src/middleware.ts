@@ -12,6 +12,7 @@ const PUBLIC_ROUTES = [
 const PUBLIC_API_PREFIXES = [
   "/api/auth/",
   "/api/news",
+  "/api/fundamental-external/",
 ];
 
 export function middleware(request: NextRequest) {
