@@ -126,9 +126,9 @@ export default function BrokerAnalysisPage() {
                   const sellH = Math.max((s.sellAmt / maxBar) * 160, 4);
                   return (
                     <div key={s.symbol} className="flex flex-col items-center" style={{ width: "8%", minWidth: 32 }}>
-                      <div className="flex items-end gap-1" style={{ height: 160 }}>
-                        <div className="w-[46%] rounded-t-md bg-up shadow-sm" style={{ height: buyH }} />
-                        <div className="w-[46%] rounded-t-md bg-down shadow-sm" style={{ height: sellH }} />
+                      <div className="flex items-end gap-1" style={{ height: 160, width: "100%" }}>
+                        <div className="rounded-t-md bg-up shadow-sm" style={{ height: buyH, width: "46%", flexShrink: 0 }} />
+                        <div className="rounded-t-md bg-down shadow-sm" style={{ height: sellH, width: "46%", flexShrink: 0 }} />
                       </div>
                       <div className="mt-2 w-full truncate text-center text-[10px] font-semibold text-muted">{s.symbol.replace(/\d+/g, "")}</div>
                     </div>
