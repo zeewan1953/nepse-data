@@ -17,6 +17,7 @@ export default function BrokerAnalysisPage() {
   const [brokerId, setBrokerId] = useState(1);
   const [input, setInput] = useState("1");
   const [range, setRange] = useState<"TODAY" | "WEEK" | "MONTH">("TODAY");
+  const [filter, setFilter] = useState<"all" | "topBuy" | "topSell" | "netBuy" | "netSell">("all");
   const [data, setData] = useState<BrokerResp | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -29,7 +30,7 @@ export default function BrokerAnalysisPage() {
     setLoading(true);
     setError("");
     setData(null);
-    fetch(`/api/broker/${brokerId}`, { cache: "no-store" })
+    fetch(`/api/broker/${brokerId}?range=${range}`, { cache: "no-store" })
       .then((r) => r.json())
       .then((j) => {
         if (j.error) setError(j.error);
@@ -37,7 +38,7 @@ export default function BrokerAnalysisPage() {
       })
       .catch(() => setError("Failed to load broker data"))
       .finally(() => setLoading(false));
-  }, [brokerId]);
+  }, [brokerId, range]);
 
   const priceMap = useMemo(() => {
     const m = new Map<string, { ltp: number; change: number }>();
@@ -174,14 +175,30 @@ export default function BrokerAnalysisPage() {
 
               <div className="mt-4 flex flex-wrap items-center justify-between rounded-[24px] border border-border bg-surface-2 p-3">
                 <div className="flex flex-wrap gap-2">
-                  {["Top Buy", "Top Sell", "Net Buy", "Net Sell"].map((f) => (
-                    <span key={f} className="rounded-full border border-border bg-surface px-3 py-1 text-xs font-semibold text-foreground">
-                      {f}
-                    </span>
+                  {[
+                    { key: "topBuy", label: "Top Buy" },
+                    { key: "topSell", label: "Top Sell" },
+                    { key: "netBuy", label: "Net Buy" },
+                    { key: "netSell", label: "Net Sell" },
+                  ].map((f) => (
+                    <button
+                      key={f.key}
+                      onClick={() => setFilter(filter === f.key ? "all" : f.key as typeof filter)}
+                      className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                        filter === f.key ? "border-primary bg-primary text-white" : "border-border bg-surface text-foreground hover:bg-surface-2"
+                      }`}
+                    >
+                      {f.label}
+                    </button>
                   ))}
                 </div>
-                <button className="flex items-center gap-2 rounded-full border border-border bg-surface px-4 py-1.5 text-xs font-semibold text-foreground">
-                  <span>🔍</span> Filter
+                <button
+                  onClick={() => setFilter("all")}
+                  className={`flex items-center gap-2 rounded-full border px-4 py-1.5 text-xs font-semibold transition ${
+                    filter === "all" ? "border-primary bg-primary text-white" : "border-border bg-surface text-foreground hover:bg-surface-2"
+                  }`}
+                >
+                  <span>🔍</span> {filter === "all" ? "All" : "Reset"}
                 </button>
               </div>
             </div>
