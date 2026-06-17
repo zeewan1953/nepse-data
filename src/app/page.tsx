@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePoll } from "@/lib/useLive";
 import type { LiveMarketData, MarketStatus, NepseIndex, NepseSubIndex, TopTenItem } from "@/lib/types";
 import { classifySymbol, TYPE_BADGE } from "@/lib/types";
-import { npr, pct, changeClass } from "@/lib/format";
+import { npr, pct, changeClass, num } from "@/lib/format";
 
 type IndicesResp = { index: NepseIndex[]; subIndices: NepseSubIndex[] };
 type MoversResp = { gainers: TopTenItem[]; losers: TopTenItem[] };
@@ -87,7 +87,7 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h1 className="text-3xl font-black text-foreground">DARI SIR</h1>
           <p className="text-sm text-muted">Nepal Stock Exchange — live dashboard</p>
@@ -434,9 +434,9 @@ function MoverCard({ title, tone, rows }: { title: string; tone: "up" | "down"; 
 function StockSearch({ liveData }: { liveData: { data: LiveMarketData[]; count: number } | undefined }) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
+  const [popup, setPopup] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
@@ -450,53 +450,254 @@ function StockSearch({ liveData }: { liveData: { data: LiveMarketData[]; count: 
     const query = q.toLowerCase();
     return liveData.data
       .filter((r) => r.symbol.toLowerCase().includes(query) || (r.securityName ?? "").toLowerCase().includes(query))
-      .slice(0, 8);
+      .slice(0, 6);
   }, [q, liveData]);
 
   return (
-    <div ref={ref} className="relative w-full sm:w-72">
-      <input
-        type="text"
-        value={q}
-        onChange={(e) => { setQ(e.target.value); setOpen(true); }}
-        onFocus={() => q.trim() && setOpen(true)}
-        placeholder="Search stock... (symbol or name)"
-        className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-primary placeholder:text-muted"
-      />
+    <div ref={ref} className="relative w-56 sm:w-64">
+      <div className="relative">
+        <svg className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input
+          type="text"
+          value={q}
+          onChange={(e) => { setQ(e.target.value); setOpen(true); }}
+          onFocus={() => q.trim() && setOpen(true)}
+          placeholder="Search stock..."
+          className="w-full rounded-lg border border-border bg-surface py-1.5 pl-8 pr-3 text-xs outline-none focus:border-primary placeholder:text-muted"
+        />
+      </div>
       {open && results.length > 0 && (
-        <div className="absolute right-0 top-full z-50 mt-1 w-full overflow-hidden rounded-lg border border-border bg-surface shadow-lg">
+        <div className="absolute right-0 top-full z-50 mt-1 w-72 overflow-hidden rounded-lg border border-border bg-surface shadow-lg">
           {results.map((r) => {
             const sType = classifySymbol(r.symbol, r.securityName);
             return (
-              <Link
+              <button
                 key={r.symbol}
-                href={`/stock/${encodeURIComponent(r.symbol)}`}
-                onClick={() => { setOpen(false); setQ(""); }}
-                className="flex items-center justify-between gap-2 px-3 py-2 text-sm hover:bg-surface-2"
+                onClick={() => { setOpen(false); setQ(""); setPopup(r.symbol); }}
+                className="flex w-full items-center justify-between gap-2 px-2.5 py-1.5 text-xs hover:bg-surface-2 text-left"
               >
-                <span className="flex items-center gap-2 min-w-0">
+                <span className="flex items-center gap-1.5 min-w-0">
                   <span className="font-bold text-primary">{r.symbol}</span>
-                  <span className={`rounded px-1 py-0.5 text-[9px] font-bold uppercase ${TYPE_BADGE[sType]}`}>{sType}</span>
-                  <span className="truncate text-xs text-muted">{(r.securityName ?? "").slice(0, 30)}</span>
+                  <span className={`rounded px-1 py-0 text-[8px] font-bold uppercase ${TYPE_BADGE[sType]}`}>{sType}</span>
                 </span>
-                <span className="flex items-center gap-2 shrink-0 tabular-nums">
+                <span className="flex items-center gap-1.5 shrink-0 tabular-nums">
                   <span className="text-muted">{npr(r.lastTradedPrice)}</span>
-                  <span className={`w-14 text-right font-bold ${r.percentageChange >= 0 ? "text-up" : "text-down"}`}>
+                  <span className={`w-12 text-right font-bold ${r.percentageChange >= 0 ? "text-up" : "text-down"}`}>
                     {r.percentageChange >= 0 ? "+" : ""}{pct(r.percentageChange)}
                   </span>
                 </span>
-              </Link>
+              </button>
             );
           })}
           <Link
             href={`/market?q=${encodeURIComponent(q)}`}
             onClick={() => { setOpen(false); setQ(""); }}
-            className="block border-t border-border px-3 py-2 text-center text-xs font-semibold text-primary hover:bg-surface-2"
+            className="block border-t border-border py-1.5 text-center text-[10px] font-semibold text-primary hover:bg-surface-2"
           >
-            View all results →
+            View all →
           </Link>
         </div>
       )}
+      {popup && <StockPopup symbol={popup} onClose={() => setPopup(null)} />}
+    </div>
+  );
+}
+
+type FundData = {
+  symbol: string; name: string; sector: string; eps: number; pe: number;
+  bookValue: number; pbv: number; marketCap: string; weekRange: string;
+  sharesOutstanding: string; netWorth: number; totalDebt: number;
+  netProfit: number; revenue: number; roe: number; debtEquity: number;
+  dividends: { fiscalYear: string; value: number }[];
+};
+type SecData = {
+  details: { securityDailyTradeDto?: { openPrice: number; highPrice: number; lowPrice: number; previousClose: number; lastTradedPrice: number; fiftyTwoWeekHigh: number; fiftyTwoWeekLow: number; totalTradeQuantity: number; marketCap: number }; securityPriceVolumeDto?: { paidUpValue: number; totalPaidupCapital: string } } | null;
+  history: { content: { businessDate: string; closePrice: number; highPrice: number; lowPrice: number; totalTradedQuantity: number }[] } | null;
+};
+
+function StockPopup({ symbol, onClose }: { symbol: string; onClose: () => void }) {
+  const [tab, setTab] = useState<"overview" | "fundamental" | "signals" | "broker">("overview");
+  const [fund, setFund] = useState<FundData | null>(null);
+  const [sec, setSec] = useState<SecData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([
+      fetch(`/api/fundamental-external/${encodeURIComponent(symbol)}`).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch(`/api/security/${encodeURIComponent(symbol)}`).then(r => r.ok ? r.json() : null).catch(() => null),
+    ]).then(([f, s]) => {
+      setFund(f);
+      setSec(s);
+      setLoading(false);
+    });
+  }, [symbol]);
+
+  // Compute AI signal from history
+  const signalInfo = useMemo(() => {
+    if (!sec?.history?.content?.length) return null;
+    const candles = [...sec.history.content].sort((a, b) => a.businessDate.localeCompare(b.businessDate)).slice(-100);
+    const ltp = sec.details?.securityDailyTradeDto?.lastTradedPrice ?? candles.at(-1)?.closePrice ?? 0;
+    const prev = sec.details?.securityDailyTradeDto?.previousClose ?? candles.at(-2)?.closePrice ?? 0;
+    const change = ltp - prev;
+    const changePct = prev ? (change / prev) * 100 : 0;
+    // Simple signal: count bullish/bearish indicators
+    let bull = 0, bear = 0;
+    const last5 = candles.slice(-5);
+    for (const c of last5) { if (c.closePrice > c.lowPrice * 1.01) bull++; else bear++; }
+    const ema20 = candles.slice(-20).reduce((s, c) => s + c.closePrice, 0) / Math.min(20, candles.length);
+    if (ltp > ema20) bull++; else bear++;
+    const overall = bull > bear ? "BUY" : bull < bear ? "SELL" : "HOLD";
+    const conf = Math.round((Math.max(bull, bear) / (bull + bear)) * 100);
+    return { ltp, change, changePct, bull, bear, overall, conf, ema20 };
+  }, [sec]);
+
+  // Compute breakout
+  const breakoutInfo = useMemo(() => {
+    if (!sec?.history?.content?.length) return null;
+    const candles = [...sec.history.content].sort((a, b) => a.businessDate.localeCompare(b.businessDate)).slice(-60);
+    const ltp = sec.details?.securityDailyTradeDto?.lastTradedPrice ?? candles.at(-1)?.closePrice ?? 0;
+    const highs = candles.slice(0, -1).map(c => c.highPrice);
+    const lows = candles.slice(0, -1).map(c => c.lowPrice);
+    const prevHigh = Math.max(...highs);
+    const prevLow = Math.min(...lows);
+    const above = ltp > prevHigh;
+    const below = ltp < prevLow;
+    return { signal: above ? "BUY" : below ? "SELL" : "WAIT", prevHigh, prevLow, confidence: above || below ? 75 : 20 };
+  }, [sec]);
+
+  const daily = sec?.details?.securityDailyTradeDto;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
+      <div className="relative mx-4 w-full max-w-lg rounded-xl border border-border bg-surface shadow-2xl" onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+          <div className="flex items-center gap-2">
+            <span className="text-lg font-black text-foreground">{symbol}</span>
+            {signalInfo && (
+              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${signalInfo.overall === "BUY" ? "bg-up-bg text-up" : signalInfo.overall === "SELL" ? "bg-down-bg text-down" : "bg-surface-2 text-muted"}`}>
+                {signalInfo.overall} {signalInfo.conf}%
+              </span>
+            )}
+          </div>
+          <button onClick={onClose} className="rounded-md p-1 text-muted hover:bg-surface-2 hover:text-foreground">
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M6 18 18 6M6 6l12 12"/></svg>
+          </button>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex border-b border-border px-2">
+          {(["overview", "fundamental", "signals", "broker"] as const).map(t => (
+            <button key={t} onClick={() => setTab(t)} className={`px-3 py-1.5 text-[11px] font-semibold capitalize transition ${tab === t ? "border-b-2 border-primary text-primary" : "text-muted hover:text-foreground"}`}>
+              {t === "broker" ? "Broker" : t}
+            </button>
+          ))}
+        </div>
+
+        {/* Content */}
+        <div className="max-h-[60vh] overflow-y-auto px-4 py-3">
+          {loading ? (
+            <div className="py-8 text-center text-sm text-muted">Loading...</div>
+          ) : tab === "overview" ? (
+            <div className="space-y-3">
+              <div className="flex items-baseline gap-3">
+                <span className="text-2xl font-black tabular-nums">{npr(signalInfo?.ltp ?? daily?.lastTradedPrice ?? 0)}</span>
+                <span className={`text-sm font-bold ${signalInfo && signalInfo.change >= 0 ? "text-up" : "text-down"}`}>
+                  {signalInfo && signalInfo.change >= 0 ? "+" : ""}{npr(signalInfo?.change ?? 0)} ({signalInfo ? pct(signalInfo.changePct) : "—"})
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded-lg bg-surface-2 p-2"><span className="text-muted">Open</span><div className="font-bold tabular-nums">{npr(daily?.openPrice)}</div></div>
+                <div className="rounded-lg bg-surface-2 p-2"><span className="text-muted">High</span><div className="font-bold tabular-nums">{npr(daily?.highPrice)}</div></div>
+                <div className="rounded-lg bg-surface-2 p-2"><span className="text-muted">Low</span><div className="font-bold tabular-nums">{npr(daily?.lowPrice)}</div></div>
+                <div className="rounded-lg bg-surface-2 p-2"><span className="text-muted">Volume</span><div className="font-bold tabular-nums">{num(daily?.totalTradeQuantity)}</div></div>
+                <div className="rounded-lg bg-surface-2 p-2"><span className="text-muted">52W High</span><div className="font-bold tabular-nums">{npr(daily?.fiftyTwoWeekHigh)}</div></div>
+                <div className="rounded-lg bg-surface-2 p-2"><span className="text-muted">52W Low</span><div className="font-bold tabular-nums">{npr(daily?.fiftyTwoWeekLow)}</div></div>
+              </div>
+              <Link href={`/stock/${encodeURIComponent(symbol)}`} onClick={onClose} className="block w-full rounded-lg bg-primary py-2 text-center text-xs font-semibold text-white hover:bg-primary-700">
+                Full Analysis →
+              </Link>
+            </div>
+          ) : tab === "fundamental" ? (
+            <div className="space-y-3">
+              {fund ? (
+                <>
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div className="rounded-lg bg-surface-2 p-2"><span className="text-muted">EPS</span><div className="font-bold">{fund.eps.toFixed(2)}</div></div>
+                    <div className="rounded-lg bg-surface-2 p-2"><span className="text-muted">PE</span><div className="font-bold">{fund.pe.toFixed(2)}</div></div>
+                    <div className="rounded-lg bg-surface-2 p-2"><span className="text-muted">BV</span><div className="font-bold">{fund.bookValue.toFixed(2)}</div></div>
+                    <div className="rounded-lg bg-surface-2 p-2"><span className="text-muted">PBV</span><div className="font-bold">{fund.pbv.toFixed(2)}</div></div>
+                    <div className="rounded-lg bg-surface-2 p-2"><span className="text-muted">ROE</span><div className="font-bold">{fund.roe.toFixed(2)}%</div></div>
+                    <div className="rounded-lg bg-surface-2 p-2"><span className="text-muted">D/E</span><div className="font-bold">{fund.debtEquity.toFixed(2)}</div></div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-lg bg-surface-2 p-2"><span className="text-muted">Market Cap</span><div className="font-bold">{fund.marketCap}</div></div>
+                    <div className="rounded-lg bg-surface-2 p-2"><span className="text-muted">Sector</span><div className="font-bold capitalize">{fund.sector}</div></div>
+                  </div>
+                  {fund.dividends.length > 0 && (
+                    <div className="text-xs">
+                      <span className="font-semibold text-muted">Dividends:</span>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {fund.dividends.slice(0, 5).map((d, i) => (
+                          <span key={i} className="rounded bg-surface-2 px-1.5 py-0.5 text-[10px]">{d.fiscalYear}: {d.value}%</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="py-4 text-center text-xs text-muted">No fundamental data available</div>
+              )}
+            </div>
+          ) : tab === "signals" ? (
+            <div className="space-y-3 text-xs">
+              {/* AI Signal */}
+              <div className="rounded-lg border border-border p-3">
+                <div className="mb-2 font-semibold text-muted">AI Signal</div>
+                {signalInfo ? (
+                  <div className="flex items-center justify-between">
+                    <span className={`rounded-full px-3 py-1 text-sm font-bold ${signalInfo.overall === "BUY" ? "bg-up-bg text-up" : signalInfo.overall === "SELL" ? "bg-down-bg text-down" : "bg-surface-2 text-muted"}`}>
+                      {signalInfo.overall}
+                    </span>
+                    <span className="tabular-nums text-muted">Confidence: {signalInfo.conf}%</span>
+                  </div>
+                ) : <div className="text-muted">No data</div>}
+              </div>
+              {/* Breakout */}
+              <div className="rounded-lg border border-border p-3">
+                <div className="mb-2 font-semibold text-muted">Breakout Signal</div>
+                {breakoutInfo ? (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <span className={`rounded-full px-3 py-1 text-sm font-bold ${breakoutInfo.signal === "BUY" ? "bg-up-bg text-up" : breakoutInfo.signal === "SELL" ? "bg-down-bg text-down" : "bg-surface-2 text-muted"}`}>
+                        {breakoutInfo.signal}
+                      </span>
+                      <span className="tabular-nums text-muted">{breakoutInfo.confidence}% conf</span>
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <div><span className="text-muted">Resistance:</span> <span className="font-bold tabular-nums">{npr(breakoutInfo.prevHigh)}</span></div>
+                      <div><span className="text-muted">Support:</span> <span className="font-bold tabular-nums">{npr(breakoutInfo.prevLow)}</span></div>
+                    </div>
+                  </>
+                ) : <div className="text-muted">No data</div>}
+              </div>
+              {/* Bull/Bear count */}
+              {signalInfo && (
+                <div className="flex items-center justify-center gap-4 rounded-lg bg-surface-2 p-2">
+                  <span className="text-up font-bold">▲ Bull {signalInfo.bull}</span>
+                  <span className="text-muted">vs</span>
+                  <span className="text-down font-bold">▼ Bear {signalInfo.bear}</span>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="py-4 text-center text-xs text-muted">
+              Broker analysis available on the <Link href={`/stock/${encodeURIComponent(symbol)}`} onClick={onClose} className="text-primary underline">full stock page</Link>.
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
