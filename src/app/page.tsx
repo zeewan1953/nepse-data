@@ -516,7 +516,6 @@ type SecData = {
 };
 
 function StockPopup({ symbol, onClose }: { symbol: string; onClose: () => void }) {
-  const [tab, setTab] = useState<"overview" | "fundamental" | "signals" | "broker">("overview");
   const [fund, setFund] = useState<FundData | null>(null);
   const [sec, setSec] = useState<SecData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -533,7 +532,6 @@ function StockPopup({ symbol, onClose }: { symbol: string; onClose: () => void }
     });
   }, [symbol]);
 
-  // Compute AI signal from history
   const signalInfo = useMemo(() => {
     if (!sec?.history?.content?.length) return null;
     const candles = [...sec.history.content].sort((a, b) => a.businessDate.localeCompare(b.businessDate)).slice(-100);
@@ -541,7 +539,6 @@ function StockPopup({ symbol, onClose }: { symbol: string; onClose: () => void }
     const prev = sec.details?.securityDailyTradeDto?.previousClose ?? candles.at(-2)?.closePrice ?? 0;
     const change = ltp - prev;
     const changePct = prev ? (change / prev) * 100 : 0;
-    // Simple signal: count bullish/bearish indicators
     let bull = 0, bear = 0;
     const last5 = candles.slice(-5);
     for (const c of last5) { if (c.closePrice > c.lowPrice * 1.01) bull++; else bear++; }
@@ -552,7 +549,6 @@ function StockPopup({ symbol, onClose }: { symbol: string; onClose: () => void }
     return { ltp, change, changePct, bull, bear, overall, conf, ema20 };
   }, [sec]);
 
-  // Compute breakout
   const breakoutInfo = useMemo(() => {
     if (!sec?.history?.content?.length) return null;
     const candles = [...sec.history.content].sort((a, b) => a.businessDate.localeCompare(b.businessDate)).slice(-60);
@@ -567,133 +563,101 @@ function StockPopup({ symbol, onClose }: { symbol: string; onClose: () => void }
   }, [sec]);
 
   const daily = sec?.details?.securityDailyTradeDto;
+  const ltp = signalInfo?.ltp ?? daily?.lastTradedPrice ?? 0;
+  const chg = signalInfo?.change ?? 0;
+  const chgPct = signalInfo?.changePct ?? 0;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div className="relative mx-4 w-full max-w-lg rounded-xl border border-border bg-surface shadow-2xl" onClick={e => e.stopPropagation()}>
+      <div className="relative mx-4 w-full max-w-md rounded-xl border border-border bg-surface shadow-2xl" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
           <div className="flex items-center gap-2">
             <span className="text-lg font-black text-foreground">{symbol}</span>
-            {signalInfo && (
-              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${signalInfo.overall === "BUY" ? "bg-up-bg text-up" : signalInfo.overall === "SELL" ? "bg-down-bg text-down" : "bg-surface-2 text-muted"}`}>
-                {signalInfo.overall} {signalInfo.conf}%
-              </span>
-            )}
+            {fund?.sector && <span className="rounded bg-surface-2 px-1.5 py-0.5 text-[9px] font-semibold capitalize text-muted">{fund.sector}</span>}
           </div>
           <button onClick={onClose} className="rounded-md p-1 text-muted hover:bg-surface-2 hover:text-foreground">
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M6 18 18 6M6 6l12 12"/></svg>
           </button>
         </div>
 
-        {/* Tabs */}
-        <div className="flex border-b border-border px-2">
-          {(["overview", "fundamental", "signals", "broker"] as const).map(t => (
-            <button key={t} onClick={() => setTab(t)} className={`px-3 py-1.5 text-[11px] font-semibold capitalize transition ${tab === t ? "border-b-2 border-primary text-primary" : "text-muted hover:text-foreground"}`}>
-              {t === "broker" ? "Broker" : t}
-            </button>
-          ))}
-        </div>
-
-        {/* Content */}
-        <div className="max-h-[60vh] overflow-y-auto px-4 py-3">
+        <div className="max-h-[70vh] overflow-y-auto px-4 py-3">
           {loading ? (
             <div className="py-8 text-center text-sm text-muted">Loading...</div>
-          ) : tab === "overview" ? (
+          ) : (
             <div className="space-y-3">
+              {/* Price */}
               <div className="flex items-baseline gap-3">
-                <span className="text-2xl font-black tabular-nums">{npr(signalInfo?.ltp ?? daily?.lastTradedPrice ?? 0)}</span>
-                <span className={`text-sm font-bold ${signalInfo && signalInfo.change >= 0 ? "text-up" : "text-down"}`}>
-                  {signalInfo && signalInfo.change >= 0 ? "+" : ""}{npr(signalInfo?.change ?? 0)} ({signalInfo ? pct(signalInfo.changePct) : "—"})
+                <span className="text-2xl font-black tabular-nums">{npr(ltp)}</span>
+                <span className={`text-sm font-bold ${chg >= 0 ? "text-up" : "text-down"}`}>
+                  {chg >= 0 ? "+" : ""}{npr(chg)} ({pct(chgPct)})
                 </span>
               </div>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="rounded-lg bg-surface-2 p-2"><span className="text-muted">Open</span><div className="font-bold tabular-nums">{npr(daily?.openPrice)}</div></div>
-                <div className="rounded-lg bg-surface-2 p-2"><span className="text-muted">High</span><div className="font-bold tabular-nums">{npr(daily?.highPrice)}</div></div>
-                <div className="rounded-lg bg-surface-2 p-2"><span className="text-muted">Low</span><div className="font-bold tabular-nums">{npr(daily?.lowPrice)}</div></div>
-                <div className="rounded-lg bg-surface-2 p-2"><span className="text-muted">Volume</span><div className="font-bold tabular-nums">{num(daily?.totalTradeQuantity)}</div></div>
-                <div className="rounded-lg bg-surface-2 p-2"><span className="text-muted">52W High</span><div className="font-bold tabular-nums">{npr(daily?.fiftyTwoWeekHigh)}</div></div>
-                <div className="rounded-lg bg-surface-2 p-2"><span className="text-muted">52W Low</span><div className="font-bold tabular-nums">{npr(daily?.fiftyTwoWeekLow)}</div></div>
+
+              {/* Signals row */}
+              <div className="flex gap-2">
+                {signalInfo && (
+                  <div className={`flex-1 rounded-lg border p-2 text-center ${signalInfo.overall === "BUY" ? "border-up-bg bg-up-bg" : signalInfo.overall === "SELL" ? "border-down-bg bg-down-bg" : "border-border bg-surface-2"}`}>
+                    <div className="text-[9px] font-semibold text-muted">AI Signal</div>
+                    <div className={`text-sm font-bold ${signalInfo.overall === "BUY" ? "text-up" : signalInfo.overall === "SELL" ? "text-down" : "text-foreground"}`}>{signalInfo.overall}</div>
+                    <div className="text-[9px] text-muted">{signalInfo.conf}% conf</div>
+                  </div>
+                )}
+                {breakoutInfo && (
+                  <div className={`flex-1 rounded-lg border p-2 text-center ${breakoutInfo.signal === "BUY" ? "border-up-bg bg-up-bg" : breakoutInfo.signal === "SELL" ? "border-down-bg bg-down-bg" : "border-border bg-surface-2"}`}>
+                    <div className="text-[9px] font-semibold text-muted">Breakout</div>
+                    <div className={`text-sm font-bold ${breakoutInfo.signal === "BUY" ? "text-up" : breakoutInfo.signal === "SELL" ? "text-down" : "text-foreground"}`}>{breakoutInfo.signal}</div>
+                    <div className="text-[9px] text-muted">{breakoutInfo.confidence}% conf</div>
+                  </div>
+                )}
+                {signalInfo && (
+                  <div className="flex-1 rounded-lg border border-border bg-surface-2 p-2 text-center">
+                    <div className="text-[9px] font-semibold text-muted">Mood</div>
+                    <div className="flex items-center justify-center gap-1 pt-0.5">
+                      <span className="text-xs font-bold text-up">▲{signalInfo.bull}</span>
+                      <span className="text-[9px] text-muted">vs</span>
+                      <span className="text-xs font-bold text-down">▼{signalInfo.bear}</span>
+                    </div>
+                  </div>
+                )}
               </div>
+
+              {/* Fundamental */}
+              {fund && (
+                <div className="grid grid-cols-4 gap-1.5 text-xs">
+                  <div className="rounded-lg bg-surface-2 p-1.5 text-center"><span className="text-[9px] text-muted">EPS</span><div className="font-bold">{fund.eps.toFixed(1)}</div></div>
+                  <div className="rounded-lg bg-surface-2 p-1.5 text-center"><span className="text-[9px] text-muted">PE</span><div className="font-bold">{fund.pe.toFixed(1)}</div></div>
+                  <div className="rounded-lg bg-surface-2 p-1.5 text-center"><span className="text-[9px] text-muted">BV</span><div className="font-bold">{fund.bookValue.toFixed(1)}</div></div>
+                  <div className="rounded-lg bg-surface-2 p-1.5 text-center"><span className="text-[9px] text-muted">PBV</span><div className="font-bold">{fund.pbv.toFixed(2)}</div></div>
+                  <div className="rounded-lg bg-surface-2 p-1.5 text-center"><span className="text-[9px] text-muted">ROE</span><div className="font-bold">{fund.roe.toFixed(1)}%</div></div>
+                  <div className="rounded-lg bg-surface-2 p-1.5 text-center"><span className="text-[9px] text-muted">D/E</span><div className="font-bold">{fund.debtEquity.toFixed(2)}</div></div>
+                  <div className="rounded-lg bg-surface-2 p-1.5 text-center"><span className="text-[9px] text-muted">Open</span><div className="font-bold tabular-nums">{npr(daily?.openPrice)}</div></div>
+                  <div className="rounded-lg bg-surface-2 p-1.5 text-center"><span className="text-[9px] text-muted">Vol</span><div className="font-bold tabular-nums">{num(daily?.totalTradeQuantity)}</div></div>
+                </div>
+              )}
+
+              {/* Breakout levels */}
+              {breakoutInfo && (
+                <div className="flex gap-2 text-xs">
+                  <div className="flex-1 rounded-lg bg-surface-2 p-2 text-center">
+                    <span className="text-[9px] text-muted">Resistance</span>
+                    <div className="font-bold text-down tabular-nums">{npr(breakoutInfo.prevHigh)}</div>
+                  </div>
+                  <div className="flex-1 rounded-lg bg-surface-2 p-2 text-center">
+                    <span className="text-[9px] text-muted">Support</span>
+                    <div className="font-bold text-up tabular-nums">{npr(breakoutInfo.prevLow)}</div>
+                  </div>
+                  <div className="flex-1 rounded-lg bg-surface-2 p-2 text-center">
+                    <span className="text-[9px] text-muted">52W H/L</span>
+                    <div className="font-bold tabular-nums text-[10px]">{npr(daily?.fiftyTwoWeekHigh)} / {npr(daily?.fiftyTwoWeekLow)}</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Full analysis link */}
               <Link href={`/stock/${encodeURIComponent(symbol)}`} onClick={onClose} className="block w-full rounded-lg bg-primary py-2 text-center text-xs font-semibold text-white hover:bg-primary-700">
                 Full Analysis →
               </Link>
-            </div>
-          ) : tab === "fundamental" ? (
-            <div className="space-y-3">
-              {fund ? (
-                <>
-                  <div className="grid grid-cols-3 gap-2 text-xs">
-                    <div className="rounded-lg bg-surface-2 p-2"><span className="text-muted">EPS</span><div className="font-bold">{fund.eps.toFixed(2)}</div></div>
-                    <div className="rounded-lg bg-surface-2 p-2"><span className="text-muted">PE</span><div className="font-bold">{fund.pe.toFixed(2)}</div></div>
-                    <div className="rounded-lg bg-surface-2 p-2"><span className="text-muted">BV</span><div className="font-bold">{fund.bookValue.toFixed(2)}</div></div>
-                    <div className="rounded-lg bg-surface-2 p-2"><span className="text-muted">PBV</span><div className="font-bold">{fund.pbv.toFixed(2)}</div></div>
-                    <div className="rounded-lg bg-surface-2 p-2"><span className="text-muted">ROE</span><div className="font-bold">{fund.roe.toFixed(2)}%</div></div>
-                    <div className="rounded-lg bg-surface-2 p-2"><span className="text-muted">D/E</span><div className="font-bold">{fund.debtEquity.toFixed(2)}</div></div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div className="rounded-lg bg-surface-2 p-2"><span className="text-muted">Market Cap</span><div className="font-bold">{fund.marketCap}</div></div>
-                    <div className="rounded-lg bg-surface-2 p-2"><span className="text-muted">Sector</span><div className="font-bold capitalize">{fund.sector}</div></div>
-                  </div>
-                  {fund.dividends.length > 0 && (
-                    <div className="text-xs">
-                      <span className="font-semibold text-muted">Dividends:</span>
-                      <div className="mt-1 flex flex-wrap gap-1">
-                        {fund.dividends.slice(0, 5).map((d, i) => (
-                          <span key={i} className="rounded bg-surface-2 px-1.5 py-0.5 text-[10px]">{d.fiscalYear}: {d.value}%</span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="py-4 text-center text-xs text-muted">No fundamental data available</div>
-              )}
-            </div>
-          ) : tab === "signals" ? (
-            <div className="space-y-3 text-xs">
-              {/* AI Signal */}
-              <div className="rounded-lg border border-border p-3">
-                <div className="mb-2 font-semibold text-muted">AI Signal</div>
-                {signalInfo ? (
-                  <div className="flex items-center justify-between">
-                    <span className={`rounded-full px-3 py-1 text-sm font-bold ${signalInfo.overall === "BUY" ? "bg-up-bg text-up" : signalInfo.overall === "SELL" ? "bg-down-bg text-down" : "bg-surface-2 text-muted"}`}>
-                      {signalInfo.overall}
-                    </span>
-                    <span className="tabular-nums text-muted">Confidence: {signalInfo.conf}%</span>
-                  </div>
-                ) : <div className="text-muted">No data</div>}
-              </div>
-              {/* Breakout */}
-              <div className="rounded-lg border border-border p-3">
-                <div className="mb-2 font-semibold text-muted">Breakout Signal</div>
-                {breakoutInfo ? (
-                  <>
-                    <div className="flex items-center justify-between">
-                      <span className={`rounded-full px-3 py-1 text-sm font-bold ${breakoutInfo.signal === "BUY" ? "bg-up-bg text-up" : breakoutInfo.signal === "SELL" ? "bg-down-bg text-down" : "bg-surface-2 text-muted"}`}>
-                        {breakoutInfo.signal}
-                      </span>
-                      <span className="tabular-nums text-muted">{breakoutInfo.confidence}% conf</span>
-                    </div>
-                    <div className="mt-2 grid grid-cols-2 gap-2">
-                      <div><span className="text-muted">Resistance:</span> <span className="font-bold tabular-nums">{npr(breakoutInfo.prevHigh)}</span></div>
-                      <div><span className="text-muted">Support:</span> <span className="font-bold tabular-nums">{npr(breakoutInfo.prevLow)}</span></div>
-                    </div>
-                  </>
-                ) : <div className="text-muted">No data</div>}
-              </div>
-              {/* Bull/Bear count */}
-              {signalInfo && (
-                <div className="flex items-center justify-center gap-4 rounded-lg bg-surface-2 p-2">
-                  <span className="text-up font-bold">▲ Bull {signalInfo.bull}</span>
-                  <span className="text-muted">vs</span>
-                  <span className="text-down font-bold">▼ Bear {signalInfo.bear}</span>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="py-4 text-center text-xs text-muted">
-              Broker analysis available on the <Link href={`/stock/${encodeURIComponent(symbol)}`} onClick={onClose} className="text-primary underline">full stock page</Link>.
             </div>
           )}
         </div>
