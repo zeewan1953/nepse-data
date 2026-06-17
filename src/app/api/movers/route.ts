@@ -1,11 +1,9 @@
-﻿import { getNepse, cached, safeNepseCall, getDailyTradeStats } from "@/lib/nepse";
+import { getNepse, cached, safeNepseCall } from "@/lib/nepse";
 import { getAllStocks } from "@/lib/db";
+import { fetchMeroLaganiSummary, calcMeroGainers, calcMeroLosers, calcMeroPercent } from "@/lib/merolagani";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-// Vercel deployment URL – always pull from here first
-const VERCEL_BASE = "https://nepse-data-sand.vercel.app";
 
 type Mover = { symbol: string; ltp: number; points: number; percentage: number; percentChange?: number; cp?: number };
 
@@ -18,20 +16,61 @@ type MoversResp = {
   source: string;
 };
 
-// Fetch movers from Vercel deployment as PRIMARY source
-async function fetchMoversFromVercel(): Promise<MoversResp | null> {
-  try {
-    const res = await fetch(`${VERCEL_BASE}/api/movers`, {
-      signal: AbortSignal.timeout(8000),
-      headers: { "Accept": "application/json" },
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (data.gainers?.length > 0 || data.losers?.length > 0) {
-      return { ...data, source: "vercel" };
-    }
-  } catch {
-    // Vercel fetch failed
+// Fetch movers from MeroLagani as PRIMARY source
+async function fetchMoversFromMeroLagani(): Promise<MoversResp | null> {
+  const mero = await fetchMeroLaganiSummary();
+  if (!mero?.stock?.detail?.length) return null;
+
+  const stocks = mero.stock.detail;
+  
+  // Top gainers
+  const gainers = calcMeroGainers(stocks, 10).map((s) => ({
+    symbol: s.s,
+    ltp: s.lp,
+    points: s.c,
+    percentage: calcMeroPercent(s),
+    percentChange: calcMeroPercent(s),
+    cp: s.lp - s.c,
+  }));
+
+  // Top losers
+  const losers = calcMeroLosers(stocks, 10).map((s) => ({
+    symbol: s.s,
+    ltp: s.lp,
+    points: s.c,
+    percentage: calcMeroPercent(s),
+    percentChange: calcMeroPercent(s),
+    cp: s.lp - s.c,
+  }));
+
+  // Top turnover (from turnover data)
+  const turnover = (mero.turnover?.detail ?? []).slice(0, 10).map((s) => ({
+    symbol: s.s,
+    ltp: s.lp,
+    points: s.pc,
+    percentage: s.pc,
+    percentChange: s.pc,
+    cp: s.lp - (s.lp * s.pc / 100),
+  }));
+
+  // Top volume (sort stocks by quantity)
+  const volume = [...stocks]
+    .sort((a, b) => b.q - a.q)
+    .slice(0, 10)
+    .map((s) => ({
+      symbol: s.s,
+      ltp: s.lp,
+      points: s.c,
+      percentage: calcMeroPercent(s),
+      percentChange: calcMeroPercent(s),
+      cp: s.lp - s.c,
+    }));
+
+  // Top transactions (use volume as proxy since transactions not available)
+  const transactions = volume;
+
+  if (gainers.length > 0 || losers.length > 0) {
+    return { gainers, losers, turnover, volume, transactions, source: "merolagani" };
   }
   return null;
 }
@@ -62,10 +101,10 @@ async function getMoversFromDb(): Promise<MoversResp> {
 }
 
 export async function GET() {
-  // 1. Try Vercel first
-  const vercelMovers = await fetchMoversFromVercel();
-  if (vercelMovers) {
-    return Response.json(vercelMovers);
+  // 1. Try MeroLagani first (real NEPSE data)
+  const meroMovers = await fetchMoversFromMeroLagani();
+  if (meroMovers) {
+    return Response.json(meroMovers);
   }
 
   // 2. Try direct NEPSE

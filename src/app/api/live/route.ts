@@ -1,12 +1,10 @@
 import { getNepse, cached, getDailyTradeStats, safeNepseCall } from "@/lib/nepse";
 import { saveLiveSnapshot, getOhlcMap, getAllStocks } from "@/lib/db";
+import { fetchMeroLaganiSummary, calcMeroPercent } from "@/lib/merolagani";
 import type { LiveMarketData, Security } from "@rumess/nepse-api";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-// Vercel deployment URL – always pull from here first
-const VERCEL_BASE = "https://nepse-data-sand.vercel.app";
 
 declare global {
   // eslint-disable-next-line no-var
@@ -15,31 +13,46 @@ declare global {
 
 type Ohlc = { openPrice: number; highPrice: number; lowPrice: number; averageTradedPrice: number };
 
-// Fetch from Vercel deployment as PRIMARY source
-async function fetchFromVercel(): Promise<{ rows: LiveMarketData[]; source: string } | null> {
-  try {
-    const res = await fetch(`${VERCEL_BASE}/api/live`, {
-      signal: AbortSignal.timeout(8000),
-      headers: { "Accept": "application/json" },
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (data.data?.length > 50) {
-      return { rows: data.data, source: "vercel" };
-    }
-  } catch {
-    // Vercel fetch failed
+// Fetch from MeroLagani as PRIMARY source (real NEPSE data)
+async function fetchFromMeroLagani(): Promise<{ rows: LiveMarketData[]; source: string } | null> {
+  const mero = await fetchMeroLaganiSummary();
+  if (!mero?.stock?.detail?.length) return null;
+
+  const rows: LiveMarketData[] = mero.stock.detail.map((s) => {
+    const pc = calcMeroPercent(s);
+    const prevClose = s.lp - s.c;
+    return {
+      securityId: 0,
+      securityName: s.s,
+      symbol: s.s,
+      indexId: 0,
+      openPrice: 0,
+      highPrice: 0,
+      lowPrice: 0,
+      totalTradeQuantity: s.q,
+      totalTradeValue: s.lp * s.q,
+      lastTradedPrice: s.lp,
+      percentageChange: pc,
+      lastUpdatedDateTime: mero.overall?.d ?? "",
+      lastTradedVolume: s.q,
+      previousClose: prevClose,
+      averageTradedPrice: 0,
+    };
+  });
+
+  if (rows.length > 50) {
+    return { rows, source: "merolagani" };
   }
   return null;
 }
 
 async function loadAll(): Promise<{ rows: LiveMarketData[]; source: string }> {
-  // 1. Try Vercel first (always has real NEPSE data)
-  const vercelData = await fetchFromVercel();
-  if (vercelData) {
-    globalThis.__lastLive = vercelData.rows;
-    try { await saveLiveSnapshot(vercelData.rows); } catch { /* db optional */ }
-    return vercelData;
+  // 1. Try MeroLagani first (real NEPSE data via JSON API)
+  const meroData = await fetchFromMeroLagani();
+  if (meroData) {
+    globalThis.__lastLive = meroData.rows;
+    try { await saveLiveSnapshot(meroData.rows); } catch { /* db optional */ }
+    return meroData;
   }
 
   // 2. Try direct NEPSE
