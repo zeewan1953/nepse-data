@@ -522,7 +522,6 @@ const parseNumber = (s: string): number => { const n = Number(s.replace(/[^0-9.\
 function StockPopup({ symbol, onClose }: { symbol: string; onClose: () => void }) {
   const [fund, setFund] = useState<FundData | null>(null);
   const [sec, setSec] = useState<SecData | null>(null);
-  const [broker, setBroker] = useState<BrokerFlow>(null);
   const [signalRow, setSignalRow] = useState<SignalRow | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -537,7 +536,6 @@ function StockPopup({ symbol, onClose }: { symbol: string; onClose: () => void }
       setSec(s);
       const found = sig?.signals?.find((x: { symbol: string }) => x.symbol === symbol) ?? null;
       setSignalRow(found);
-      setBroker(found?.broker ?? null);
       setLoading(false);
     });
   }, [symbol]);
@@ -613,9 +611,6 @@ function StockPopup({ symbol, onClose }: { symbol: string; onClose: () => void }
       if (breakoutInfo.signal === "BUY") summaryLines.push(`⚡ Breakout above resistance at ${npr(breakoutInfo.prevHigh)} — bullish`);
       else if (breakoutInfo.signal === "SELL") summaryLines.push(`⚡ Breakdown below support at ${npr(breakoutInfo.prevLow)} — bearish`);
       else summaryLines.push(`⚡ No breakout — trading within ${npr(breakoutInfo.prevLow)}–${npr(breakoutInfo.prevHigh)} range`);
-    }
-    if (broker) {
-      summaryLines.push(broker.bias === "accumulate" ? `🏦 Brokers accumulating — net buyer ${num(broker.buyerNet)} qty` : broker.bias === "distribute" ? `🏦 Brokers distributing — net seller ${num(broker.sellerNet)} qty` : `🏦 Brokers neutral — balanced flow`);
     }
   }
   // Always add fundamental-driven summary
@@ -836,39 +831,6 @@ function StockPopup({ symbol, onClose }: { symbol: string; onClose: () => void }
                   </div>
                 </div>
               )}
-
-              {/* 🏦 🤖 Broker Analysis */}
-              <div className="rounded-lg border border-border p-2.5">
-                <div className="mb-1.5 flex items-center gap-1.5">
-                  <span className="text-sm">🏦</span>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted">Broker Analysis</span>
-                  {broker && (
-                    <span className={`ml-auto rounded-full px-2 py-0.5 text-[8px] font-bold uppercase ${
-                      broker.bias === "accumulate" ? "bg-up-bg text-up" :
-                      broker.bias === "distribute" ? "bg-down-bg text-down" :
-                      "bg-surface-2 text-muted"
-                    }`}>
-                      {broker.bias}
-                    </span>
-                  )}
-                </div>
-                {broker ? (
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="rounded bg-up-bg p-2">
-                      <div className="text-[9px] text-muted">Top Accumulator</div>
-                      <div className="font-bold text-xs">Broker {broker.buyerId}</div>
-                      <div className="text-[10px] text-up">Net Buy +{num(broker.buyerNet)}</div>
-                    </div>
-                    <div className="rounded bg-down-bg p-2">
-                      <div className="text-[9px] text-muted">Top Distributor</div>
-                      <div className="font-bold text-xs">Broker {broker.sellerId}</div>
-                      <div className="text-[10px] text-down">Net Sell {num(broker.sellerNet)}</div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="py-3 text-center text-[10px] text-muted">⏳ Broker data available during market hours</div>
-                )}
-              </div>
 
               {/* Full analysis link */}
               <Link href={`/stock/${encodeURIComponent(symbol)}`} onClick={onClose} className="block w-full rounded-lg bg-primary py-2 text-center text-xs font-semibold text-white hover:bg-primary-700">
