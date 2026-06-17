@@ -1,4 +1,4 @@
-import { getNepse, cached, safeNepseCall } from "@/lib/nepse";
+import { getNepse, cached, safeNepseCall, getDailyTradeStats } from "@/lib/nepse";
 import { saveStocks, getAllStocks, searchStocks } from "@/lib/db";
 import type { LiveMarketData, Security } from "@rumess/nepse-api";
 
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 async function syncStocks(): Promise<void> {
   const nepse = getNepse();
 
-  // Try live market first
+  // Try live market first — has real LTP for actively traded stocks
   const live = await safeNepseCall(() => nepse.getLiveMarket(), "Live market").catch(() => [] as LiveMarketData[]);
   if (Array.isArray(live) && live.length > 50) {
     const rows = live.map((l) => ({
@@ -23,18 +23,37 @@ async function syncStocks(): Promise<void> {
     return;
   }
 
-  // Fallback: security list
-  const securities = await safeNepseCall(() => nepse.getSecurityList(), "Security list").catch(() => []);
+  // Fallback: security list + daily trade stats for LTP
+  const [securities, stats] = await Promise.all([
+    safeNepseCall(() => nepse.getSecurityList(), "Security list").catch(() => []),
+    getDailyTradeStats().catch(() => []),
+  ]);
+
+  const statMap = new Map(stats.map((s) => [s.symbol, s]));
+
   if (Array.isArray(securities) && securities.length > 0) {
     const rows = securities
       .filter((s: Security) => s.activeStatus === "A")
-      .map((s: Security) => ({
-        symbol: s.symbol,
-        name: s.securityName ?? s.name ?? s.symbol,
-        lastTradedPrice: 0,
-        percentageChange: 0,
-        totalTradeQuantity: 0,
-      }));
+      .map((s: Security) => {
+        const st = statMap.get(s.symbol);
+        return {
+          symbol: s.symbol,
+          name: s.securityName ?? s.name ?? s.symbol,
+          lastTradedPrice: st?.lastTradedPrice ?? st?.closePrice ?? 0,
+          percentageChange: st?.percentageChange ?? 0,
+          totalTradeQuantity: st?.totalTradeQuantity ?? 0,
+        };
+      });
+    await saveStocks(rows);
+  } else if (stats.length > 0) {
+    // If security list fails but daily stats work, save what we have
+    const rows = stats.map((s) => ({
+      symbol: s.symbol,
+      name: s.securityName,
+      lastTradedPrice: s.lastTradedPrice ?? s.closePrice ?? 0,
+      percentageChange: s.percentageChange ?? 0,
+      totalTradeQuantity: s.totalTradeQuantity ?? 0,
+    }));
     await saveStocks(rows);
   }
 }
