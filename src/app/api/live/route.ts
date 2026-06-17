@@ -1,5 +1,5 @@
 import { getNepse, cached, getDailyTradeStats, safeNepseCall } from "@/lib/nepse";
-import { saveLiveSnapshot, getOhlcMap } from "@/lib/db";
+import { saveLiveSnapshot, getOhlcMap, getAllStocks } from "@/lib/db";
 import type { LiveMarketData, Security } from "@rumess/nepse-api";
 
 export const runtime = "nodejs";
@@ -75,6 +75,34 @@ async function loadAll(): Promise<{ rows: LiveMarketData[]; source: string }> {
   if (globalThis.__lastLive?.length) {
     return { rows: globalThis.__lastLive, source: "snapshot" };
   }
+
+  // Final fallback: use database stocks table
+  try {
+    const dbStocks = await getAllStocks();
+    if (dbStocks.length > 0) {
+      const rows = dbStocks.map((s) => ({
+        securityId: 0,
+        securityName: s.name,
+        symbol: s.symbol,
+        indexId: 0,
+        openPrice: 0,
+        highPrice: 0,
+        lowPrice: 0,
+        totalTradeQuantity: s.totalTradeQuantity,
+        totalTradeValue: 0,
+        lastTradedPrice: s.lastTradedPrice,
+        percentageChange: s.percentageChange,
+        lastUpdatedDateTime: "",
+        lastTradedVolume: 0,
+        previousClose: 0,
+        averageTradedPrice: 0,
+      })) satisfies LiveMarketData[];
+      return { rows, source: "database" };
+    }
+  } catch {
+    // db fallback failed
+  }
+
   return { rows: [], source: "empty" };
 }
 
