@@ -33,9 +33,9 @@ export async function scanNextMove(date: string, limit = 5): Promise<{ longPicks
             COUNT(DISTINCT brokerId) as brokerCount
      FROM broker_daily_agg WHERE tradeDate = ?
      GROUP BY stockSymbol
-     HAVING totalBuy + totalSell > 10000
+     HAVING totalBuy + totalSell > 1000
      ORDER BY (totalBuy + totalSell) DESC
-     LIMIT 80`,
+     LIMIT 100`,
     [date],
   );
 
@@ -99,7 +99,7 @@ export async function scanNextMove(date: string, limit = 5): Promise<{ longPicks
     }
 
     // Buy concentration
-    if (buyConc > 40 && buyConc > sellConc) {
+    if (buyConc > 25 && buyConc > sellConc) {
       longScore += (buyConc - sellConc) * 0.3;
       longReasons.push(`Buy conc ${buyConc.toFixed(0)}% (top 5 brokers)`);
     }
@@ -124,7 +124,7 @@ export async function scanNextMove(date: string, limit = 5): Promise<{ longPicks
 
     // Multi-broker
     const brokerCount = Number(row.brokerCount);
-    if (brokerCount >= 5) {
+    if (brokerCount >= 3) {
       longScore += 0.3;
       longReasons.push(`${brokerCount} brokers active`);
     }
@@ -143,7 +143,7 @@ export async function scanNextMove(date: string, limit = 5): Promise<{ longPicks
     }
 
     // Sell concentration
-    if (sellConc > 40 && sellConc > buyConc) {
+    if (sellConc > 25 && sellConc > buyConc) {
       shortScore += (sellConc - buyConc) * 0.3;
       shortReasons.push(`Sell conc ${sellConc.toFixed(0)}% (top 5 brokers)`);
     }
@@ -167,7 +167,7 @@ export async function scanNextMove(date: string, limit = 5): Promise<{ longPicks
       shortReasons.push(`CMF ${cmf.toFixed(3)} (distribution)`);
     }
 
-    if (brokerCount >= 5) {
+    if (brokerCount >= 3) {
       shortScore += 0.3;
       shortReasons.push(`${brokerCount} brokers active`);
     }
@@ -179,11 +179,11 @@ export async function scanNextMove(date: string, limit = 5): Promise<{ longPicks
       cmf, priceChange,
     };
 
-    // Always add if there's at least 1 reason (lower threshold)
-    if (longScore >= 1 && longReasons.length >= 1) {
+    // Always add if there's at least 1 reason (very low threshold)
+    if (longScore >= 0.5 && longReasons.length >= 1) {
       longCandidates.push({ ...base, score: longScore, direction: "LONG", reasons: longReasons.slice(0, 4) });
     }
-    if (shortScore >= 1 && shortReasons.length >= 1) {
+    if (shortScore >= 0.5 && shortReasons.length >= 1) {
       shortCandidates.push({ ...base, score: shortScore, direction: "SHORT", reasons: shortReasons.slice(0, 4) });
     }
   }

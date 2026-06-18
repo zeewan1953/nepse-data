@@ -8,6 +8,18 @@ type State<T> = {
   updatedAt: number | null;
 };
 
+// Check if NEPSE market is currently open (11 AM - 3 PM NPT, Sun-Thu)
+export function isNepseMarketOpen(): boolean {
+  const now = new Date();
+  const npt = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kathmandu" }));
+  const day = npt.getDay(); // 0=Sun, 6=Sat
+  if (day === 5 || day === 6) return false; // Friday & Saturday closed
+  const h = npt.getHours();
+  const m = npt.getMinutes();
+  const mins = h * 60 + m;
+  return mins >= 660 && mins < 900; // 11:00 (660) to 15:00 (900)
+}
+
 // Polls a JSON endpoint on an interval. Used for live market data — fast while
 // the NEPSE market is open, slower when closed.
 export function usePoll<T>(url: string, intervalMs: number): State<T> & { refresh: () => void } {
@@ -52,12 +64,18 @@ export function usePoll<T>(url: string, intervalMs: number): State<T> & { refres
   return { ...state, refresh: load };
 }
 
-// Persistent poll: uses localStorage so data NEVER disappears on refresh.
-// Shows cached data immediately, fetches new data silently in background.
-export function usePersistentPoll<T>(url: string, intervalMs: number): State<T> & { refresh: () => void } {
+// Persistent poll with market-hours awareness:
+// - Uses localStorage so data NEVER disappears on refresh
+// - During market hours (11AM-3PM NPT): polls every `marketIntervalMs`
+// - Outside market hours: loads cached data once, no auto-polling
+// - Manual refresh always works via returned `refresh`
+export function usePersistentPoll<T>(
+  url: string,
+  marketIntervalMs: number,
+): State<T> & { refresh: () => void; isMarketOpen: boolean } {
   const storageKey = `ppoll:${url}`;
+  const FIVE_MIN = 5 * 60 * 1000;
 
-  // Read cached data from localStorage on mount
   const getCached = (): { data: T | null; updatedAt: number | null } => {
     if (typeof window === "undefined") return { data: null, updatedAt: null };
     try {
@@ -77,10 +95,12 @@ export function usePersistentPoll<T>(url: string, intervalMs: number): State<T> 
     loading: cached.data !== null ? false : true,
     updatedAt: cached.updatedAt,
   });
+  const [marketOpen, setMarketOpen] = useState(() => isNepseMarketOpen());
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const alive = useRef(true);
 
   const load = useCallback(async () => {
+    if (!url) return;
     try {
       const res = await fetch(url, { cache: "no-store" });
       const json = await res.json();
@@ -90,7 +110,6 @@ export function usePersistentPoll<T>(url: string, intervalMs: number): State<T> 
       } else {
         const newData = json as T;
         const now = Date.now();
-        // Save to localStorage for persistence across refreshes
         try { localStorage.setItem(storageKey, JSON.stringify({ data: newData, updatedAt: now })); } catch { /* quota */ }
         setState({ data: newData, error: null, loading: false, updatedAt: now });
       }
@@ -102,16 +121,32 @@ export function usePersistentPoll<T>(url: string, intervalMs: number): State<T> 
 
   useEffect(() => {
     alive.current = true;
+
+    // Check market status now and every 30s
+    const checkMarket = () => setMarketOpen(isNepseMarketOpen());
+    checkMarket();
+    const marketCheckTimer = setInterval(checkMarket, 30_000);
+
     const tick = async () => {
       await load();
-      if (alive.current) timer.current = setTimeout(tick, intervalMs);
+      // Only schedule next poll if market is currently open
+      if (alive.current && isNepseMarketOpen()) {
+        timer.current = setTimeout(tick, marketIntervalMs);
+      } else {
+        // Market closed: schedule a check in 5 min to see if market opened
+        timer.current = setTimeout(tick, FIVE_MIN);
+      }
     };
+
+    // Initial load
     tick();
+
     return () => {
       alive.current = false;
       if (timer.current) clearTimeout(timer.current);
+      clearInterval(marketCheckTimer);
     };
-  }, [load, intervalMs]);
+  }, [load, marketIntervalMs]);
 
-  return { ...state, refresh: load };
+  return { ...state, refresh: load, isMarketOpen: marketOpen };
 }

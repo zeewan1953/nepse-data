@@ -1,7 +1,7 @@
 "use client";
 import { useMemo, useState, useEffect } from "react";
 import Link from "next/link";
-import { usePersistentPoll } from "@/lib/useLive";
+import { usePersistentPoll, isNepseMarketOpen } from "@/lib/useLive";
 import { num, compact } from "@/lib/format";
 
 /* ─── Types ─── */
@@ -42,8 +42,8 @@ type StockFlowResp = {
 
 function todayStr(): string { return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kathmandu" }); }
 
-/* ─── 30 minutes in ms ─── */
-const THIRTY_MIN = 30 * 60 * 1000;
+/* ─── 5 minutes in ms (market hours polling) ─── */
+const FIVE_MIN = 5 * 60 * 1000;
 
 /* ─── Main Page ─── */
 export default function BrokerFlowPage() {
@@ -86,15 +86,54 @@ export default function BrokerFlowPage() {
       {tab === "leaderboard" && <LeaderboardTab date={date} />}
       {tab === "stock" && <StockFlowTab date={date} />}
       {tab === "patterns" && <PatternsTab date={date} />}
+
+      {/* Bottom Refresh Button */}
+      <BottomRefresh />
+    </div>
+  );
+}
+
+/* ─── Bottom Refresh Button ─── */
+function BottomRefresh() {
+  const [marketOpen, setMarketOpen] = useState(false);
+  useEffect(() => {
+    const check = () => setMarketOpen(isNepseMarketOpen());
+    check();
+    const t = setInterval(check, 30_000);
+    return () => clearInterval(t);
+  }, []);
+
+  const handleRefresh = () => {
+    // Clear all broker-flow cached data and reload
+    const keys = Object.keys(localStorage).filter(k => k.startsWith("ppoll:/api/broker-flow/"));
+    keys.forEach(k => localStorage.removeItem(k));
+    window.location.reload();
+  };
+
+  return (
+    <div className="flex flex-col items-center gap-3 pb-6 pt-4">
+      <button
+        onClick={handleRefresh}
+        className="flex items-center gap-2 rounded-xl border border-primary/40 bg-primary/10 px-6 py-3 text-sm font-bold text-primary transition hover:bg-primary/20 active:scale-95"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+        </svg>
+        Refresh Data
+      </button>
+      <div className="flex items-center gap-2 text-xs text-muted">
+        <span className={`h-2 w-2 rounded-full ${marketOpen ? "bg-green-500 animate-pulse" : "bg-gray-400"}`} />
+        {marketOpen ? "Market Open · Auto-refresh every 5 min" : "Market Closed · Click refresh to update manually"}
+      </div>
     </div>
   );
 }
 
 /* ─── Scanner Tab (Best 5 Long + Best 5 Short) ─── */
 function ScannerTab({ date }: { date: string }) {
-  const { data: scanner, updatedAt } = usePersistentPoll<ScannerResp>(`/api/broker-flow/scanner?date=${date}`, THIRTY_MIN);
-  const { data: overview } = usePersistentPoll<OverviewResp>(`/api/broker-flow/overview?date=${date}`, THIRTY_MIN);
-  const { data: lb } = usePersistentPoll<LeaderboardResp>(`/api/broker-flow/leaderboard?date=${date}`, THIRTY_MIN);
+  const { data: scanner, updatedAt, refresh: refreshScanner, isMarketOpen } = usePersistentPoll<ScannerResp>(`/api/broker-flow/scanner?date=${date}`, FIVE_MIN);
+  const { data: overview } = usePersistentPoll<OverviewResp>(`/api/broker-flow/overview?date=${date}`, FIVE_MIN);
+  const { data: lb } = usePersistentPoll<LeaderboardResp>(`/api/broker-flow/leaderboard?date=${date}`, FIVE_MIN);
 
   const hasData = scanner && (scanner.longPicks.length > 0 || scanner.shortPicks.length > 0);
 
@@ -108,7 +147,6 @@ function ScannerTab({ date }: { date: string }) {
             <p className="text-xs text-muted">
               Broker concentration + net flow + volume spike + CMF signals
               {updatedAt ? ` · updated ${new Date(updatedAt).toLocaleTimeString("en-GB")}` : ""}
-              <span className="ml-2 text-primary">· auto 3s · data never lost</span>
             </p>
           </div>
         </div>
@@ -288,8 +326,8 @@ function LeaderboardColumn({ title, items, tone }: { title: string; items: Array
 
 /* ─── Leaderboard Tab (full) ─── */
 function LeaderboardTab({ date }: { date: string }) {
-  const { data: overview } = usePersistentPoll<OverviewResp>(`/api/broker-flow/overview?date=${date}`, THIRTY_MIN);
-  const { data: lb } = usePersistentPoll<LeaderboardResp>(`/api/broker-flow/leaderboard?date=${date}`, THIRTY_MIN);
+  const { data: overview } = usePersistentPoll<OverviewResp>(`/api/broker-flow/overview?date=${date}`, FIVE_MIN);
+  const { data: lb } = usePersistentPoll<LeaderboardResp>(`/api/broker-flow/leaderboard?date=${date}`, FIVE_MIN);
 
   return (
     <div className="space-y-5">
@@ -342,7 +380,7 @@ function LeaderboardTab({ date }: { date: string }) {
 function StockFlowTab({ date }: { date: string }) {
   const [symbol, setSymbol] = useState("");
   const [activeSymbol, setActiveSymbol] = useState("");
-  const { data } = usePersistentPoll<StockFlowResp>(activeSymbol ? `/api/broker-flow/stock?symbol=${activeSymbol}&date=${date}` : "", THIRTY_MIN);
+  const { data } = usePersistentPoll<StockFlowResp>(activeSymbol ? `/api/broker-flow/stock?symbol=${activeSymbol}&date=${date}` : "", FIVE_MIN);
 
   const maxBar = useMemo(() => {
     if (!data?.brokerFlows) return 1;
@@ -489,7 +527,7 @@ function StockFlowTab({ date }: { date: string }) {
 
 /* ─── Cross-Stock Patterns Tab ─── */
 function PatternsTab({ date }: { date: string }) {
-  const { data } = usePersistentPoll<LeaderboardResp>(`/api/broker-flow/leaderboard?date=${date}`, THIRTY_MIN);
+  const { data } = usePersistentPoll<LeaderboardResp>(`/api/broker-flow/leaderboard?date=${date}`, FIVE_MIN);
 
   if (!data?.crossStockPatterns?.length) {
     return <div className="py-10 text-center text-muted">No cross-stock patterns detected. Data accumulates over multiple trading days.</div>;
