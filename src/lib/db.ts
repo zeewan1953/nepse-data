@@ -87,6 +87,28 @@ async function migrateSchema(): Promise<void> {
     )
   `);
 
+  // Floorsheet trades stored by date for historical querying
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS floorsheet_trades (
+      tradeDate TEXT NOT NULL,
+      stockSymbol TEXT NOT NULL,
+      securityName TEXT NOT NULL,
+      buyerMemberId TEXT NOT NULL,
+      sellerMemberId TEXT NOT NULL,
+      contractQuantity REAL NOT NULL,
+      contractAmount REAL NOT NULL,
+      syncedAt INTEGER NOT NULL
+    )
+  `);
+
+  // Indexes for fast floorsheet queries
+  try {
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_fs_date ON floorsheet_trades(tradeDate)");
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_fs_buyer ON floorsheet_trades(tradeDate, buyerMemberId)");
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_fs_seller ON floorsheet_trades(tradeDate, sellerMemberId)");
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_fs_stock ON floorsheet_trades(tradeDate, stockSymbol)");
+  } catch { /* indexes may already exist */ }
+
   // Add createdAt column if missing
   try {
     await db.execute("ALTER TABLE otps ADD COLUMN createdAt INTEGER DEFAULT 0");
@@ -214,4 +236,43 @@ export async function getAllStocks(): Promise<StockRow[]> {
     percentageChange: Number(r.percentageChange),
     totalTradeQuantity: Number(r.totalTradeQuantity),
   }));
+}
+
+// ─── Floorsheet trades (DB-backed) ────────────────────────────────────────
+export type FsTrade = {
+  tradeDate: string;
+  stockSymbol: string;
+  securityName: string;
+  buyerMemberId: string;
+  sellerMemberId: string;
+  contractQuantity: number;
+  contractAmount: number;
+};
+
+export async function saveFloorsheetTrades(date: string, trades: FsTrade[]): Promise<void> {
+  if (!trades.length) return;
+  const now = Date.now();
+  // Delete existing trades for this date and re-insert
+  await db.execute({ sql: "DELETE FROM floorsheet_trades WHERE tradeDate = ?", args: [date] });
+  // Batch insert in chunks of 500
+  const CHUNK = 500;
+  for (let i = 0; i < trades.length; i += CHUNK) {
+    const chunk = trades.slice(i, i + CHUNK);
+    const statements = chunk.map((t) => ({
+      sql: `INSERT INTO floorsheet_trades(tradeDate, stockSymbol, securityName, buyerMemberId, sellerMemberId, contractQuantity, contractAmount, syncedAt)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [t.tradeDate, t.stockSymbol, t.securityName, t.buyerMemberId, t.sellerMemberId, t.contractQuantity, t.contractAmount, now],
+    }));
+    await db.batch(statements, "write");
+  }
+}
+
+export async function getFloorsheetCount(date: string): Promise<number> {
+  const r = await db.execute({ sql: "SELECT COUNT(*) as cnt FROM floorsheet_trades WHERE tradeDate = ?", args: [date] });
+  return Number(r.rows[0]?.cnt ?? 0);
+}
+
+export async function getAvailableDates(): Promise<string[]> {
+  const r = await db.execute("SELECT DISTINCT tradeDate FROM floorsheet_trades ORDER BY tradeDate DESC LIMIT 30");
+  return r.rows.map((row) => String(row.tradeDate));
 }
