@@ -23,8 +23,8 @@ export async function GET(req: NextRequest) {
     );
 
     // Aggregate per stock
-    const stockMap = new Map<string, { symbol: string; name: string; buyQty: number; buyAmt: number; sellQty: number; sellAmt: number }>();
-    let totalBuyAmt = 0, totalSellAmt = 0, totalBuyQty = 0, totalSellQty = 0;
+    const stockMap = new Map<string, { symbol: string; name: string; buyQty: number; buyAmt: number; sellQty: number; sellAmt: number; buyTrades: number; sellTrades: number }>();
+    let totalBuyAmt = 0, totalSellAmt = 0, totalBuyQty = 0, totalSellQty = 0, totalBuyTrades = 0, totalSellTrades = 0;
 
     for (const r of trades.rows) {
       const sym = String(r.stockSymbol);
@@ -33,21 +33,34 @@ export async function GET(req: NextRequest) {
       const amt = Number(r.contractAmount);
       const isBuy = String(r.buyerMemberId) === broker;
 
-      const s = stockMap.get(sym) ?? { symbol: sym, name, buyQty: 0, buyAmt: 0, sellQty: 0, sellAmt: 0 };
-      if (isBuy) { s.buyQty += qty; s.buyAmt += amt; totalBuyQty += qty; totalBuyAmt += amt; }
-      else { s.sellQty += qty; s.sellAmt += amt; totalSellQty += qty; totalSellAmt += amt; }
+      const s = stockMap.get(sym) ?? { symbol: sym, name, buyQty: 0, buyAmt: 0, sellQty: 0, sellAmt: 0, buyTrades: 0, sellTrades: 0 };
+      if (isBuy) { s.buyQty += qty; s.buyAmt += amt; s.buyTrades += 1; totalBuyQty += qty; totalBuyAmt += amt; totalBuyTrades += 1; }
+      else { s.sellQty += qty; s.sellAmt += amt; s.sellTrades += 1; totalSellQty += qty; totalSellAmt += amt; totalSellTrades += 1; }
       stockMap.set(sym, s);
     }
 
     const stocks = [...stockMap.values()]
-      .map((s) => ({ ...s, netQty: s.buyQty - s.sellQty, netAmt: s.buyAmt - s.sellAmt }))
+      .map((s) => ({
+        ...s,
+        netQty: s.buyQty - s.sellQty,
+        netAmt: s.buyAmt - s.sellAmt,
+        avgBuyPrice: s.buyQty > 0 ? s.buyAmt / s.buyQty : 0,
+        avgSellPrice: s.sellQty > 0 ? s.sellAmt / s.sellQty : 0,
+        aggressive: s.buyAmt > 0 && s.sellAmt === 0 ? "buy" : s.sellAmt > 0 && s.buyAmt === 0 ? "sell" : "mixed",
+      }))
       .sort((a, b) => b.netAmt - a.netAmt);
 
     return Response.json({
       date,
       broker,
       stocks,
-      totals: { buyAmt: totalBuyAmt, sellAmt: totalSellAmt, netAmt: totalBuyAmt - totalSellAmt, buyQty: totalBuyQty, sellQty: totalSellQty },
+      totals: {
+        buyAmt: totalBuyAmt, sellAmt: totalSellAmt, netAmt: totalBuyAmt - totalSellAmt,
+        buyQty: totalBuyQty, sellQty: totalSellQty,
+        avgBuyPrice: totalBuyQty > 0 ? totalBuyAmt / totalBuyQty : 0,
+        avgSellPrice: totalSellQty > 0 ? totalSellAmt / totalSellQty : 0,
+        buyTrades: totalBuyTrades, sellTrades: totalSellTrades,
+      },
     });
   } catch (e) {
     return Response.json({ error: (e as Error)?.message ?? "Query failed" }, { status: 502 });

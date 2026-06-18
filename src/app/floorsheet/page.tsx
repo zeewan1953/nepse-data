@@ -8,22 +8,36 @@ import { num, compact } from "@/lib/format";
 
 /* ─── Types ─── */
 type Broker = { id: string; buyQty: number; buyAmt: number; sellQty: number; sellAmt: number; netQty: number; netAmt: number };
-type StockAgg = { symbol: string; name: string; qty: number; amount: number; trades: number };
+type StockAgg = { symbol: string; name: string; qty: number; amount: number; trades: number; avgPrice?: number };
 type DateOverview = {
   date: string;
   totals: { trades: number; qty: number; amount: number; brokers: number; stocks: number };
   netFlow: Broker[]; topBuyers: Broker[]; topSellers: Broker[]; stocks: StockAgg[];
   dates: string[];
 };
+type BrokerStock = {
+  symbol: string; name: string; buyQty: number; buyAmt: number; sellQty: number; sellAmt: number;
+  netQty: number; netAmt: number; buyTrades: number; sellTrades: number;
+  avgBuyPrice: number; avgSellPrice: number;
+  aggressive: "buy" | "sell" | "mixed";
+};
 type BrokerResp = {
   date: string; broker: string;
-  stocks: Array<{ symbol: string; name: string; buyQty: number; buyAmt: number; sellQty: number; sellAmt: number; netQty: number; netAmt: number }>;
-  totals: { buyAmt: number; sellAmt: number; netAmt: number; buyQty: number; sellQty: number };
+  stocks: BrokerStock[];
+  totals: {
+    buyAmt: number; sellAmt: number; netAmt: number; buyQty: number; sellQty: number;
+    avgBuyPrice: number; avgSellPrice: number; buyTrades: number; sellTrades: number;
+  };
+};
+type StockBrokerEntry = {
+  id: string; buyQty: number; buyAmt: number; sellQty: number; sellAmt: number;
+  netQty: number; netAmt: number; avgBuyPrice: number; avgSellPrice: number;
+  action: "aggressive-buy" | "aggressive-sell" | "hold" | "none";
 };
 type StockResp = {
   date: string;
   stocks: StockAgg[];
-  stockBrokers: Record<string, Array<{ id: string; buyQty: number; buyAmt: number; sellQty: number; sellAmt: number; netQty: number; netAmt: number; action: string }>>;
+  stockBrokers: Record<string, StockBrokerEntry[]>;
 };
 type SyncResp = { date: string; tradeCount: number; syncedAt: number; dates: string[] };
 
@@ -37,19 +51,41 @@ export default function FloorsheetDashboard() {
   const [date, setDate] = useState(todayStr());
   const [tab, setTab] = useState<"overview" | "broker" | "stock">("overview");
 
-  // Auto-sync: poll /api/floorsheet/sync every 3s during market hours
+  // Unified search state
+  const [searchInput, setSearchInput] = useState("");
+  const [searchType, setSearchType] = useState<"none" | "broker" | "stock">("none");
+  const [searchValue, setSearchValue] = useState("");
+
+  // Auto-sync
   const sync = usePoll<SyncResp>("/api/floorsheet/sync", open ? 3_000 : 60_000);
-
-  // Update date from sync response
-  useEffect(() => {
-    if (sync.data?.date) setDate(sync.data.date);
-  }, [sync.data?.date]);
-
+  useEffect(() => { if (sync.data?.date) setDate(sync.data.date); }, [sync.data?.date]);
   const availableDates = sync.data?.dates ?? [];
+
+  // Handle unified search
+  const handleSearch = useCallback((e: React.FormEvent) => {
+    e.preventDefault();
+    const val = searchInput.trim();
+    if (!val) { setSearchType("none"); setSearchValue(""); return; }
+    if (/^\d+$/.test(val)) {
+      setSearchType("broker");
+      setSearchValue(val);
+      setTab("broker");
+    } else {
+      setSearchType("stock");
+      setSearchValue(val.toUpperCase());
+      setTab("stock");
+    }
+  }, [searchInput]);
+
+  const clearSearch = useCallback(() => {
+    setSearchInput("");
+    setSearchType("none");
+    setSearchValue("");
+  }, []);
 
   return (
     <div className="space-y-5">
-      {/* Header: Title + Date Picker + Sync Status */}
+      {/* Header */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-extrabold text-foreground">Broker & Floorsheet Analysis</h1>
@@ -76,6 +112,30 @@ export default function FloorsheetDashboard() {
         </div>
       </div>
 
+      {/* Unified Search Bar */}
+      <form onSubmit={handleSearch} className="flex items-center gap-2 rounded-xl border border-border bg-surface p-3 shadow-sm">
+        <span className="text-lg">🔍</span>
+        <input
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          className="flex-1 rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm font-semibold outline-none focus:border-primary"
+          placeholder="Search stock symbol (e.g. NABIL) or broker number (e.g. 42)…"
+        />
+        <button type="submit" className="rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-white hover:bg-primary-700">
+          Search
+        </button>
+        {searchType !== "none" && (
+          <button type="button" onClick={clearSearch} className="rounded-lg border border-border px-3 py-2 text-sm font-semibold text-muted hover:bg-surface-2">
+            ✕ Clear
+          </button>
+        )}
+        {searchType !== "none" && (
+          <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${searchType === "broker" ? "bg-primary/15 text-primary" : "bg-up-bg text-up"}`}>
+            {searchType === "broker" ? `🏢 Broker #${searchValue}` : `📈 ${searchValue}`}
+          </span>
+        )}
+      </form>
+
       {/* Tabs */}
       <div className="flex gap-1 rounded-xl border border-border bg-surface p-1">
         {([
@@ -95,8 +155,8 @@ export default function FloorsheetDashboard() {
 
       {/* Tab Content */}
       {tab === "overview" && <OverviewTab date={date} />}
-      {tab === "broker" && <BrokerTab date={date} />}
-      {tab === "stock" && <StockTab date={date} />}
+      {tab === "broker" && <BrokerTab date={date} brokerId={searchType === "broker" ? searchValue : null} />}
+      {tab === "stock" && <StockTab date={date} filterSymbol={searchType === "stock" ? searchValue : null} />}
 
       {/* Agent Insight */}
       <AgentInsight marketOpen={open ?? false} />
@@ -116,37 +176,35 @@ function OverviewTab({ date }: { date: string }) {
 
   return (
     <div className="space-y-5">
-      {/* Stats */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label="Total Trades" value={num(data.totals.trades)} />
         <Stat label="Turnover" value={`Rs ${compact(data.totals.amount)}`} />
         <Stat label="Active Brokers" value={num(data.totals.brokers)} />
         <Stat label="Stocks Traded" value={num(data.totals.stocks)} />
       </div>
-      {/* Net flow */}
       <div className="grid gap-4 lg:grid-cols-2">
         <NetFlowCard title="Biggest Net Buyers" rows={data.netFlow.filter((b) => b.netAmt > 0).slice(0, 10)} tone="up" />
         <NetFlowCard title="Biggest Net Sellers" rows={data.netFlow.filter((b) => b.netAmt < 0).slice(-10).reverse()} tone="down" />
       </div>
-      {/* Top buyers / sellers */}
       <div className="grid gap-4 lg:grid-cols-2">
         <BrokerTable title="Top Buyers (by value)" rows={data.topBuyers} mode="buy" />
         <BrokerTable title="Top Sellers (by value)" rows={data.topSellers} mode="sell" />
       </div>
-      {/* Stock-wise */}
       <StockTable stocks={data.stocks} />
     </div>
   );
 }
 
 /* ─── Broker Tab ─── */
-function BrokerTab({ date }: { date: string }) {
-  const [brokerId, setBrokerId] = useState("1");
-  const [search, setSearch] = useState("1");
-  const { data, loading } = usePoll<BrokerResp>(
-    `/api/fs-broker?date=${date}&broker=${brokerId}`,
-    3_000,
-  );
+function BrokerTab({ date, brokerId: externalId }: { date: string; brokerId: string | null }) {
+  const [brokerId, setBrokerId] = useState(externalId ?? "1");
+  const [search, setSearch] = useState(externalId ?? "1");
+  const { data, loading } = usePoll<BrokerResp>(`/api/fs-broker?date=${date}&broker=${brokerId}`, 3_000);
+
+  // Sync with external search
+  useEffect(() => {
+    if (externalId) { setBrokerId(externalId); setSearch(externalId); }
+  }, [externalId]);
 
   const chartStocks = useMemo(() => {
     if (!data?.stocks) return [];
@@ -157,7 +215,7 @@ function BrokerTab({ date }: { date: string }) {
 
   return (
     <div className="space-y-5">
-      {/* Search */}
+      {/* Inline broker search */}
       <div className="flex items-center gap-3 rounded-xl border border-border bg-surface p-4">
         <span className="text-sm font-semibold text-muted">Broker #</span>
         <form onSubmit={(e) => { e.preventDefault(); const n = search.replace(/\D/g, ""); if (n) setBrokerId(n); }} className="flex flex-1 items-center gap-2">
@@ -172,11 +230,13 @@ function BrokerTab({ date }: { date: string }) {
 
       {data && (
         <>
-          {/* Summary */}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {/* Summary with avg prices */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             <Stat label="Buy Amt" value={compact(data.totals.buyAmt)} sub="text-up" />
             <Stat label="Sell Amt" value={compact(data.totals.sellAmt)} />
             <Stat label="Net Amt" value={`${data.totals.netAmt >= 0 ? "+" : ""}${compact(data.totals.netAmt)}`} />
+            <Stat label="Avg Buy Price" value={data.totals.avgBuyPrice > 0 ? `Rs ${data.totals.avgBuyPrice.toFixed(2)}` : "—"} />
+            <Stat label="Avg Sell Price" value={data.totals.avgSellPrice > 0 ? `Rs ${data.totals.avgSellPrice.toFixed(2)}` : "—"} />
             <Stat label="Stocks" value={String(data.stocks.length)} sub={`Buy ratio: ${buyRatio.toFixed(1)}%`} />
           </div>
 
@@ -207,7 +267,7 @@ function BrokerTab({ date }: { date: string }) {
             </div>
           )}
 
-          {/* Stock table */}
+          {/* Stock table with avg prices + aggressive */}
           <div className="overflow-x-auto rounded-2xl border border-border bg-surface shadow-sm">
             <div className="border-b border-border px-5 py-3 font-bold">Stocks traded by Broker #{brokerId} ({data.stocks.length})</div>
             <table className="w-full text-sm">
@@ -216,9 +276,12 @@ function BrokerTab({ date }: { date: string }) {
                   <th className="px-3 py-2 text-left">Symbol</th>
                   <th className="px-3 py-2 text-right">Buy Qty</th>
                   <th className="px-3 py-2 text-right">Buy Amt</th>
+                  <th className="px-3 py-2 text-right">Avg Buy ₹</th>
                   <th className="px-3 py-2 text-right">Sell Qty</th>
                   <th className="px-3 py-2 text-right">Sell Amt</th>
+                  <th className="px-3 py-2 text-right">Avg Sell ₹</th>
                   <th className="px-3 py-2 text-right">Net Amt</th>
+                  <th className="px-3 py-2 text-center">Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -227,12 +290,23 @@ function BrokerTab({ date }: { date: string }) {
                     <td className="px-3 py-2 font-bold"><Link href={`/stock/${s.symbol}`} className="text-primary hover:underline">{s.symbol.replace(/\d+/g, "")}</Link></td>
                     <td className="px-3 py-2 text-right text-up tabular-nums">{num(s.buyQty)}</td>
                     <td className="px-3 py-2 text-right text-up tabular-nums">{compact(s.buyAmt)}</td>
+                    <td className="px-3 py-2 text-right text-up tabular-nums">{s.avgBuyPrice > 0 ? `Rs ${s.avgBuyPrice.toFixed(2)}` : "—"}</td>
                     <td className="px-3 py-2 text-right text-down tabular-nums">{num(s.sellQty)}</td>
                     <td className="px-3 py-2 text-right text-down tabular-nums">{compact(s.sellAmt)}</td>
+                    <td className="px-3 py-2 text-right text-down tabular-nums">{s.avgSellPrice > 0 ? `Rs ${s.avgSellPrice.toFixed(2)}` : "—"}</td>
                     <td className={`px-3 py-2 text-right font-bold tabular-nums ${s.netAmt >= 0 ? "text-up" : "text-down"}`}>{s.netAmt >= 0 ? "+" : ""}{compact(s.netAmt)}</td>
+                    <td className="px-3 py-2 text-center">
+                      <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${
+                        s.aggressive === "buy" ? "bg-up-bg text-up" :
+                        s.aggressive === "sell" ? "bg-down-bg text-down" :
+                        "bg-surface-2 text-muted"
+                      }`}>
+                        {s.aggressive === "buy" ? "🟢 Agg Buy" : s.aggressive === "sell" ? "🔴 Agg Sell" : "Mixed"}
+                      </span>
+                    </td>
                   </tr>
                 ))}
-                {data.stocks.length === 0 && <tr><td colSpan={6} className="px-3 py-8 text-center text-muted">No trades for this broker on {date}.</td></tr>}
+                {data.stocks.length === 0 && <tr><td colSpan={9} className="px-3 py-8 text-center text-muted">No trades for this broker on {date}.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -243,31 +317,44 @@ function BrokerTab({ date }: { date: string }) {
 }
 
 /* ─── Stock Tab ─── */
-function StockTab({ date }: { date: string }) {
+function StockTab({ date, filterSymbol }: { date: string; filterSymbol: string | null }) {
   const [query, setQuery] = useState("");
-  const { data, loading } = usePoll<StockResp>(`/api/fs-stock?date=${date}`, 3_000);
+  const effectiveQuery = filterSymbol ?? query;
+  const { data, loading } = usePoll<StockResp>(`/api/fs-stock?date=${date}${effectiveQuery ? `&symbol=${effectiveQuery}` : ""}`, 3_000);
   const [expanded, setExpanded] = useState<string | null>(null);
+
+  // Sync external filter
+  useEffect(() => { if (filterSymbol) setQuery(filterSymbol); }, [filterSymbol]);
 
   const filtered = useMemo(() => {
     if (!data?.stocks) return [];
+    if (filterSymbol) return data.stocks; // API already filtered
     if (!query) return data.stocks;
     const q = query.toLowerCase();
     return data.stocks.filter((s) => s.symbol.toLowerCase().includes(q) || s.name.toLowerCase().includes(q));
-  }, [data, query]);
+  }, [data, query, filterSymbol]);
 
   if (loading && !data) return <div className="py-10 text-center text-muted">Loading stock data…</div>;
   if (!data) return null;
 
   return (
     <div className="space-y-5">
-      {/* Search */}
-      <div className="flex items-center gap-3 rounded-xl border border-border bg-surface p-4">
-        <span className="text-sm font-semibold text-muted">🔍</span>
-        <input value={query} onChange={(e) => setQuery(e.target.value)}
-          className="flex-1 rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-sm outline-none focus:border-primary"
-          placeholder="Search stock symbol or name…" />
-        <span className="text-xs text-muted">{filtered.length} stocks</span>
-      </div>
+      {/* Search (only shown when no external filter) */}
+      {!filterSymbol && (
+        <div className="flex items-center gap-3 rounded-xl border border-border bg-surface p-4">
+          <span className="text-sm font-semibold text-muted">🔍</span>
+          <input value={query} onChange={(e) => setQuery(e.target.value)}
+            className="flex-1 rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-sm outline-none focus:border-primary"
+            placeholder="Search stock symbol or name…" />
+          <span className="text-xs text-muted">{filtered.length} stocks</span>
+        </div>
+      )}
+      {filterSymbol && (
+        <div className="flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 p-3">
+          <span className="text-sm font-bold text-primary">📈 Showing: {filterSymbol}</span>
+          <span className="text-xs text-muted">{filtered.length} result(s)</span>
+        </div>
+      )}
 
       {/* Stock list with expandable broker breakdown */}
       <div className="overflow-x-auto rounded-2xl border border-border bg-surface shadow-sm">
@@ -279,6 +366,7 @@ function StockTab({ date }: { date: string }) {
               <th className="px-3 py-2 text-right">Trades</th>
               <th className="px-3 py-2 text-right">Quantity</th>
               <th className="px-3 py-2 text-right">Turnover</th>
+              <th className="px-3 py-2 text-right">Avg Price</th>
               <th className="px-3 py-2 text-center">Brokers</th>
             </tr>
           </thead>
@@ -290,7 +378,7 @@ function StockTab({ date }: { date: string }) {
                 <StockRow key={s.symbol} s={s} brokers={brokers} expanded={isExpanded} onToggle={() => setExpanded(isExpanded ? null : s.symbol)} />
               );
             })}
-            {filtered.length === 0 && <tr><td colSpan={6} className="px-3 py-8 text-center text-muted">No stocks found.</td></tr>}
+            {filtered.length === 0 && <tr><td colSpan={7} className="px-3 py-8 text-center text-muted">No stocks found.</td></tr>}
           </tbody>
         </table>
       </div>
@@ -299,12 +387,12 @@ function StockTab({ date }: { date: string }) {
 }
 
 function StockRow({ s, brokers, expanded, onToggle }: {
-  s: StockAgg; brokers: Array<{ id: string; buyQty: number; buyAmt: number; sellQty: number; sellAmt: number; netQty: number; netAmt: number; action: string }>;
+  s: StockAgg; brokers: StockBrokerEntry[];
   expanded: boolean; onToggle: () => void;
 }) {
-  const buyBrokers = brokers.filter((b) => b.action === "buy").length;
-  const sellBrokers = brokers.filter((b) => b.action === "sell").length;
-  const holdBrokers = brokers.filter((b) => b.action === "hold").length;
+  const aggBuyBrokers = brokers.filter((b) => b.action === "aggressive-buy");
+  const aggSellBrokers = brokers.filter((b) => b.action === "aggressive-sell");
+  const holdBrokers = brokers.filter((b) => b.action === "hold");
   const maxBrokerAmt = Math.max(...brokers.map((b) => Math.max(b.buyAmt, b.sellAmt)), 1);
 
   return (
@@ -317,18 +405,34 @@ function StockRow({ s, brokers, expanded, onToggle }: {
         <td className="px-3 py-2 text-right tabular-nums">{num(s.trades)}</td>
         <td className="px-3 py-2 text-right tabular-nums">{num(s.qty)}</td>
         <td className="px-3 py-2 text-right tabular-nums">{compact(s.amount)}</td>
+        <td className="px-3 py-2 text-right tabular-nums font-semibold">{s.avgPrice ? `Rs ${s.avgPrice.toFixed(2)}` : "—"}</td>
         <td className="px-3 py-2 text-center">
           <span className="flex items-center justify-center gap-1.5 text-xs">
-            <span className="rounded bg-up-bg px-1.5 py-0.5 font-semibold text-up">{buyBrokers}B</span>
-            <span className="rounded bg-down-bg px-1.5 py-0.5 font-semibold text-down">{sellBrokers}S</span>
-            {holdBrokers > 0 && <span className="rounded bg-surface-2 px-1.5 py-0.5 font-semibold text-muted">{holdBrokers}H</span>}
+            <span className="rounded bg-up-bg px-1.5 py-0.5 font-semibold text-up">{aggBuyBrokers.length}B</span>
+            <span className="rounded bg-down-bg px-1.5 py-0.5 font-semibold text-down">{aggSellBrokers.length}S</span>
+            {holdBrokers.length > 0 && <span className="rounded bg-surface-2 px-1.5 py-0.5 font-semibold text-muted">{holdBrokers.length}H</span>}
           </span>
         </td>
       </tr>
       {expanded && (
         <tr className="border-t border-border bg-surface-2">
-          <td colSpan={6} className="px-4 py-3">
-            <div className="mb-2 text-xs font-bold text-muted">Broker Breakdown — Buy / Sell / Hold ({brokers.length} brokers)</div>
+          <td colSpan={7} className="px-4 py-3">
+            <div className="mb-2 text-xs font-bold text-muted">Broker Breakdown — Aggressive Buy / Sell / Hold ({brokers.length} brokers)</div>
+            {/* Aggressive brokers highlight */}
+            {(aggBuyBrokers.length > 0 || aggSellBrokers.length > 0) && (
+              <div className="mb-3 flex flex-wrap gap-2">
+                {aggBuyBrokers.map((b) => (
+                  <span key={b.id} className="rounded-full bg-up-bg px-2 py-0.5 text-xs font-bold text-up">
+                    🟢 #{b.id} Agg Buy {compact(b.buyAmt)}
+                  </span>
+                ))}
+                {aggSellBrokers.map((b) => (
+                  <span key={b.id} className="rounded-full bg-down-bg px-2 py-0.5 text-xs font-bold text-down">
+                    🔴 #{b.id} Agg Sell {compact(b.sellAmt)}
+                  </span>
+                ))}
+              </div>
+            )}
             {/* Bar chart */}
             {brokers.length > 0 && (
               <div className="mb-3 flex items-end gap-1.5 overflow-x-auto" style={{ maxHeight: 160 }}>
@@ -342,29 +446,52 @@ function StockRow({ s, brokers, expanded, onToggle }: {
                         <div className="rounded-t bg-down" style={{ height: sellH, width: 10 }} title={`Sell: ${compact(b.sellAmt)}`} />
                       </div>
                       <div className="mt-0.5 text-[8px] font-bold text-muted">#{b.id}</div>
-                      <div className={`text-[8px] font-bold ${b.action === "buy" ? "text-up" : b.action === "sell" ? "text-down" : "text-muted"}`}>
-                        {b.action === "buy" ? "BUY" : b.action === "sell" ? "SELL" : "HOLD"}
+                      <div className={`text-[8px] font-bold ${
+                        b.action === "aggressive-buy" ? "text-up" : b.action === "aggressive-sell" ? "text-down" : "text-muted"
+                      }`}>
+                        {b.action === "aggressive-buy" ? "AGG.B" : b.action === "aggressive-sell" ? "AGG.S" : "HOLD"}
                       </div>
                     </div>
                   );
                 })}
               </div>
             )}
-            {/* Table */}
-            <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
-              {brokers.slice(0, 18).map((b) => (
-                <div key={b.id} className="flex items-center justify-between rounded bg-surface px-2 py-1 text-xs">
-                  <span className="font-bold">#{b.id}</span>
-                  <span className="flex gap-2 tabular-nums">
-                    <span className="text-up">B {num(b.buyQty)}</span>
-                    <span className="text-down">S {num(b.sellQty)}</span>
-                    <span className={`font-semibold ${b.netAmt >= 0 ? "text-up" : "text-down"}`}>{b.netAmt >= 0 ? "+" : ""}{compact(b.netAmt)}</span>
-                  </span>
-                  <span className={`rounded px-1 text-[9px] font-bold uppercase ${b.action === "buy" ? "bg-up-bg text-up" : b.action === "sell" ? "bg-down-bg text-down" : "bg-surface-2 text-muted"}`}>
-                    {b.action}
-                  </span>
-                </div>
-              ))}
+            {/* Table with avg prices */}
+            <div className="max-h-60 overflow-auto">
+              <table className="w-full text-xs">
+                <thead className="sticky top-0 bg-surface-2 text-[10px] uppercase text-muted">
+                  <tr>
+                    <th className="px-2 py-1 text-left">Broker</th>
+                    <th className="px-2 py-1 text-right">Buy Qty</th>
+                    <th className="px-2 py-1 text-right">Avg Buy ₹</th>
+                    <th className="px-2 py-1 text-right">Sell Qty</th>
+                    <th className="px-2 py-1 text-right">Avg Sell ₹</th>
+                    <th className="px-2 py-1 text-right">Net Amt</th>
+                    <th className="px-2 py-1 text-center">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {brokers.slice(0, 30).map((b) => (
+                    <tr key={b.id} className="border-t border-border">
+                      <td className="px-2 py-1 font-bold">#{b.id}</td>
+                      <td className="px-2 py-1 text-right text-up tabular-nums">{b.buyQty > 0 ? num(b.buyQty) : "—"}</td>
+                      <td className="px-2 py-1 text-right text-up tabular-nums">{b.avgBuyPrice > 0 ? `Rs ${b.avgBuyPrice.toFixed(2)}` : "—"}</td>
+                      <td className="px-2 py-1 text-right text-down tabular-nums">{b.sellQty > 0 ? num(b.sellQty) : "—"}</td>
+                      <td className="px-2 py-1 text-right text-down tabular-nums">{b.avgSellPrice > 0 ? `Rs ${b.avgSellPrice.toFixed(2)}` : "—"}</td>
+                      <td className={`px-2 py-1 text-right font-semibold tabular-nums ${b.netAmt >= 0 ? "text-up" : "text-down"}`}>{b.netAmt >= 0 ? "+" : ""}{compact(b.netAmt)}</td>
+                      <td className="px-2 py-1 text-center">
+                        <span className={`rounded px-1 text-[9px] font-bold uppercase ${
+                          b.action === "aggressive-buy" ? "bg-up-bg text-up" :
+                          b.action === "aggressive-sell" ? "bg-down-bg text-down" :
+                          "bg-surface-2 text-muted"
+                        }`}>
+                          {b.action === "aggressive-buy" ? "AGG.BUY" : b.action === "aggressive-sell" ? "AGG.SELL" : "HOLD"}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
             {brokers.length === 0 && <div className="text-sm text-muted">No broker data.</div>}
           </td>
@@ -374,7 +501,7 @@ function StockRow({ s, brokers, expanded, onToggle }: {
   );
 }
 
-/* ─── Agent Insight (market-wide analysis) ─── */
+/* ─── Agent Insight ─── */
 type Analysis = {
   totals: { trades: number; sampled: number; qty: number; amount: number; brokers: number; stocks: number; truncated: boolean };
   netFlow: Broker[]; topBuyers: Broker[]; topSellers: Broker[]; stocks: StockAgg[]; generatedAt: number; error?: string;
@@ -544,16 +671,15 @@ function StockTable({ stocks }: { stocks: StockAgg[] }) {
 }
 
 /* ─── Individual Broker Deep-Dive (live API) ─── */
-type BrokerStock = { symbol: string; name: string; buyQty: number; buyAmt: number; sellQty: number; sellAmt: number; netQty: number; netAmt: number; ltp: number; change: number; volume: number };
+type LiveBrokerStock = { symbol: string; name: string; buyQty: number; buyAmt: number; sellQty: number; sellAmt: number; netQty: number; netAmt: number; ltp: number; change: number; volume: number };
 type LiveBrokerResp = {
-  broker: number; stocks: BrokerStock[]; totals: { buyAmt: number; sellAmt: number; netAmt: number };
-  accumulation: BrokerStock[]; distribution: BrokerStock[]; liveCount: number; asOf: string; error?: string;
+  broker: number; stocks: LiveBrokerStock[]; totals: { buyAmt: number; sellAmt: number; netAmt: number };
+  accumulation: LiveBrokerStock[]; distribution: LiveBrokerStock[]; liveCount: number; asOf: string; error?: string;
 };
 
 function BrokerDeepDive({ marketOpen }: { marketOpen: boolean }) {
   const [brokerId, setBrokerId] = useState(1);
   const [input, setInput] = useState("1");
-  const [filter, setFilter] = useState<"all" | "topBuy" | "topSell" | "netBuy" | "netSell">("all");
   const { data, error, loading, updatedAt } = usePoll<LiveBrokerResp>(`/api/broker-live/${brokerId}`, marketOpen ? 3_000 : 60_000);
   useEffect(() => { setInput(String(brokerId)); }, [brokerId]);
 

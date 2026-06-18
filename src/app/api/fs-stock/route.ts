@@ -59,23 +59,21 @@ export async function GET(req: NextRequest) {
       bm.set(seller, sEntry);
     }
 
-    const stocks = [...stockMap.values()].sort((a, b) => b.amount - a.amount);
+    const stocks = [...stockMap.values()]
+      .map((s) => ({
+        ...s,
+        avgPrice: s.qty > 0 ? s.amount / s.qty : 0,
+      }))
+      .sort((a, b) => b.amount - a.amount);
 
-    // Build broker breakdown for each stock (top brokers by net amount)
-    const stockBrokers: Record<string, Array<{ id: string; buyQty: number; buyAmt: number; sellQty: number; sellAmt: number; netQty: number; netAmt: number; action: string }>> = {};
+    // Build broker breakdown for each stock
+    const stockBrokers: Record<string, Array<{
+      id: string; buyQty: number; buyAmt: number; sellQty: number; sellAmt: number;
+      netQty: number; netAmt: number; action: string;
+      avgBuyPrice: number; avgSellPrice: number;
+    }>> = {};
     for (const [sym, bm] of brokerBreakdown) {
-      const brokers = [...bm.values()]
-        .map((b) => ({
-          ...b,
-          id: [...bm.entries()].find(([, v]) => v === b)?.[0] ?? "",
-          netQty: b.buyQty - b.sellQty,
-          netAmt: b.buyAmt - b.sellAmt,
-          action: b.buyAmt > 0 && b.sellAmt > 0 ? "hold" : b.buyAmt > 0 ? "buy" : "sell",
-        }))
-        .sort((a, b) => b.netAmt - a.netAmt);
-      // Fix: get broker ID properly
-      const brokerEntries = [...bm.entries()];
-      const result = brokerEntries.map(([id, b]) => ({
+      const result = [...bm.entries()].map(([id, b]) => ({
         id,
         buyQty: b.buyQty,
         buyAmt: b.buyAmt,
@@ -83,7 +81,9 @@ export async function GET(req: NextRequest) {
         sellAmt: b.sellAmt,
         netQty: b.buyQty - b.sellQty,
         netAmt: b.buyAmt - b.sellAmt,
-        action: b.buyAmt > 0 && b.sellAmt > 0 ? "hold" : b.buyAmt > 0 ? "buy" : "sell",
+        avgBuyPrice: b.buyQty > 0 ? b.buyAmt / b.buyQty : 0,
+        avgSellPrice: b.sellQty > 0 ? b.sellAmt / b.sellQty : 0,
+        action: b.buyAmt > 0 && b.sellAmt === 0 ? "aggressive-buy" : b.sellAmt > 0 && b.buyAmt === 0 ? "aggressive-sell" : b.buyAmt > 0 && b.sellAmt > 0 ? "hold" : "none",
       })).sort((a, b) => b.netAmt - a.netAmt);
       stockBrokers[sym] = result;
     }
