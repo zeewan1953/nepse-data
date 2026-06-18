@@ -8,8 +8,17 @@ import type { LiveMarketData, MarketStatus, SecurityResponse } from "@/lib/types
 import { classifySymbol, TYPE_BADGE } from "@/lib/types";
 import { npr, num, compact, pct, changeClass } from "@/lib/format";
 
-type LiveResp = { data: LiveMarketData[]; count: number };
-type StockSignal = { simple: "Buy" | "Hold" | "Sell"; strength: "Strong" | "Moderate" | "Weak"; confidence: number };
+type LiveResp = { data: LiveMarketData[]; count: number; source?: string };
+type StockSignal = { 
+  simple: "Buy" | "Hold" | "Sell"; 
+  strength: "Strong" | "Moderate" | "Weak"; 
+  confidence: number;
+  rsi?: number;
+  trend?: string;
+  macd?: string;
+  support?: number;
+  resistance?: number;
+};
 
 const PALETTE = ["#1d72d2", "#2c9bf0", "#0a8754", "#e0a800", "#d13438", "#7048e8", "#1098ad", "#e8590c", "#5c7cfa", "#37b24d"];
 
@@ -23,6 +32,17 @@ export default function PortfolioPage() {
     for (const r of live.data?.data ?? []) m.set(r.symbol, r.lastTradedPrice);
     return m;
   }, [live.data]);
+
+  // Data freshness indicator
+  const lastUpdate = live.data?.data?.[0]?.lastUpdatedDateTime;
+  const dataAge = useMemo(() => {
+    if (!lastUpdate) return null;
+    const diff = Date.now() - new Date(lastUpdate).getTime();
+    if (diff < 60_000) return { text: "Live · just now", color: "text-up" };
+    if (diff < 300_000) return { text: `Live · ${Math.floor(diff / 60_000)}m ago`, color: "text-up" };
+    if (diff < 3_600_000) return { text: `Delayed · ${Math.floor(diff / 60_000)}m ago`, color: "text-amber-500" };
+    return { text: `Stale · ${Math.floor(diff / 3_600_000)}h ago`, color: "text-down" };
+  }, [lastUpdate]);
 
   const { items: lots, add: addLot, remove: removeLot } = useLots();
   const { items: setups, add: addSetup, remove: removeSetup } = useSetups();
@@ -69,7 +89,14 @@ export default function PortfolioPage() {
             const s = generateSignal(candles, ltp);
             const simple = s.recommendation.includes("Buy") ? "Buy" : s.recommendation.includes("Sell") ? "Sell" : "Hold";
             const strength = s.confidence >= 65 ? "Strong" : s.confidence <= 45 ? "Weak" : "Moderate";
-            out[sym] = { simple, strength, confidence: s.confidence };
+            out[sym] = { 
+              simple, strength, confidence: s.confidence,
+              rsi: s.rsi ?? undefined,
+              trend: s.trend ?? undefined,
+              macd: (s.macd?.hist ?? 0) > 0 ? "Bullish" : (s.macd?.hist ?? 0) < 0 ? "Bearish" : "Neutral",
+              support: s.fib?.level382 ?? s.pivots?.s1 ?? undefined,
+              resistance: s.fib?.level618 ?? s.pivots?.r1 ?? undefined,
+            };
           } catch {
             /* skip */
           }
@@ -85,7 +112,14 @@ export default function PortfolioPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-extrabold text-foreground">Portfolio</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-extrabold text-foreground">Portfolio</h1>
+          {dataAge && (
+            <span className={`rounded-full bg-surface-2 px-2.5 py-0.5 text-[10px] font-semibold ${dataAge.color}`}>
+              {dataAge.text}
+            </span>
+          )}
+        </div>
         <p className="text-sm text-muted">WACC, allocation, live P/L and per-stock signals · saved on this device.</p>
       </div>
 
@@ -164,18 +198,30 @@ export default function PortfolioPage() {
                     </td>
                     <td className="px-3 py-2 text-center">
                       {sig ? (
-                        <span className={`text-xs font-bold ${sig.strength === "Strong" ? "text-up" : sig.strength === "Weak" ? "text-down" : "text-muted"}`}>
-                          {sig.strength} {sig.confidence}%
-                        </span>
+                        <div className="space-y-0.5">
+                          <span className={`text-xs font-bold ${sig.strength === "Strong" ? "text-up" : sig.strength === "Weak" ? "text-down" : "text-muted"}`}>
+                            {sig.strength} {sig.confidence}%
+                          </span>
+                          {sig.rsi !== undefined && (
+                            <div className="text-[9px] text-muted">
+                              RSI {sig.rsi.toFixed(0)} · {sig.trend === "Up" ? "🟢" : sig.trend === "Down" ? "🔴" : "🟡"} {sig.trend}
+                            </div>
+                          )}
+                        </div>
                       ) : (
                         <span className="text-xs text-muted">…</span>
                       )}
                     </td>
                     <td className="px-3 py-2 text-center">
                       {sig ? (
-                        <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${sig.simple === "Buy" ? "bg-up-bg text-up" : sig.simple === "Sell" ? "bg-down-bg text-down" : "bg-surface-2 text-muted"}`}>
-                          {sig.simple}
-                        </span>
+                        <div className="space-y-0.5">
+                          <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${sig.simple === "Buy" ? "bg-up-bg text-up" : sig.simple === "Sell" ? "bg-down-bg text-down" : "bg-surface-2 text-muted"}`}>
+                            {sig.simple}
+                          </span>
+                          {sig.macd && (
+                            <div className="text-[9px] text-muted">MACD: {sig.macd}</div>
+                          )}
+                        </div>
                       ) : (
                         <span className="text-xs text-muted">…</span>
                       )}
