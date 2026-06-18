@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePoll } from "@/lib/useLive";
 import type { MarketStatus, FloorSheet, FloorSheetItem } from "@/lib/types";
@@ -47,7 +47,7 @@ export default function FloorsheetDashboard() {
         </div>
       </div>
 
-      <AgentInsight analysis={data ?? null} onRefresh={refresh} refreshing={loading} />
+      <AgentInsight marketOpen={open ?? false} />
 
       {error && <div className="rounded-lg bg-down-bg px-4 py-3 text-sm text-down">Error: {error}</div>}
 
@@ -377,8 +377,18 @@ function BrokerStockTable({ stocks, filter }: { stocks: BrokerStock[]; filter: s
 
 type LiveChangeResp = { data: { symbol: string; percentageChange: number }[] };
 
-function AgentInsight({ analysis, onRefresh, refreshing }: { analysis: Analysis | null; onRefresh: () => void; refreshing: boolean }) {
-  const live = usePoll<LiveChangeResp>("/api/live", 60_000);
+function AgentInsight({ marketOpen }: { marketOpen: boolean }) {
+  const { data, updatedAt } = usePoll<Analysis>(
+    "/api/floorsheet/analysis",
+    marketOpen ? 3_000 : 60_000,
+  );
+  const live = usePoll<LiveChangeResp>("/api/live", marketOpen ? 3_000 : 60_000);
+
+  // Retain last good data so insights never disappear once shown
+  const retained = useRef<Analysis | null>(null);
+  if (data && data.totals.sampled > 0) retained.current = data;
+  const analysis = data?.totals.sampled ? data : retained.current;
+
   const changeMap = useMemo(() => {
     const m = new Map<string, number>();
     for (const r of live.data?.data ?? []) m.set(r.symbol, r.percentageChange);
@@ -389,6 +399,9 @@ function AgentInsight({ analysis, onRefresh, refreshing }: { analysis: Analysis 
     return (
       <section className="rounded-xl border border-primary/30 bg-surface p-4 shadow-sm">
         <h2 className="font-bold">🤖 Agent — Market Insight</h2>
+        <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${marketOpen ? "bg-up-bg text-up" : "bg-surface-2 text-muted"}`}>
+          {marketOpen ? "🔴 Live · waiting for data…" : "⏸ Paused"}
+        </span>
       </section>
     );
   }
@@ -401,13 +414,13 @@ function AgentInsight({ analysis, onRefresh, refreshing }: { analysis: Analysis 
   return (
     <section className="rounded-xl border border-primary/40 bg-gradient-to-br from-surface to-surface-2 p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="font-bold">🤖 Agent — Market Insight</h2>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-muted">auto from {num(analysis.totals.sampled)} trades</span>
-          <button onClick={onRefresh} disabled={refreshing} className="rounded-lg border border-border bg-surface px-3 py-1 text-xs font-semibold text-primary hover:bg-surface-2 disabled:opacity-50">
-            {refreshing ? "⟳ Refreshing…" : "⟳ Refresh"}
-          </button>
+          <h2 className="font-bold">🤖 Agent — Market Insight</h2>
+          <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${marketOpen ? "bg-up-bg text-up" : "bg-surface-2 text-muted"}`}>
+            {marketOpen ? "🔴 Live" : "⏸ Paused"}{updatedAt ? ` · ${new Date(updatedAt).toLocaleTimeString("en-GB")}` : ""}
+          </span>
         </div>
+        <span className="text-xs text-muted">auto from {num(analysis.totals.sampled)} trades · 3s refresh</span>
       </div>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <InsightBox title="🟢 Accumulating brokers" tone="up">
