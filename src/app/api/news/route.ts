@@ -6,6 +6,9 @@ export const dynamic = "force-dynamic";
 const RSS_FEEDS = [
   { name: "MeroLagani", url: "https://merolagani.com/rss" },
   { name: "ShareSansar", url: "https://www.sharesansar.com/rss" },
+  { name: "BizMandala", url: "https://bizmandala.com/feed/" },
+  { name: "ArthikAbhiyan", url: "https://www.arthikabhiyan.com/feed/" },
+  { name: "NepalStock", url: "https://nepalstock.com.np/feed" },
 ];
 
 type NewsItem = {
@@ -14,6 +17,7 @@ type NewsItem = {
   source: string;
   url: string;
   time: string;
+  description: string;
 };
 
 function parseRSS(xml: string, source: string): NewsItem[] {
@@ -25,6 +29,7 @@ function parseRSS(xml: string, source: string): NewsItem[] {
     const title = block.match(/<title>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/)?.[1]?.trim();
     const link = block.match(/<link>(.*?)<\/link>/)?.[1]?.trim();
     const pubDate = block.match(/<pubDate>(.*?)<\/pubDate>/)?.[1]?.trim();
+    const desc = block.match(/<description>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/)?.[1]?.trim() ?? "";
     if (title && link) {
       items.push({
         id: `${source}-${link}`,
@@ -32,10 +37,11 @@ function parseRSS(xml: string, source: string): NewsItem[] {
         source,
         url: link,
         time: pubDate ? new Date(pubDate).toISOString() : new Date().toISOString(),
+        description: desc.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&nbsp;/g, " ").trim().slice(0, 200),
       });
     }
   }
-  return items.slice(0, 10);
+  return items.slice(0, 20);
 }
 
 async function fetchNews(): Promise<NewsItem[]> {
@@ -54,7 +60,7 @@ async function fetchNews(): Promise<NewsItem[]> {
   return results
     .flat()
     .sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
-    .slice(0, 20);
+    .slice(0, 50);
 }
 
 export async function GET() {

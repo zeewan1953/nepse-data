@@ -45,7 +45,7 @@ type SignalRow = {
   } | null;
 };
 type SignalsResp = { signals: SignalRow[]; generatedAt: number };
-type NewsResp = { news: { id: string; title: string; source: string; url: string; time: string }[]; updatedAt: number };
+type NewsResp = { news: { id: string; title: string; source: string; url: string; time: string; description: string }[]; updatedAt: number };
 
 function chgOf(g: TopTenItem): number {
   // The upstream API actually returns `percentageChange`; the TS type says
@@ -344,6 +344,8 @@ function NewsSection({ news, loading }: { news: NewsResp["news"]; loading: boole
     <section className="rounded-xl border border-border bg-surface shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
         <h2 className="font-bold">📰 Market News</h2>
+        <div className="flex items-center gap-2">
+        <Link href="/news" className="rounded-md bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary/20">View All →</Link>
         <div className="flex items-center gap-1 overflow-x-auto text-xs font-semibold">
           <button
             onClick={() => setFilter("all")}
@@ -360,6 +362,7 @@ function NewsSection({ news, loading }: { news: NewsResp["news"]; loading: boole
               {s}
             </button>
           ))}
+        </div>
         </div>
       </div>
       <div className="max-h-64 overflow-auto">
