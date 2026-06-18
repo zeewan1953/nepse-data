@@ -12,6 +12,7 @@ const links = [
   { href: "/floorsheet", label: "Broker & Floorsheet" },
   { href: "/broker-flow", label: "Broker Flow" },
   { href: "/portfolio", label: "Portfolio" },
+  { href: "/demo", label: "Demo", badge: true },
   { href: "/profile", label: "Profile" },
 ];
 
