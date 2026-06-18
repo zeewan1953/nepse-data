@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePoll } from "@/lib/useLive";
-import type { MarketStatus, FloorSheet, FloorSheetItem, LiveMarketData } from "@/lib/types";
+import type { MarketStatus, FloorSheet, FloorSheetItem } from "@/lib/types";
 import { classifySymbol, TYPE_BADGE } from "@/lib/types";
 import { num, compact } from "@/lib/format";
 
@@ -18,9 +18,11 @@ type Analysis = {
   error?: string;
 };
 
-type BrokerStock = { symbol: string; name: string; buyQty: number; buyAmt: number; sellQty: number; sellAmt: number; netQty: number; netAmt: number };
-type BrokerResp = { broker: number; stocks: BrokerStock[]; totals: { buyAmt: number; sellAmt: number; netAmt: number }; error?: string };
-type LiveResp = { data: LiveMarketData[]; count: number };
+type BrokerStock = { symbol: string; name: string; buyQty: number; buyAmt: number; sellQty: number; sellAmt: number; netQty: number; netAmt: number; ltp: number; change: number; volume: number };
+type BrokerResp = {
+  broker: number; stocks: BrokerStock[]; totals: { buyAmt: number; sellAmt: number; netAmt: number };
+  accumulation: BrokerStock[]; distribution: BrokerStock[]; liveCount: number; asOf: string; error?: string;
+};
 
 export default function FloorsheetDashboard() {
   const status = usePoll<MarketStatus>("/api/market-status", 30_000);
@@ -29,13 +31,6 @@ export default function FloorsheetDashboard() {
     "/api/floorsheet/analysis",
     open ? 20_000 : 5 * 60_000,
   );
-  const { data: liveData } = usePoll<LiveResp>("/api/live", open ? 2_000 : 30_000);
-
-  const priceMap = useMemo(() => {
-    const m = new Map<string, { ltp: number; change: number }>();
-    for (const r of liveData?.data ?? []) m.set(r.symbol, { ltp: r.lastTradedPrice, change: r.percentageChange });
-    return m;
-  }, [liveData]);
 
   const empty = data && data.totals.sampled === 0;
 
@@ -94,7 +89,7 @@ export default function FloorsheetDashboard() {
       )}
 
       {/* Individual Broker Deep-Dive */}
-      <BrokerDeepDive priceMap={priceMap} />
+      <BrokerDeepDive marketOpen={open ?? false} />
 
       {loading && !data && <div className="py-10 text-center text-muted">Analysing floorsheet…</div>}
     </div>
@@ -103,26 +98,16 @@ export default function FloorsheetDashboard() {
 
 /* ─── Individual Broker Deep-Dive (merged from /broker) ─── */
 
-function BrokerDeepDive({ priceMap }: { priceMap: Map<string, { ltp: number; change: number }> }) {
+function BrokerDeepDive({ marketOpen }: { marketOpen: boolean }) {
   const [brokerId, setBrokerId] = useState(1);
   const [input, setInput] = useState("1");
   const [filter, setFilter] = useState<"all" | "topBuy" | "topSell" | "netBuy" | "netSell">("all");
-  const [data, setData] = useState<BrokerResp | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState("");
+  const { data, error, loading, updatedAt } = usePoll<BrokerResp>(
+    `/api/broker-live/${brokerId}`,
+    marketOpen ? 3_000 : 60_000,
+  );
 
   useEffect(() => { setInput(String(brokerId)); }, [brokerId]);
-
-  useEffect(() => {
-    setLoading(true);
-    setErr("");
-    setData(null);
-    fetch(`/api/broker/${brokerId}`, { cache: "no-store" })
-      .then((r) => r.json())
-      .then((j) => { if (j.error) setErr(j.error); else setData(j); })
-      .catch(() => setErr("Failed to load broker data"))
-      .finally(() => setLoading(false));
-  }, [brokerId]);
 
   const chartStocks = useMemo(() => {
     if (!data?.stocks) return [];
@@ -156,13 +141,61 @@ function BrokerDeepDive({ priceMap }: { priceMap: Map<string, { ltp: number; cha
             </form>
           </div>
         </div>
+        <div className="flex items-center gap-2 text-xs">
+          {updatedAt && (
+            <span className={`rounded-full px-2.5 py-1 font-semibold ${marketOpen ? "bg-up-bg text-up" : "bg-surface-2 text-muted"}`}>
+              {marketOpen ? "🔴 Live" : "⏸ Paused"} · {new Date(updatedAt).toLocaleTimeString("en-GB")}
+            </span>
+          )}
+          <span className="text-muted">auto {marketOpen ? "3s" : "60s"}</span>
+        </div>
       </div>
 
       {loading && !data && <div className="rounded-xl border border-border bg-surface p-8 text-center text-muted">Loading broker #{brokerId}…</div>}
-      {err && <div className="rounded-lg bg-down-bg p-4 text-sm text-down">{err}</div>}
+      {error && <div className="rounded-lg bg-down-bg p-4 text-sm text-down">{error}</div>}
 
       {data && !loading && (
         <>
+          {/* Accumulation / Distribution signals */}
+          {(data.accumulation.length > 0 || data.distribution.length > 0) && (
+            <div className="grid gap-4 md:grid-cols-2">
+              {data.accumulation.length > 0 && (
+                <div className="rounded-2xl border border-up/30 bg-up-bg p-4 shadow-sm">
+                  <h3 className="mb-2 text-sm font-bold text-up">🟢 Accumulation Detected</h3>
+                  <p className="mb-2 text-xs text-muted">Broker buying + price rising = smart money entering</p>
+                  <div className="space-y-1">
+                    {data.accumulation.map((s) => (
+                      <div key={s.symbol} className="flex items-center justify-between text-sm">
+                        <Link href={`/stock/${s.symbol}`} className="font-semibold text-foreground hover:underline">{s.symbol.replace(/\d+/g, "")}</Link>
+                        <span className="flex gap-3 tabular-nums">
+                          <span className="text-up">+{compact(s.netAmt)}</span>
+                          <span className="text-up">+{s.change.toFixed(2)}%</span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {data.distribution.length > 0 && (
+                <div className="rounded-2xl border border-down/30 bg-down-bg p-4 shadow-sm">
+                  <h3 className="mb-2 text-sm font-bold text-down">🔴 Distribution Detected</h3>
+                  <p className="mb-2 text-xs text-muted">Broker selling + price falling = smart money exiting</p>
+                  <div className="space-y-1">
+                    {data.distribution.map((s) => (
+                      <div key={s.symbol} className="flex items-center justify-between text-sm">
+                        <Link href={`/stock/${s.symbol}`} className="font-semibold text-foreground hover:underline">{s.symbol.replace(/\d+/g, "")}</Link>
+                        <span className="flex gap-3 tabular-nums">
+                          <span className="text-down">{compact(s.netAmt)}</span>
+                          <span className="text-down">{s.change.toFixed(2)}%</span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Chart + Summary */}
           <div className="grid gap-5 lg:grid-cols-[1.6fr_1fr]">
             <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
@@ -206,6 +239,7 @@ function BrokerDeepDive({ priceMap }: { priceMap: Map<string, { ltp: number; cha
                 <SummaryRow label="Net Amount" value={`${data.totals.netAmt >= 0 ? "+" : ""}${compact(data.totals.netAmt)}`} color={data.totals.netAmt >= 0 ? "text-up" : "text-down"} />
                 <SummaryRow label="Total Stocks" value={String(data.stocks.length)} color="text-primary" />
                 <SummaryRow label="Buy Ratio" value={`${buyRatio.toFixed(1)}%`} color="text-purple-600" />
+                <SummaryRow label="Live Prices" value={data.liveCount > 0 ? `${data.liveCount} stocks` : "N/A"} color="text-amber-600" />
               </div>
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap gap-1.5">
@@ -231,12 +265,12 @@ function BrokerDeepDive({ priceMap }: { priceMap: Map<string, { ltp: number; cha
 
           {/* Top mover cards */}
           <div className="grid gap-5 lg:grid-cols-2">
-            <TopMoverCard title="Top Net Buy" stocks={data.stocks} mode="buy" priceMap={priceMap} />
-            <TopMoverCard title="Top Net Sell" stocks={data.stocks} mode="sell" priceMap={priceMap} />
+            <TopMoverCard title="Top Net Buy" stocks={data.stocks} mode="buy" />
+            <TopMoverCard title="Top Net Sell" stocks={data.stocks} mode="sell" />
           </div>
 
           {/* All traded stocks table */}
-          <BrokerStockTable stocks={data.stocks} priceMap={priceMap} filter={filter} />
+          <BrokerStockTable stocks={data.stocks} filter={filter} />
         </>
       )}
     </section>
@@ -252,11 +286,10 @@ function SummaryRow({ label, value, color }: { label: string; value: string; col
   );
 }
 
-function TopMoverCard({ title, stocks, mode, priceMap }: { title: string; stocks: BrokerStock[]; mode: "buy" | "sell"; priceMap: Map<string, { ltp: number; change: number }> }) {
+function TopMoverCard({ title, stocks, mode }: { title: string; stocks: BrokerStock[]; mode: "buy" | "sell" }) {
   const sorted = [...stocks].sort((a, b) => (mode === "buy" ? b.netAmt - a.netAmt : a.netAmt - b.netAmt));
   const top = sorted[0];
   if (!top) return null;
-  const live = priceMap.get(top.symbol);
   const isBuy = mode === "buy";
 
   return (
@@ -267,16 +300,17 @@ function TopMoverCard({ title, stocks, mode, priceMap }: { title: string; stocks
         <span className={`text-sm font-bold ${isBuy ? "text-up" : "text-down"}`}>{isBuy ? "+" : ""}{compact(top.netAmt)}</span>
       </div>
       <p className="mt-1.5 text-xs text-muted">{top.name}</p>
-      <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
+      <div className="mt-2 grid grid-cols-4 gap-2 text-xs">
         <div className="rounded-lg bg-surface-2 p-2"><span className="text-muted">Buy:</span> <span className="font-semibold text-up">{compact(top.buyAmt)}</span></div>
         <div className="rounded-lg bg-surface-2 p-2"><span className="text-muted">Sell:</span> <span className="font-semibold text-down">{compact(top.sellAmt)}</span></div>
-        <div className="rounded-lg bg-surface-2 p-2"><span className="text-muted">LTP:</span> <span className="font-semibold">{live ? num(live.ltp) : "—"}</span></div>
+        <div className="rounded-lg bg-surface-2 p-2"><span className="text-muted">LTP:</span> <span className="font-semibold">{top.ltp ? num(top.ltp) : "—"}</span></div>
+        <div className="rounded-lg bg-surface-2 p-2"><span className="text-muted">Chg:</span> <span className={`font-semibold ${top.change > 0 ? "text-up" : top.change < 0 ? "text-down" : "text-muted"}`}>{top.change ? `${top.change > 0 ? "+" : ""}${top.change.toFixed(2)}%` : "—"}</span></div>
       </div>
     </div>
   );
 }
 
-function BrokerStockTable({ stocks, priceMap, filter }: { stocks: BrokerStock[]; priceMap: Map<string, { ltp: number; change: number }>; filter: string }) {
+function BrokerStockTable({ stocks, filter }: { stocks: BrokerStock[]; filter: string }) {
   const [q, setQ] = useState("");
   const [sortKey, setSortKey] = useState<"netAmt" | "buyAmt" | "sellAmt" | "netQty">("netAmt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -318,23 +352,20 @@ function BrokerStockTable({ stocks, priceMap, filter }: { stocks: BrokerStock[];
           </tr>
         </thead>
         <tbody>
-          {filtered.map((s) => {
-            const live = priceMap.get(s.symbol);
-            return (
+          {filtered.map((s) => (
               <tr key={s.symbol} className="border-t border-border hover:bg-surface-2">
                 <td className="px-3 py-2 font-bold"><Link href={`/stock/${s.symbol}`} className="text-primary hover:underline">{s.symbol.replace(/\d+/g, "")}</Link></td>
                 <td className="max-w-[200px] truncate px-3 py-2 text-muted">{s.name}</td>
-                <td className="px-3 py-2 text-right tabular-nums font-semibold">{live ? num(live.ltp) : "—"}</td>
-                <td className={`px-3 py-2 text-right tabular-nums font-semibold ${live && live.change > 0 ? "text-up" : live && live.change < 0 ? "text-down" : "text-muted"}`}>
-                  {live ? `${live.change > 0 ? "+" : ""}${live.change.toFixed(2)}%` : "—"}
+                <td className="px-3 py-2 text-right tabular-nums font-semibold">{s.ltp ? num(s.ltp) : "—"}</td>
+                <td className={`px-3 py-2 text-right tabular-nums font-semibold ${s.change > 0 ? "text-up" : s.change < 0 ? "text-down" : "text-muted"}`}>
+                  {s.change ? `${s.change > 0 ? "+" : ""}${s.change.toFixed(2)}%` : "—"}
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums text-up">{compact(s.buyAmt)}</td>
                 <td className="px-3 py-2 text-right tabular-nums text-down">{compact(s.sellAmt)}</td>
                 <td className={`px-3 py-2 text-right font-bold tabular-nums ${s.netAmt >= 0 ? "text-up" : "text-down"}`}>{s.netAmt >= 0 ? "+" : ""}{compact(s.netAmt)}</td>
                 <td className={`px-3 py-2 text-right tabular-nums ${s.netQty >= 0 ? "text-up" : "text-down"}`}>{num(s.netQty)}</td>
               </tr>
-            );
-          })}
+            ))}
           {filtered.length === 0 && <tr><td colSpan={8} className="px-3 py-8 text-center text-muted">No stocks found.</td></tr>}
         </tbody>
       </table>
