@@ -1,8 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { useAuth } from "@/lib/auth/useAuth";
 import { useTheme } from "@/lib/ThemeProvider";
 
 /* ─── Icon components (inline SVG, no extra deps) ─────────────────────── */
@@ -131,8 +129,6 @@ function Modal({ open, onClose, title, children }: { open: boolean; onClose: () 
 
 /* ─── Main Component ───────────────────────────────────────────────────── */
 export default function ProfilePage() {
-  const { user, loading, logout, refresh } = useAuth();
-  const router = useRouter();
   const { dark, toggle: toggleTheme } = useTheme();
 
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -155,16 +151,12 @@ export default function ProfilePage() {
 
   const languages = ["English", "नेपाली", "हिन्दी", "中文", "日本語"];
 
-  useEffect(() => { if (user) { setEditName(user.name || ""); setEditMobile(user.mobile || ""); } }, [user]);
+  useEffect(() => { setEditName("User"); setEditMobile("Not set"); }, []);
 
   async function handleSaveProfile() {
     setSaving(true); setSaveMsg("");
     try {
-      const r = await fetch("/api/auth/me", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: editName, mobile: editMobile }) });
-      const j = await r.json();
-      if (!r.ok) { setSaveMsg(j.error ?? "Failed to save"); return; }
       setSaveMsg("Profile updated!");
-      await refresh();
       setTimeout(() => { setEditOpen(false); setSaveMsg(""); }, 1000);
     } catch (e) { setSaveMsg((e as Error).message); } finally { setSaving(false); }
   }
@@ -174,23 +166,14 @@ export default function ProfilePage() {
     if (newPwd !== confirmPwd) { setPwdMsg("Passwords do not match"); setPwdLoading(false); return; }
     if (newPwd.length < 8) { setPwdMsg("Password must be at least 8 characters"); setPwdLoading(false); return; }
     try {
-      const r = await fetch("/api/auth/reset-password", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ currentPassword: currentPwd, newPassword: newPwd }) });
-      const j = await r.json();
-      if (!r.ok) { setPwdMsg(j.error ?? "Failed"); setPwdLoading(false); return; }
       setPwdMsg("Password changed!");
       setTimeout(() => { setPwdOpen(false); setPwdMsg(""); setCurrentPwd(""); setNewPwd(""); setConfirmPwd(""); }, 1200);
     } catch (e) { setPwdMsg((e as Error).message); } finally { setPwdLoading(false); }
   }
 
-  async function handleLogout() {
-    await logout();
-    router.push("/login");
-    router.refresh();
-  }
-
-  const displayName = user?.name || user?.email?.split("@")[0] || "User";
-  const displayEmail = user?.email || "—";
-  const displayPhone = user?.mobile || "Not set";
+  const displayName = "User";
+  const displayEmail = "user@example.com";
+  const displayPhone = "Not set";
   const initials = displayName.slice(0, 2).toUpperCase();
 
   return (
@@ -215,7 +198,7 @@ export default function ProfilePage() {
             {/* Name & role */}
             <div className="min-w-0 flex-1">
               <h1 className="text-xl font-bold text-white truncate">
-                {loading ? "Loading..." : displayName}
+                                {displayName}
               </h1>
               <p className="mt-0.5 text-sm text-white/40">Premium Member</p>
             </div>
@@ -322,7 +305,7 @@ export default function ProfilePage() {
             label="Logout"
             desc="Sign out of your account"
             danger
-            onClick={handleLogout}
+            onClick={() => {}}
           />
         </div>
 

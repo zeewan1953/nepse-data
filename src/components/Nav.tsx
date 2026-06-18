@@ -1,8 +1,7 @@
 "use client";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { usePoll } from "@/lib/useLive";
-import { useAuth } from "@/lib/auth/useAuth";
 import type { MarketStatus } from "@/lib/types";
 
 const links = [
@@ -18,17 +17,8 @@ const links = [
 
 export default function Nav() {
   const pathname = usePathname();
-  const router = useRouter();
   const { data } = usePoll<MarketStatus>("/api/market-status", 30_000);
   const open = data?.isOpen?.toUpperCase() === "OPEN";
-  const { user, loading, logout } = useAuth();
-
-  // Logout but keep the app running — just return to the login screen.
-  async function handleLogout() {
-    await logout();
-    router.push("/login");
-    router.refresh();
-  }
 
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-surface shadow-sm">
@@ -63,15 +53,6 @@ export default function Nav() {
           <span className={`h-2 w-2 rounded-full ${open ? "bg-up animate-pulse" : "bg-down"}`} />
           <span className="text-muted">{data ? (open ? "Open" : "Closed") : "…"}</span>
         </div>
-
-        {!loading && user && (
-          <button
-            onClick={handleLogout}
-            className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs font-semibold text-down hover:bg-down-bg"
-          >
-            Logout
-          </button>
-        )}
       </div>
     </header>
   );

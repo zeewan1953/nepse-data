@@ -8,7 +8,6 @@ import {
   loadState, saveState, initAccount, resetAccount, orderId, STARTING_BALANCE,
 } from "@/lib/demo/store";
 import { calcFees, validateOrder } from "@/lib/demo/fees";
-import { useAuth } from "@/lib/auth/useAuth";
 
 /* ─── Types ─── */
 type PriceMap = Record<string, { ltp: number; updatedAt: number }>;
@@ -16,7 +15,6 @@ type PrevCloseMap = Record<string, { prevClose: number; date: string }>;
 
 /* ─── Main Page ─── */
 export default function DemoPage() {
-  const { user } = useAuth();
   const [state, setState] = useState<DemoState | null>(null);
   const [prices, setPrices] = useState<PriceMap>({});
   const [prevClose, setPrevClose] = useState<PrevCloseMap>({});
@@ -27,7 +25,7 @@ export default function DemoPage() {
   const [ticketSignal, setTicketSignal] = useState<DemoOrder["signalSnapshot"]>(null);
   const [resetConfirm, setResetConfirm] = useState(false);
 
-  const userId = user?.id ?? "guest";
+  const userId = "guest";
 
   // Load state from localStorage
   useEffect(() => {
