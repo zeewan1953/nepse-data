@@ -10,6 +10,7 @@ const links = [
   { href: "/market", label: "Market" },
   { href: "/fundamental", label: "Fundamental" },
   { href: "/floorsheet", label: "Broker & Floorsheet" },
+  { href: "/broker-flow", label: "Broker Flow" },
   { href: "/portfolio", label: "Portfolio" },
   { href: "/profile", label: "Profile" },
 ];

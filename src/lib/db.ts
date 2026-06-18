@@ -97,7 +97,39 @@ async function migrateSchema(): Promise<void> {
       sellerMemberId TEXT NOT NULL,
       contractQuantity REAL NOT NULL,
       contractAmount REAL NOT NULL,
+      tradeOrder INTEGER NOT NULL DEFAULT 0,
       syncedAt INTEGER NOT NULL
+    )
+  `);
+
+  // Pre-computed daily broker-stock aggregation for fast rolling queries
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS broker_daily_agg (
+      tradeDate TEXT NOT NULL,
+      stockSymbol TEXT NOT NULL,
+      brokerId TEXT NOT NULL,
+      buyQty REAL NOT NULL DEFAULT 0,
+      buyAmt REAL NOT NULL DEFAULT 0,
+      sellQty REAL NOT NULL DEFAULT 0,
+      sellAmt REAL NOT NULL DEFAULT 0,
+      netQty REAL NOT NULL DEFAULT 0,
+      netAmt REAL NOT NULL DEFAULT 0,
+      PRIMARY KEY (tradeDate, stockSymbol, brokerId)
+    )
+  `);
+
+  // Daily OHLCV for CMF/MFI calculations
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS stock_daily_ohlcv (
+      tradeDate TEXT NOT NULL,
+      symbol TEXT NOT NULL,
+      open REAL NOT NULL DEFAULT 0,
+      high REAL NOT NULL DEFAULT 0,
+      low REAL NOT NULL DEFAULT 0,
+      close REAL NOT NULL DEFAULT 0,
+      volume REAL NOT NULL DEFAULT 0,
+      value REAL NOT NULL DEFAULT 0,
+      PRIMARY KEY (tradeDate, symbol)
     )
   `);
 
@@ -107,6 +139,10 @@ async function migrateSchema(): Promise<void> {
     await db.execute("CREATE INDEX IF NOT EXISTS idx_fs_buyer ON floorsheet_trades(tradeDate, buyerMemberId)");
     await db.execute("CREATE INDEX IF NOT EXISTS idx_fs_seller ON floorsheet_trades(tradeDate, sellerMemberId)");
     await db.execute("CREATE INDEX IF NOT EXISTS idx_fs_stock ON floorsheet_trades(tradeDate, stockSymbol)");
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_fs_order ON floorsheet_trades(tradeDate, stockSymbol, tradeOrder)");
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_bda_symbol ON broker_daily_agg(stockSymbol, tradeDate)");
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_bda_broker ON broker_daily_agg(tradeDate, brokerId)");
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_ohlcv_symbol ON stock_daily_ohlcv(symbol, tradeDate)");
   } catch { /* indexes may already exist */ }
 
   // Add createdAt column if missing
@@ -247,24 +283,52 @@ export type FsTrade = {
   sellerMemberId: string;
   contractQuantity: number;
   contractAmount: number;
+  tradeOrder?: number;
 };
 
 export async function saveFloorsheetTrades(date: string, trades: FsTrade[]): Promise<void> {
   if (!trades.length) return;
   const now = Date.now();
-  // Delete existing trades for this date and re-insert
-  await db.execute({ sql: "DELETE FROM floorsheet_trades WHERE tradeDate = ?", args: [date] });
+  // Delete existing trades + agg for this date and re-insert
+  await db.execute("DELETE FROM floorsheet_trades WHERE tradeDate = ?", [date]);
+  await db.execute("DELETE FROM broker_daily_agg WHERE tradeDate = ?", [date]);
   // Batch insert in chunks of 500
   const CHUNK = 500;
   for (let i = 0; i < trades.length; i += CHUNK) {
     const chunk = trades.slice(i, i + CHUNK);
-    const statements = chunk.map((t) => ({
-      sql: `INSERT INTO floorsheet_trades(tradeDate, stockSymbol, securityName, buyerMemberId, sellerMemberId, contractQuantity, contractAmount, syncedAt)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      args: [t.tradeDate, t.stockSymbol, t.securityName, t.buyerMemberId, t.sellerMemberId, t.contractQuantity, t.contractAmount, now],
+    const statements = chunk.map((t, idx) => ({
+      sql: `INSERT INTO floorsheet_trades(tradeDate, stockSymbol, securityName, buyerMemberId, sellerMemberId, contractQuantity, contractAmount, tradeOrder, syncedAt)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [t.tradeDate, t.stockSymbol, t.securityName, t.buyerMemberId, t.sellerMemberId, t.contractQuantity, t.contractAmount, t.tradeOrder ?? (i + idx), now],
     }));
     await db.batch(statements, "write");
   }
+}
+
+// Save broker daily aggregation
+export async function saveBrokerDailyAgg(date: string, aggs: Array<{ tradeDate: string; stockSymbol: string; brokerId: string; buyQty: number; buyAmt: number; sellQty: number; sellAmt: number; netQty: number; netAmt: number }>): Promise<void> {
+  if (!aggs.length) return;
+  await db.execute("DELETE FROM broker_daily_agg WHERE tradeDate = ?", [date]);
+  const CHUNK = 500;
+  for (let i = 0; i < aggs.length; i += CHUNK) {
+    const chunk = aggs.slice(i, i + CHUNK);
+    const statements = chunk.map((a) => ({
+      sql: `INSERT INTO broker_daily_agg(tradeDate, stockSymbol, brokerId, buyQty, buyAmt, sellQty, sellAmt, netQty, netAmt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [a.tradeDate, a.stockSymbol, a.brokerId, a.buyQty, a.buyAmt, a.sellQty, a.sellAmt, a.netQty, a.netAmt],
+    }));
+    await db.batch(statements, "write");
+  }
+}
+
+// Save daily OHLCV
+export async function saveDailyOhlcv(date: string, rows: Array<{ symbol: string; open: number; high: number; low: number; close: number; volume: number; value: number }>): Promise<void> {
+  if (!rows.length) return;
+  const statements = rows.map((r) => ({
+    sql: `INSERT INTO stock_daily_ohlcv(tradeDate, symbol, open, high, low, close, volume, value) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(tradeDate, symbol) DO UPDATE SET open=excluded.open, high=excluded.high, low=excluded.low, close=excluded.close, volume=excluded.volume, value=excluded.value`,
+    args: [date, r.symbol, r.open, r.high, r.low, r.close, r.volume, r.value],
+  }));
+  await db.batch(statements, "write");
 }
 
 export async function getFloorsheetCount(date: string): Promise<number> {

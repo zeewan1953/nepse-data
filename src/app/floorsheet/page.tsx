@@ -60,6 +60,9 @@ export default function FloorsheetDashboard() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <Link href="/broker-flow" className="rounded-lg border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/20">
+            📊 Advanced Broker Flow
+          </Link>
           <input
             type="date"
             value={date}
