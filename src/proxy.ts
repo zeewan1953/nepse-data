@@ -1,17 +1,20 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const PUBLIC_ROUTES = [
-  "/login",
-  "/signup",
-  "/verify-otp",
-  "/forgot-password",
-  "/reset-password",
+// Routes that MUST have authentication (everything else is public)
+const PROTECTED_ROUTES = [
+  "/portfolio",
+  "/profile",
+  "/chart",
 ];
 
-const PUBLIC_ROUTE_PREFIXES = [
-  "/news",
-  "/demo",
+const PROTECTED_PREFIXES = [
+  "/stock/",
+  "/fundamental",
+  "/floorsheet",
+  "/broker-flow",
+  "/broker",
+  "/market",
 ];
 
 const PUBLIC_API_PREFIXES = [
@@ -29,27 +32,27 @@ const PUBLIC_API_PREFIXES = [
 ];
 
 export function proxy(request: NextRequest) {
-  const rawPath = request.nextUrl.pathname;
-  // Normalize: remove trailing slash (except root "/")
-  const pathname = rawPath === "/" ? "/" : rawPath.replace(/\/+$/, "");
+  const pathname = request.nextUrl.pathname;
 
-  // Allow root
-  if (pathname === "/") return NextResponse.next();
-
-  // Public pages (exact match)
-  if (PUBLIC_ROUTES.includes(pathname)) return NextResponse.next();
-
-  // Public page prefixes (startsWith match for /news, /demo and any sub-routes)
-  if (PUBLIC_ROUTE_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(prefix + "/"))) {
+  // Always allow auth pages and static assets
+  if (pathname.startsWith("/login") || pathname.startsWith("/signup") ||
+      pathname.startsWith("/verify-otp") || pathname.startsWith("/forgot-password") ||
+      pathname.startsWith("/reset-password")) {
     return NextResponse.next();
   }
 
-  // Public API routes
+  // Allow public API routes
   if (PUBLIC_API_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
     return NextResponse.next();
   }
 
-  // Check session cookie
+  // Public pages: /news, /demo, and root are always accessible
+  if (pathname === "/" || pathname === "/news" || pathname === "/demo" ||
+      pathname.startsWith("/news/") || pathname.startsWith("/demo/")) {
+    return NextResponse.next();
+  }
+
+  // For all other routes, check session
   const sessionCookie = request.cookies.get("darisir_session");
   if (!sessionCookie) {
     const loginUrl = new URL("/login", request.url);
