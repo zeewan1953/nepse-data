@@ -9,8 +9,7 @@ const links = [
   { href: "/", label: "Dashboard" },
   { href: "/market", label: "Market" },
   { href: "/fundamental", label: "Fundamental" },
-  { href: "/floorsheet", label: "Floorsheet" },
-  { href: "/broker", label: "Broker" },
+  { href: "/floorsheet", label: "Broker & Floorsheet" },
   { href: "/portfolio", label: "Portfolio" },
   { href: "/profile", label: "Profile" },
 ];
