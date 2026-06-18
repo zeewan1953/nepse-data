@@ -333,7 +333,7 @@ export default function StockPage({
         {!aiText && (
           <div className="flex flex-col items-center justify-center gap-2 p-8 text-center text-muted">
             <span className="text-3xl">🏹</span>
-            <p className="text-sm">तलको बटन थिच्नुहोस् — {sym} को सम्पूर्ण तकनिकल विश्लेषण नेपालीमा।</p>
+            <p className="text-sm">तलको बटन थिच्नुहोस् — {sym} को सम्पूर्ण विश्लेषण नेपालीमा।</p>
           </div>
         )}
 
