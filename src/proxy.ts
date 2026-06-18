@@ -28,8 +28,14 @@ const PUBLIC_API_PREFIXES = [
 export function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
-  if (PUBLIC_ROUTES.includes(pathname)) return NextResponse.next();
-  if (PUBLIC_API_PREFIXES.some((prefix) => pathname.startsWith(prefix))) return NextResponse.next();
+  // Public pages that don't require auth
+  if (PUBLIC_ROUTES.includes(pathname)) {
+    return NextResponse.next();
+  }
+  // Public API routes
+  if (PUBLIC_API_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
+    return NextResponse.next();
+  }
 
   const sessionCookie = request.cookies.get("darisir_session");
   if (!sessionCookie) {
@@ -40,7 +46,3 @@ export function proxy(request: NextRequest) {
 
   return NextResponse.next();
 }
-
-export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.).*)"],
-};
