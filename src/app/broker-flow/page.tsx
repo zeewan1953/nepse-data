@@ -6,11 +6,12 @@ import { num, compact } from "@/lib/format";
 
 /* ─── Types ─── */
 type ScannerPick = {
-  symbol: string; name: string; score: number; direction: "UP" | "DOWN";
+  symbol: string; name: string; score: number; direction: "LONG" | "SHORT";
   reasons: string[]; buyConc: number; sellConc: number; netBrokerAmt: number;
+  totalBuyAmt: number; totalSellAmt: number;
   volumeZScore: number; todayVolume: number; avgVolume: number; cmf: number | null; priceChange: number;
 };
-type ScannerResp = { date: string; picks: ScannerPick[]; generatedAt: number };
+type ScannerResp = { date: string; longPicks: ScannerPick[]; shortPicks: ScannerPick[]; generatedAt: number };
 
 type OverviewResp = {
   date: string;
@@ -94,38 +95,64 @@ export default function BrokerFlowPage() {
   );
 }
 
-/* ─── Scanner Tab (Best 5 Next Move) ─── */
+/* ─── Scanner Tab (Best 5 Long + Best 5 Short) ─── */
 function ScannerTab({ date }: { date: string }) {
   const { data: scanner, updatedAt } = useRetainedPoll<ScannerResp>(`/api/broker-flow/scanner?date=${date}`, 3_000);
   const { data: overview } = useRetainedPoll<OverviewResp>(`/api/broker-flow/overview?date=${date}`, 3_000);
   const { data: lb } = useRetainedPoll<LeaderboardResp>(`/api/broker-flow/leaderboard?date=${date}`, 3_000);
 
+  const hasData = scanner && (scanner.longPicks.length > 0 || scanner.shortPicks.length > 0);
+
   return (
     <div className="space-y-5">
-      {/* Scanner: Best 5 Next Move */}
+      {/* Scanner Header */}
       <div className="rounded-2xl border border-primary/40 bg-gradient-to-br from-surface to-surface-2 p-5 shadow-md">
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-extrabold">🎯 Best 5 — Next Move Scanner</h2>
+            <h2 className="text-lg font-extrabold">🎯 Best 5 — Long &amp; Short Scanner</h2>
             <p className="text-xs text-muted">
-              Combines broker concentration, net flow, volume spike, CMF signals
+              Broker concentration + net flow + volume spike + CMF signals
               {updatedAt ? ` · updated ${new Date(updatedAt).toLocaleTimeString("en-GB")}` : ""}
-              <span className="ml-2 text-primary">· auto 3s</span>
+              <span className="ml-2 text-primary">· auto 3s · data never lost</span>
             </p>
           </div>
         </div>
 
-        {!scanner?.picks?.length && (
+        {!hasData && (
           <div className="py-8 text-center text-muted">
-            Scanner needs at least 2 trading days of data. Sync floorsheet data for a few days to activate.
+            Scanner needs trading data. Sync floorsheet to populate data.
           </div>
         )}
 
-        {scanner?.picks && scanner.picks.length > 0 && (
-          <div className="grid gap-3 md:grid-cols-5">
-            {scanner.picks.map((p, i) => (
-              <ScannerCard key={p.symbol} pick={p} rank={i + 1} />
-            ))}
+        {hasData && (
+          <div className="grid gap-5 lg:grid-cols-2">
+            {/* LONG picks */}
+            <div className="rounded-xl border border-up/40 bg-up-bg/20 p-4">
+              <h3 className="mb-3 text-base font-extrabold text-up">🟢 Best 5 for LONG Position</h3>
+              {scanner.longPicks.length === 0 ? (
+                <p className="text-sm text-muted">No long signals detected yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {scanner.longPicks.map((p, i) => (
+                    <ScannerRow key={p.symbol} pick={p} rank={i + 1} tone="up" />
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* SHORT picks */}
+            <div className="rounded-xl border border-down/40 bg-down-bg/20 p-4">
+              <h3 className="mb-3 text-base font-extrabold text-down">🔴 Best 5 for SHORT Position</h3>
+              {scanner.shortPicks.length === 0 ? (
+                <p className="text-sm text-muted">No short signals detected yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {scanner.shortPicks.map((p, i) => (
+                    <ScannerRow key={p.symbol} pick={p} rank={i + 1} tone="down" />
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -180,37 +207,41 @@ function ScannerTab({ date }: { date: string }) {
   );
 }
 
-/* ─── Scanner Card ─── */
-function ScannerCard({ pick, rank }: { pick: ScannerPick; rank: number }) {
-  const isUp = pick.direction === "UP";
+/* ─── Scanner Row (for both LONG and SHORT) ─── */
+function ScannerRow({ pick, rank, tone }: { pick: ScannerPick; rank: number; tone: "up" | "down" }) {
   return (
-    <div className={`rounded-xl border p-3 shadow-sm ${isUp ? "border-up/40 bg-up-bg/30" : "border-down/40 bg-down-bg/30"}`}>
-      <div className="mb-2 flex items-center justify-between">
-        <span className="text-xs font-bold text-muted">#{rank}</span>
-        <span className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold ${isUp ? "bg-up-bg text-up" : "bg-down-bg text-down"}`}>
-          {isUp ? "▲ UP" : "▼ DOWN"}
-        </span>
+    <div className={`rounded-lg border p-3 ${tone === "up" ? "border-up/30 bg-surface" : "border-down/30 bg-surface"}`}>
+      <div className="mb-1.5 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold text-muted">#{rank}</span>
+          <Link href={`/stock/${pick.symbol}`} className="text-sm font-extrabold text-primary hover:underline">
+            {pick.name}
+          </Link>
+          <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-extrabold ${tone === "up" ? "bg-up-bg text-up" : "bg-down-bg text-down"}`}>
+            {tone === "up" ? "▲ LONG" : "▼ SHORT"}
+          </span>
+        </div>
+        <div className="text-xs font-bold tabular-nums">
+          Score: <b className="text-foreground">{pick.score.toFixed(1)}</b>
+        </div>
       </div>
-      <Link href={`/stock/${pick.symbol}`} className="mb-1 block text-base font-extrabold text-primary hover:underline">
-        {pick.name}
-      </Link>
-      <div className="mb-2 text-xs text-muted">Score: <b className="text-foreground">{pick.score.toFixed(1)}</b></div>
-      {/* Price change */}
-      <div className={`mb-2 text-xs font-bold ${pick.priceChange >= 0 ? "text-up" : "text-down"}`}>
-        {pick.priceChange >= 0 ? "+" : ""}{pick.priceChange.toFixed(2)}% today
+      {/* Price change + key metrics */}
+      <div className="mb-1.5 flex flex-wrap items-center gap-3 text-[11px]">
+        <span className={`font-bold ${pick.priceChange >= 0 ? "text-up" : "text-down"}`}>
+          {pick.priceChange >= 0 ? "+" : ""}{pick.priceChange.toFixed(2)}%
+        </span>
+        <span>Buy Conc: <b className="text-up">{pick.buyConc.toFixed(0)}%</b></span>
+        <span>Sell Conc: <b className="text-down">{pick.sellConc.toFixed(0)}%</b></span>
+        <span>Vol Z: <b>{pick.volumeZScore.toFixed(1)}</b></span>
+        {pick.cmf !== null && <span>CMF: <b className={pick.cmf > 0 ? "text-up" : "text-down"}>{pick.cmf.toFixed(3)}</b></span>}
       </div>
       {/* Reasons */}
-      <div className="space-y-0.5">
+      <div className="flex flex-wrap gap-1">
         {pick.reasons.map((r, i) => (
-          <div key={i} className="text-[10px] text-muted leading-tight">• {r}</div>
+          <span key={i} className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${tone === "up" ? "bg-up-bg text-up" : "bg-down-bg text-down"}`}>
+            {r}
+          </span>
         ))}
-      </div>
-      {/* Key metrics */}
-      <div className="mt-2 grid grid-cols-2 gap-1 text-[10px]">
-        <div>Buy Conc: <b className="text-up">{pick.buyConc.toFixed(0)}%</b></div>
-        <div>Sell Conc: <b className="text-down">{pick.sellConc.toFixed(0)}%</b></div>
-        <div>Vol Z: <b>{pick.volumeZScore.toFixed(1)}</b></div>
-        <div>CMF: <b className={pick.cmf !== null && pick.cmf > 0 ? "text-up" : "text-down"}>{pick.cmf !== null ? pick.cmf.toFixed(3) : "N/A"}</b></div>
       </div>
     </div>
   );

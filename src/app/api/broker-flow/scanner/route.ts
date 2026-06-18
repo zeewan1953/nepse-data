@@ -9,14 +9,14 @@ function todayStr(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kathmandu" });
 }
 
-// Best 5 next-move scanner: combines broker concentration, CMF, volume, net flow
+// Best 5 LONG + Best 5 SHORT scanner
 export async function GET(req: NextRequest) {
   const date = req.nextUrl.searchParams.get("date") || todayStr();
 
   try {
     const data = await cached(`bf-scan:${date}`, 3_000, async () => {
-      const picks = await scanNextMove(date, 5);
-      return { date, picks, generatedAt: Date.now() };
+      const { longPicks, shortPicks } = await scanNextMove(date, 5);
+      return { date, longPicks, shortPicks, generatedAt: Date.now() };
     });
     return Response.json(data);
   } catch (e) {
