@@ -12,6 +12,7 @@ const links = [
   { href: "/floorsheet", label: "Broker & Floorsheet" },
   { href: "/broker-flow", label: "Broker Flow" },
   { href: "/portfolio", label: "Portfolio" },
+  { href: "/demo", label: "Demo", badge: true },
   { href: "/profile", label: "Profile" },
 ];
 
@@ -45,10 +46,14 @@ export default function Nav() {
                 key={l.href}
                 href={l.href}
                 className={`whitespace-nowrap rounded-md px-2.5 py-1.5 text-xs font-semibold transition ${
-                  active ? "bg-primary text-white" : "text-muted hover:bg-surface-2 hover:text-foreground"
+                  active
+                    ? "bg-primary text-white"
+                    : (l as { badge?: boolean }).badge
+                      ? "border border-amber-500/50 text-amber-600 hover:bg-amber-500/10 dark:text-amber-400"
+                      : "text-muted hover:bg-surface-2 hover:text-foreground"
                 }`}
               >
-                {l.label}
+                {(l as { badge?: boolean }).badge ? `🎯 ${l.label}` : l.label}
               </Link>
             );
           })}
