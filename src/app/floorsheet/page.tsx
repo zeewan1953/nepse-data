@@ -389,7 +389,6 @@ function AgentInsight({ analysis, onRefresh, refreshing }: { analysis: Analysis 
     return (
       <section className="rounded-xl border border-primary/30 bg-surface p-4 shadow-sm">
         <h2 className="font-bold">🤖 Agent — Market Insight</h2>
-        <p className="mt-1 text-sm text-muted">Market khulda (11am–3pm) floorsheet aaepachi auto insights dinchu.</p>
       </section>
     );
   }
