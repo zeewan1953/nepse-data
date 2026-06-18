@@ -7,13 +7,13 @@ import type { MarketStatus } from "@/lib/types";
 
 const links = [
   { href: "/", label: "Dashboard" },
+  { href: "/demo", label: "Demo", badge: true },
   { href: "/market", label: "Market" },
   { href: "/news", label: "News" },
   { href: "/fundamental", label: "Fundamental" },
   { href: "/floorsheet", label: "Broker & Floorsheet" },
   { href: "/broker-flow", label: "Broker Flow" },
   { href: "/portfolio", label: "Portfolio" },
-  { href: "/demo", label: "Demo", badge: true },
   { href: "/profile", label: "Profile" },
 ];
 
@@ -50,7 +50,7 @@ export default function Nav() {
                   active
                     ? "bg-primary text-white"
                     : (l as { badge?: boolean }).badge
-                      ? "border border-amber-500/50 text-amber-600 hover:bg-amber-500/10 dark:text-amber-400"
+                      ? "border border-amber-500/60 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 dark:text-amber-400 shadow-sm shadow-amber-500/10"
                       : "text-muted hover:bg-surface-2 hover:text-foreground"
                 }`}
               >
