@@ -1,7 +1,7 @@
 "use client";
-import { useRef, useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect } from "react";
 import Link from "next/link";
-import { usePoll } from "@/lib/useLive";
+import { usePersistentPoll } from "@/lib/useLive";
 import { num, compact } from "@/lib/format";
 
 /* ─── Types ─── */
@@ -42,13 +42,8 @@ type StockFlowResp = {
 
 function todayStr(): string { return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kathmandu" }); }
 
-/* ─── useRetainedPoll: polls API, never loses data once received ─── */
-function useRetainedPoll<T>(url: string, interval: number) {
-  const { data, updatedAt } = usePoll<T>(url, interval);
-  const retained = useRef<T | null>(null);
-  if (data) retained.current = data;
-  return { data: retained.current, live: data, updatedAt };
-}
+/* ─── 30 minutes in ms ─── */
+const THIRTY_MIN = 30 * 60 * 1000;
 
 /* ─── Main Page ─── */
 export default function BrokerFlowPage() {
@@ -97,9 +92,9 @@ export default function BrokerFlowPage() {
 
 /* ─── Scanner Tab (Best 5 Long + Best 5 Short) ─── */
 function ScannerTab({ date }: { date: string }) {
-  const { data: scanner, updatedAt } = useRetainedPoll<ScannerResp>(`/api/broker-flow/scanner?date=${date}`, 3_000);
-  const { data: overview } = useRetainedPoll<OverviewResp>(`/api/broker-flow/overview?date=${date}`, 3_000);
-  const { data: lb } = useRetainedPoll<LeaderboardResp>(`/api/broker-flow/leaderboard?date=${date}`, 3_000);
+  const { data: scanner, updatedAt } = usePersistentPoll<ScannerResp>(`/api/broker-flow/scanner?date=${date}`, THIRTY_MIN);
+  const { data: overview } = usePersistentPoll<OverviewResp>(`/api/broker-flow/overview?date=${date}`, THIRTY_MIN);
+  const { data: lb } = usePersistentPoll<LeaderboardResp>(`/api/broker-flow/leaderboard?date=${date}`, THIRTY_MIN);
 
   const hasData = scanner && (scanner.longPicks.length > 0 || scanner.shortPicks.length > 0);
 
@@ -293,8 +288,8 @@ function LeaderboardColumn({ title, items, tone }: { title: string; items: Array
 
 /* ─── Leaderboard Tab (full) ─── */
 function LeaderboardTab({ date }: { date: string }) {
-  const { data: overview } = useRetainedPoll<OverviewResp>(`/api/broker-flow/overview?date=${date}`, 3_000);
-  const { data: lb } = useRetainedPoll<LeaderboardResp>(`/api/broker-flow/leaderboard?date=${date}`, 3_000);
+  const { data: overview } = usePersistentPoll<OverviewResp>(`/api/broker-flow/overview?date=${date}`, THIRTY_MIN);
+  const { data: lb } = usePersistentPoll<LeaderboardResp>(`/api/broker-flow/leaderboard?date=${date}`, THIRTY_MIN);
 
   return (
     <div className="space-y-5">
@@ -347,7 +342,7 @@ function LeaderboardTab({ date }: { date: string }) {
 function StockFlowTab({ date }: { date: string }) {
   const [symbol, setSymbol] = useState("");
   const [activeSymbol, setActiveSymbol] = useState("");
-  const { data } = useRetainedPoll<StockFlowResp>(activeSymbol ? `/api/broker-flow/stock?symbol=${activeSymbol}&date=${date}` : "", 3_000);
+  const { data } = usePersistentPoll<StockFlowResp>(activeSymbol ? `/api/broker-flow/stock?symbol=${activeSymbol}&date=${date}` : "", THIRTY_MIN);
 
   const maxBar = useMemo(() => {
     if (!data?.brokerFlows) return 1;
@@ -494,7 +489,7 @@ function StockFlowTab({ date }: { date: string }) {
 
 /* ─── Cross-Stock Patterns Tab ─── */
 function PatternsTab({ date }: { date: string }) {
-  const { data } = useRetainedPoll<LeaderboardResp>(`/api/broker-flow/leaderboard?date=${date}`, 3_000);
+  const { data } = usePersistentPoll<LeaderboardResp>(`/api/broker-flow/leaderboard?date=${date}`, THIRTY_MIN);
 
   if (!data?.crossStockPatterns?.length) {
     return <div className="py-10 text-center text-muted">No cross-stock patterns detected. Data accumulates over multiple trading days.</div>;
