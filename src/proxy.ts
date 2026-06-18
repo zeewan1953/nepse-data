@@ -7,11 +7,14 @@ const PUBLIC_ROUTES = [
   "/verify-otp",
   "/forgot-password",
   "/reset-password",
+  "/news",
+  "/demo",
 ];
 
 const PUBLIC_API_PREFIXES = [
   "/api/auth/",
   "/api/news",
+  "/api/demo/",
   "/api/fundamental-external/",
   "/api/live",
   "/api/stocks",
