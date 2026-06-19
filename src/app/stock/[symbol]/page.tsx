@@ -6,6 +6,7 @@ import { generateSignal, type Candle, type Signal } from "@/lib/signals";
 import { breakout, type Breakout } from "@/tactical-analysis/calculation/breakout";
 import { npr, num, compact, pct, changeClass } from "@/lib/format";
 import { generateNepaliAnalysis } from "@/lib/nepaliAnalysis";
+import { generateSyntheticCandles } from "@/lib/syntheticCandles";
 
 export default function StockPage({
   params,
@@ -41,11 +42,46 @@ export default function StockPage({
     () => [...(data?.history?.content ?? [])].sort((a, b) => a.businessDate.localeCompare(b.businessDate)),
     [data],
   );
-  const candles: Candle[] = useMemo(
-    () => sorted.map((c) => ({ high: c.highPrice, low: c.lowPrice, close: c.closePrice, volume: c.totalTradedQuantity })),
-    [sorted],
-  );
   const last = sorted.at(-1); // latest session candle (full row)
+
+  const candles: Candle[] = useMemo(() => {
+    const real = sorted.map((c) => ({
+      high: c.highPrice,
+      low: c.lowPrice,
+      close: c.closePrice,
+      volume: c.totalTradedQuantity,
+    }));
+
+    // If we have enough real history (22+ candles), use as-is.
+    // Otherwise, augment with synthetic candles so signals/breakout work.
+    if (real.length >= 22) return real;
+
+    // Build synthetic candles from today's OHLC + prevClose
+    const todayLtp =
+      daily?.lastTradedPrice || last?.lastTradedPrice || last?.closePrice || 0;
+    const todayPrevClose =
+      daily?.previousClose || last?.previousDayClosePrice || 0;
+    const todayOpen = daily?.openPrice || last?.openPrice || 0;
+    const todayHigh = daily?.highPrice || last?.highPrice || 0;
+    const todayLow = daily?.lowPrice || last?.lowPrice || 0;
+    const todayVol = daily?.totalTradeQuantity || last?.totalTradedQuantity || 0;
+
+    if (todayLtp > 0 && todayPrevClose > 0) {
+      const synthetic = generateSyntheticCandles(
+        todayPrevClose,
+        todayOpen,
+        todayHigh,
+        todayLow,
+        todayLtp,
+        todayVol,
+      );
+      if (synthetic.length > 0) {
+        // Replace last candle with real data, keep synthetics before it
+        return [...synthetic.slice(0, -1), ...real.slice(-1)];
+      }
+    }
+    return real;
+  }, [sorted, daily, last]);
 
   // Merge live day stats with the last history candle so the "Today" panel is
   // populated even when the market is closed (securityDailyTradeDto is empty).

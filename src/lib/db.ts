@@ -331,6 +331,25 @@ export async function saveDailyOhlcv(date: string, rows: Array<{ symbol: string;
   await db.batch(statements, "write");
 }
 
+// Save OHLCV from MeroLagani turnover data (has O/H/L/C/Q)
+export async function syncMeroOhlcv(date: string, turnover: Array<{ s: string; op: number; h: number; l: number; lp: number; q: number; t: number }>): Promise<number> {
+  if (!turnover.length || !date) return 0;
+  const rows = turnover
+    .filter((t) => t.op > 0 && t.lp > 0)
+    .map((t) => ({
+      symbol: t.s,
+      open: t.op,
+      high: t.h,
+      low: t.l,
+      close: t.lp,
+      volume: t.q,
+      value: t.t,
+    }));
+  if (!rows.length) return 0;
+  await saveDailyOhlcv(date, rows);
+  return rows.length;
+}
+
 export async function getFloorsheetCount(date: string): Promise<number> {
   const r = await db.execute({ sql: "SELECT COUNT(*) as cnt FROM floorsheet_trades WHERE tradeDate = ?", args: [date] });
   return Number(r.rows[0]?.cnt ?? 0);
@@ -339,4 +358,88 @@ export async function getFloorsheetCount(date: string): Promise<number> {
 export async function getAvailableDates(): Promise<string[]> {
   const r = await db.execute("SELECT DISTINCT tradeDate FROM floorsheet_trades ORDER BY tradeDate DESC LIMIT 30");
   return r.rows.map((row) => String(row.tradeDate));
+}
+
+// ─── OHLCV candles from DB for signal generation ─────────────────────────
+export type OhlcvCandle = {
+  tradeDate: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+};
+
+export async function getCandlesFromDb(symbol: string, limit = 300): Promise<OhlcvCandle[]> {
+  const r = await db.execute({
+    sql: "SELECT tradeDate, open, high, low, close, volume FROM stock_daily_ohlcv WHERE symbol = ? ORDER BY tradeDate DESC LIMIT ?",
+    args: [symbol, limit],
+  });
+  return r.rows
+    .map((row) => ({
+      tradeDate: String(row.tradeDate),
+      open: Number(row.open),
+      high: Number(row.high),
+      low: Number(row.low),
+      close: Number(row.close),
+      volume: Number(row.volume),
+    }))
+    .reverse(); // oldest first
+}
+
+// ─── Broker flow from DB (broker_daily_agg) ──────────────────────────────
+export type BrokerFlowRow = {
+  stockSymbol: string;
+  buyerId: string;
+  buyerNet: number;
+  sellerId: string;
+  sellerNet: number;
+  bias: "accumulate" | "distribute" | "neutral";
+};
+
+export async function getBrokerFlowFromDb(date?: string): Promise<Map<string, BrokerFlowRow>> {
+  const targetDate = date ?? (await db.execute(
+    "SELECT MAX(tradeDate) as d FROM broker_daily_agg"
+  )).rows[0]?.d;
+  if (!targetDate) return new Map();
+
+  const r = await db.execute({
+    sql: `SELECT stockSymbol, brokerId,
+          SUM(buyQty) as buyQty, SUM(sellQty) as sellQty
+          FROM broker_daily_agg
+          WHERE tradeDate = ?
+          GROUP BY stockSymbol, brokerId`,
+    args: [String(targetDate)],
+  });
+
+  const byStock = new Map<string, Map<string, { buy: number; sell: number }>>();
+  for (const row of r.rows) {
+    const sym = String(row.stockSymbol);
+    const broker = String(row.brokerId);
+    const buy = Number(row.buyQty);
+    const sell = Number(row.sellQty);
+    const m = byStock.get(sym) ?? new Map();
+    const prev = m.get(broker) ?? { buy: 0, sell: 0 };
+    m.set(broker, { buy: prev.buy + buy, sell: prev.sell + sell });
+    byStock.set(sym, m);
+  }
+
+  const out = new Map<string, BrokerFlowRow>();
+  for (const [symbol, brokers] of byStock) {
+    let buyerId = "", buyerNet = -Infinity, sellerId = "", sellerNet = Infinity;
+    for (const [id, { buy, sell }] of brokers) {
+      const net = buy - sell;
+      if (net > buyerNet) { buyerNet = net; buyerId = id; }
+      if (net < sellerNet) { sellerNet = net; sellerId = id; }
+    }
+    const bias = buyerNet > -sellerNet * 1.2 ? "accumulate"
+      : -sellerNet > buyerNet * 1.2 ? "distribute" : "neutral";
+    out.set(symbol, {
+      stockSymbol: symbol,
+      buyerId, buyerNet: Math.round(buyerNet),
+      sellerId, sellerNet: Math.round(sellerNet),
+      bias,
+    });
+  }
+  return out;
 }

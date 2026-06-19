@@ -8,17 +8,9 @@ type State<T> = {
   updatedAt: number | null;
 };
 
-// Check if NEPSE market is currently open (11 AM - 3 PM NPT, Sun-Thu)
-export function isNepseMarketOpen(): boolean {
-  const now = new Date();
-  const npt = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kathmandu" }));
-  const day = npt.getDay(); // 0=Sun, 6=Sat
-  if (day === 5 || day === 6) return false; // Friday & Saturday closed
-  const h = npt.getHours();
-  const m = npt.getMinutes();
-  const mins = h * 60 + m;
-  return mins >= 660 && mins < 900; // 11:00 (660) to 15:00 (900)
-}
+// Re-export from shared market-hours utility
+export { isNepseMarketOpen } from "@/lib/market-hours";
+import { isNepseMarketOpen } from "@/lib/market-hours";
 
 // Polls a JSON endpoint on an interval. Used for live market data — fast while
 // the NEPSE market is open, slower when closed.

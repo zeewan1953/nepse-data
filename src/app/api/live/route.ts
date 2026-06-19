@@ -1,5 +1,5 @@
 import { getNepse, cached, getDailyTradeStats, safeNepseCall } from "@/lib/nepse";
-import { saveLiveSnapshot, getOhlcMap, getAllStocks } from "@/lib/db";
+import { saveLiveSnapshot, getOhlcMap, getAllStocks, syncMeroOhlcv, saveStocks } from "@/lib/db";
 import { fetchMeroLaganiSummary, calcMeroPercent } from "@/lib/merolagani";
 import type { LiveMarketData, Security } from "@rumess/nepse-api";
 
@@ -14,7 +14,7 @@ declare global {
 type Ohlc = { openPrice: number; highPrice: number; lowPrice: number; averageTradedPrice: number };
 
 // Fetch from MeroLagani as PRIMARY source (real NEPSE data)
-async function fetchFromMeroLagani(): Promise<{ rows: LiveMarketData[]; source: string } | null> {
+async function fetchFromMeroLagani(): Promise<{ rows: LiveMarketData[]; source: string; raw: import("@/lib/merolagani").MeroMarketSummary | null } | null> {
   const mero = await fetchMeroLaganiSummary();
   if (!mero?.stock?.detail?.length) return null;
 
@@ -41,7 +41,7 @@ async function fetchFromMeroLagani(): Promise<{ rows: LiveMarketData[]; source: 
   });
 
   if (rows.length > 50) {
-    return { rows, source: "merolagani" };
+    return { rows, source: "merolagani", raw: mero };
   }
   return null;
 }
@@ -52,6 +52,19 @@ async function loadAll(): Promise<{ rows: LiveMarketData[]; source: string }> {
   if (meroData) {
     globalThis.__lastLive = meroData.rows;
     try { await saveLiveSnapshot(meroData.rows); } catch { /* db optional */ }
+    // Sync OHLCV from MeroLagani turnover (builds historical candle DB)
+    try {
+      if (meroData.raw?.turnover?.detail?.length && meroData.raw.turnover.date) {
+        await syncMeroOhlcv(meroData.raw.turnover.date, meroData.raw.turnover.detail);
+        // Also sync stock search table
+        await saveStocks(meroData.raw.stock.detail.map((s) => ({
+          symbol: s.s, name: s.s,
+          lastTradedPrice: s.lp,
+          percentageChange: calcMeroPercent(s),
+          totalTradeQuantity: s.q,
+        })));
+      }
+    } catch { /* ohlcv sync optional */ }
     return meroData;
   }
 

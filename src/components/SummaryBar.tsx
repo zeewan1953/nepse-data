@@ -50,7 +50,7 @@ export default function SummaryBar() {
     agg.mood === "Bullish" ? "up" : agg.mood === "Bearish" ? "down" : "muted";
 
   return (
-    <div className="sticky top-[45px] z-40 border-b border-border bg-surface/95 backdrop-blur">
+    <div className="sticky top-[78px] z-40 border-b border-border bg-surface/95 backdrop-blur">
       <div className="mx-auto flex max-w-7xl items-center gap-x-5 gap-y-1 px-4 py-1.5 text-xs">
         <Item label="NEPSE">
           <span className="font-bold tabular-nums text-foreground">{npr(nepse?.currentValue ?? nepse?.close)}</span>

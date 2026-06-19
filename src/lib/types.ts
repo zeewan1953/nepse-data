@@ -55,23 +55,34 @@ export function classifySymbol(symbol: string, securityName?: string): SymbolTyp
   const name = (securityName ?? "").toLowerCase();
 
   // --- Debenture / Bond detection -------------------------------------------
-  // Suffix patterns: 2085, 2086, 2087, 2088, 2089 (full Nepali year)
-  // OR short suffix: 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 990
-  // We match these at the END of the symbol, preceded by at least one letter.
+  // NEPSE debentures use many suffix patterns:
+  //   Full year:    NABIL2085, NICA2086
+  //   Short year:   PBD88, NCCD86, SBLD84, KBLD89
+  //   Slash range:  NICAD85/86, NIMBD84/85
+  //   3-digit:      NABIL990, KBL990
+  //   90-99 range:  NABIL95, NICA96
+  //   Letter+D+num: any symbol with D followed by 2-4 digits at end
   if (
-    /[A-Z](?:20[89][0-9])$/.test(sym) ||
-    /[A-Z]990$/.test(sym) ||
-    /[A-Z]9[0-9]$/.test(sym)
+    /[A-Z](?:20[89][0-9])$/.test(sym) ||        // full year 2085-2089
+    /[A-Z]990$/.test(sym) ||                     // 990 suffix
+    /[A-Z]9[0-9]$/.test(sym) ||                  // 90-99 suffix
+    /[A-Z][0-9]{2}\/[0-9]{2}$/.test(sym) ||      // slash range 85/86, 84/85
+    /[A-Z]D[0-9]{2,4}(?:\/[0-9]{2})?$/.test(sym) || // D+digits: NCCD86, NIMBD84/85
+    /[A-Z][0-9]{2}$/.test(sym)                    // any 2-digit suffix: PBD88, SBLD84
   ) {
     return "DB";
   }
 
   // --- Mutual Fund detection ------------------------------------------------
-  const mfSymbolKeywords = ["STF", "MF", "FUND", "SCHEME", "SIGS", "NMBSF", "NMBHF", "NMBGF"];
-  const mfNameKeywords = ["mutual fund", "fund", "scheme", "growth fund", "balanced fund", "income fund"];
+  // NEPSE mutual fund symbols: LVF2, NBF2, GIBF1, NMBSF, NMBHF, NMBGF, STF,
+  // or contain FUND, SCHEME, MF, SIGS in symbol or name.
+  const mfSymbolKeywords = ["STF", "FUND", "SCHEME", "SIGS", "NMBSF", "NMBHF", "NMBGF"];
+  const mfNameKeywords = ["mutual fund", "fund", "scheme", "growth fund", "balanced fund", "income fund", "value fund"];
   if (
     mfSymbolKeywords.some((k) => sym.includes(k)) ||
-    mfNameKeywords.some((k) => name.includes(k))
+    mfNameKeywords.some((k) => name.includes(k)) ||
+    /[A-Z]F[0-9]$/.test(sym) ||                  // F+digit: LVF2, NBF2, GIBF1, KBF3
+    /MF$/.test(sym)                                // ends with MF: NMF, SANVI MF
   ) {
     return "MF";
   }

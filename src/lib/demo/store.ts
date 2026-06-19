@@ -34,10 +34,28 @@ export type DemoOrder = {
   } | null;
 };
 
+// Pending order: placed but not fully filled yet
+// Fills gradually based on floorsheet volume
+export type DemoPendingOrder = {
+  id: string;
+  ts: number;
+  symbol: string;
+  side: "buy" | "sell";
+  qty: number;        // Total quantity ordered
+  filled: number;     // Quantity filled so far
+  price: number;      // Target price (LTP at time of order)
+  signalSnapshot?: {
+    recommendation: string;
+    confidence: number;
+    trend: string | null;
+  } | null;
+};
+
 export type DemoState = {
   account: DemoAccount;
   positions: DemoPosition[];
   orders: DemoOrder[];
+  pendingOrders: DemoPendingOrder[];
 };
 
 const KEY_PREFIX = "demo:state:";
@@ -68,6 +86,7 @@ export function initAccount(userId: string): DemoState {
     account: { userId, balance: STARTING_BALANCE, createdAt: now },
     positions: [],
     orders: [],
+    pendingOrders: [],
   };
 }
 
@@ -77,6 +96,7 @@ export function resetAccount(userId: string): DemoState {
     account: { userId, balance: STARTING_BALANCE, createdAt: now, resetAt: now },
     positions: [],
     orders: [],
+    pendingOrders: [],
   };
   saveState(userId, state);
   return state;

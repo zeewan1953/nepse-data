@@ -1,8 +1,9 @@
 "use client";
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePersistentPoll, isNepseMarketOpen } from "@/lib/useLive";
 import { num, compact } from "@/lib/format";
+import { useNotification } from "@/lib/NotificationContext";
 
 /* ─── Types ─── */
 type ScannerPick = {
@@ -134,6 +135,18 @@ function ScannerTab({ date }: { date: string }) {
   const { data: scanner, updatedAt, refresh: refreshScanner, isMarketOpen } = usePersistentPoll<ScannerResp>(`/api/broker-flow/scanner?date=${date}`, FIVE_MIN);
   const { data: overview } = usePersistentPoll<OverviewResp>(`/api/broker-flow/overview?date=${date}`, FIVE_MIN);
   const { data: lb } = usePersistentPoll<LeaderboardResp>(`/api/broker-flow/leaderboard?date=${date}`, FIVE_MIN);
+  const { notify } = useNotification();
+  const prevLongRef = useRef(0);
+
+  // Notify when new LONG signals appear
+  useEffect(() => {
+    const longCount = scanner?.longPicks?.length ?? 0;
+    if (prevLongRef.current > 0 && longCount > prevLongRef.current) {
+      const topPick = scanner?.longPicks?.[0];
+      notify("New Broker Signal", topPick ? `${topPick.symbol} detected as LONG pick` : "New scanner signals available", "broker");
+    }
+    prevLongRef.current = longCount;
+  }, [scanner?.longPicks?.length, notify, scanner?.longPicks]);
 
   const hasData = scanner && (scanner.longPicks.length > 0 || scanner.shortPicks.length > 0);
 

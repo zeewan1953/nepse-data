@@ -255,12 +255,13 @@ async function getData(symbol: string, tf: TF) {
     const res = await fetch("/api/index-graph", { cache: "no-store" });
     const j = await res.json();
     if (!res.ok) throw new Error(j?.error ?? "Failed to load index");
-    return aggregateIndex((j.points ?? []) as [number, number][], tf);
+    const result = aggregateIndex((j.points ?? []) as [number, number][], tf);
+    return { ...result, source: j.source ?? "nepse" };
   }
   const daily = await loadDaily(symbol);
-  if (tf === "1D") return daily;
-  if (tf === "1W") return toWeekly(daily.bars, daily.vols);
-  return synthIntraday(symbol, tf, daily.bars.at(-1)?.close ?? 100);
+  if (tf === "1D") return { ...daily, source: "nepse" };
+  if (tf === "1W") return { ...toWeekly(daily.bars, daily.vols), source: "nepse" };
+  return { ...synthIntraday(symbol, tf, daily.bars.at(-1)?.close ?? 100), source: "synthetic" };
 }
 
 export default function ChartPage() {
@@ -278,6 +279,7 @@ export default function ChartPage() {
   const [allSymbols, setAllSymbols] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [dataSource, setDataSource] = useState<string>("nepse");
 
   // fetch all stock symbols once (for the search list)
   useEffect(() => {
@@ -398,7 +400,8 @@ export default function ChartPage() {
     getData(symbol, tf)
       .then((d) => {
         if (!alive || !candleRef.current) return;
-        dataRef.current = d;
+        dataRef.current = { bars: d.bars, vols: d.vols };
+        setDataSource(d.source ?? "nepse");
         candleRef.current.setData(d.bars);
         drawOverlays();
         chartRef.current?.timeScale().fitContent();
@@ -509,7 +512,9 @@ export default function ChartPage() {
         {!loading && !error && (
           <div className="pointer-events-none absolute bottom-3 left-3 rounded bg-[#161b27]/80 px-2 py-1 text-[10px] text-[#8a93a6]">
             {symbol === "NEPSE" || symbol === "NEPSE INDEX"
-              ? "NEPSE index — today's intraday (real)"
+              ? dataSource === "synthetic"
+                ? "NEPSE index — simulated (NEPSE API unreachable)"
+                : "NEPSE index — today's intraday (real)"
               : tf === "1D" || tf === "1W"
                 ? "real NEPSE daily (~1yr available free)"
                 : `${tf} = sample data (no free intraday feed)`}

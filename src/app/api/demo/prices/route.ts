@@ -1,4 +1,4 @@
-// Demo account: returns live prices for mark-to-market and order execution
+// Demo account: returns live prices + floorsheet volume for order execution
 // This is a stateless endpoint — all demo state is managed client-side in localStorage
 import { execute } from "@/lib/db";
 
@@ -23,12 +23,42 @@ export async function GET() {
        ) latest ON s.symbol = latest.symbol AND s.tradeDate = latest.maxDate`
     );
 
-    const priceMap = new Map<string, { ltp: number; updatedAt: number }>();
+    // Get floorsheet volume from floorsheet_trades (graceful — table may not exist)
+    let floorsheetRows: any[] = [];
+    try {
+      const floorsheet = await execute(
+        `SELECT stockSymbol as symbol, SUM(contractQuantity) as totalQty
+         FROM floorsheet_trades
+         WHERE tradeDate = (SELECT MAX(tradeDate) FROM floorsheet_trades)
+         GROUP BY stockSymbol`
+      );
+      floorsheetRows = floorsheet.rows;
+    } catch {
+      // floorsheet_trades may be empty or not synced yet — that's OK
+    }
+
+    const priceMap = new Map<string, { ltp: number; updatedAt: number; totalQty: number }>();
     for (const row of live.rows) {
       priceMap.set(String(row.symbol), {
         ltp: Number(row.averageTradedPrice),
         updatedAt: Number(row.updatedAt),
+        totalQty: 0,
       });
+    }
+
+    // Merge floorsheet volume data
+    for (const row of floorsheetRows) {
+      const sym = String(row.symbol);
+      const existing = priceMap.get(sym);
+      if (existing) {
+        existing.totalQty = Number(row.totalQty) || 0;
+      } else {
+        priceMap.set(sym, {
+          ltp: 0,
+          updatedAt: Date.now(),
+          totalQty: Number(row.totalQty) || 0,
+        });
+      }
     }
 
     const prevCloseMap = new Map<string, { prevClose: number; date: string }>();
@@ -47,7 +77,7 @@ export async function GET() {
   } catch (e) {
     return Response.json(
       { prices: {}, prevClose: {}, timestamp: Date.now(), error: (e as Error)?.message },
-      { status: 200 } // return 200 so demo still works with empty data
+      { status: 200 }
     );
   }
 }

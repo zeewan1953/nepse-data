@@ -2,718 +2,541 @@
 import { useState, useEffect, useCallback, useMemo, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { npr, num, compact } from "@/lib/format";
+import { npr, num, pct } from "@/lib/format";
+import { usePoll } from "@/lib/useLive";
+import type { LiveMarketData } from "@/lib/types";
 import {
-  type DemoState, type DemoOrder, type DemoPosition,
+  type DemoState, type DemoOrder, type DemoPosition, type DemoPendingOrder,
   loadState, saveState, initAccount, resetAccount, orderId, STARTING_BALANCE,
 } from "@/lib/demo/store";
 import { calcFees, validateOrder } from "@/lib/demo/fees";
 
-/* ─── Types ─── */
-type PriceMap = Record<string, { ltp: number; updatedAt: number }>;
+type LiveResp = { data: LiveMarketData[]; count: number };
+
+type PriceMap = Record<string, { ltp: number; updatedAt: number; totalQty: number }>;
 type PrevCloseMap = Record<string, { prevClose: number; date: string }>;
 
-/* ─── Main Page ─── */
 export default function DemoPage() {
   const [state, setState] = useState<DemoState | null>(null);
   const [prices, setPrices] = useState<PriceMap>({});
   const [prevClose, setPrevClose] = useState<PrevCloseMap>({});
-  const [tab, setTab] = useState<"dashboard" | "orders" | "performance">("dashboard");
+  // Live market data (all stocks from /api/live — same as /market page)
+  const live = usePoll<LiveResp>("/api/live", 10_000);
+  const liveMap = useMemo(() => {
+    const m = new Map<string, { ltp: number; name: string; change: number }>();
+    for (const s of live.data?.data ?? []) {
+      if (s.lastTradedPrice > 0) m.set(s.symbol, { ltp: s.lastTradedPrice, name: s.securityName ?? s.symbol, change: s.percentageChange ?? 0 });
+    }
+    return m;
+  }, [live.data]);
   const [ticketOpen, setTicketOpen] = useState(false);
   const [ticketSymbol, setTicketSymbol] = useState("");
   const [ticketPrice, setTicketPrice] = useState(0);
   const [ticketSignal, setTicketSignal] = useState<DemoOrder["signalSnapshot"]>(null);
   const [resetConfirm, setResetConfirm] = useState(false);
-
+  const [buySymbol, setBuySymbol] = useState("");
+  const [buyQty, setBuyQty] = useState("");
+  const [buyPrice, setBuyPrice] = useState(""); // Manual price input
+  const [buySearch, setBuySearch] = useState(""); // for stock search
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [buyMsg, setBuyMsg] = useState("");
   const userId = "guest";
 
-  // Load state from localStorage
   useEffect(() => {
     const s = loadState(userId);
-    if (s) setState(s);
-    else {
-      const fresh = initAccount(userId);
-      saveState(userId, fresh);
-      setState(fresh);
-    }
+    if (s) {
+      // Migrate old state: ensure pendingOrders exists
+      if (!s.pendingOrders) s.pendingOrders = [];
+      setState(s);
+    } else { const f = initAccount(userId); saveState(userId, f); setState(f); }
   }, [userId]);
 
-  // Fetch prices
+  // Process pending orders based on floorsheet volume
+  const processPendingOrders = useCallback((currentState: DemoState, currentPrices: PriceMap): DemoState => {
+    if (!currentState.pendingOrders?.length) return currentState;
+    
+    let newBalance = currentState.account.balance;
+    const newPositions = [...currentState.positions];
+    const newOrders = [...currentState.orders];
+    const remainingPending: DemoPendingOrder[] = [];
+    
+    for (const pending of currentState.pendingOrders) {
+      const priceData = currentPrices[pending.symbol];
+      if (!priceData || priceData.totalQty <= 0) {
+        remainingPending.push(pending);
+        continue;
+      }
+      
+      const remainingQty = pending.qty - pending.filled;
+      // Fill up to 30% of available floorsheet volume per check (simulate market participation)
+      const maxFill = Math.floor(priceData.totalQty * 0.3);
+      const fillQty = Math.min(remainingQty, maxFill);
+      
+      if (fillQty <= 0) {
+        remainingPending.push(pending);
+        continue;
+      }
+      
+      // Execute the fill
+      const price = priceData.ltp;
+      const fees = calcFees(pending.side, fillQty, price);
+      
+      if (pending.side === "buy") {
+        const totalCost = fees.tradeValue + fees.total;
+        if (totalCost > newBalance) {
+          remainingPending.push(pending);
+          continue;
+        }
+        newBalance -= totalCost;
+        const existing = newPositions.find(p => p.symbol === pending.symbol);
+        if (existing) {
+          const nq = existing.qty + fillQty;
+          existing.avgCost = ((existing.avgCost * existing.qty) + (price * fillQty)) / nq;
+          existing.qty = nq;
+        } else {
+          newPositions.push({ symbol: pending.symbol, qty: fillQty, avgCost: price, openedAt: Date.now() });
+        }
+      } else {
+        newBalance += (fees.tradeValue - fees.total);
+        const existing = newPositions.find(p => p.symbol === pending.symbol);
+        if (existing) {
+          existing.qty -= fillQty;
+          if (existing.qty <= 0) newPositions.splice(newPositions.indexOf(existing), 1);
+        }
+      }
+      
+      // Create filled order record
+      const filledOrder: DemoOrder = {
+        id: `${pending.id}_fill_${Date.now()}`,
+        ts: Date.now(),
+        symbol: pending.symbol,
+        side: pending.side,
+        qty: fillQty,
+        price,
+        fees: fees.total,
+        total: fees.tradeValue,
+        balanceAfter: newBalance,
+        signalSnapshot: pending.signalSnapshot ?? null,
+      };
+      newOrders.unshift(filledOrder);
+      
+      // Update pending or remove if fully filled
+      const newFilled = pending.filled + fillQty;
+      if (newFilled < pending.qty) {
+        remainingPending.push({ ...pending, filled: newFilled });
+      }
+    }
+    
+    return {
+      account: { ...currentState.account, balance: newBalance },
+      positions: newPositions,
+      orders: newOrders,
+      pendingOrders: remainingPending,
+    };
+  }, []);
+
   const fetchPrices = useCallback(async () => {
     try {
       const r = await fetch("/api/demo/prices", { cache: "no-store" });
       const j = await r.json();
-      setPrices(j.prices ?? {});
-      setPrevClose(j.prevClose ?? {});
-    } catch { /* ignore */ }
-  }, []);
+      const newPrices = j.prices ?? {};
+      const newPrevClose = j.prevClose ?? {};
+      setPrices(newPrices);
+      setPrevClose(newPrevClose);
+      
+      // Process pending orders with new price/volume data
+      setState(prev => {
+        if (!prev || !prev.pendingOrders?.length) return prev;
+        const processed = processPendingOrders(prev, newPrices);
+        if (processed !== prev) saveState(userId, processed);
+        return processed;
+      });
+    } catch {}
+  }, [userId, processPendingOrders]);
 
-  useEffect(() => {
-    fetchPrices();
-    const t = setInterval(fetchPrices, 60_000);
-    return () => clearInterval(t);
-  }, [fetchPrices]);
+  useEffect(() => { fetchPrices(); const t = setInterval(fetchPrices, 30_000); return () => clearInterval(t); }, [fetchPrices]);
 
-  // Mark-to-market helpers
-  const getPositionValue = useCallback((pos: DemoPosition) => {
-    const p = prices[pos.symbol];
-    return p ? p.ltp * pos.qty : pos.avgCost * pos.qty;
-  }, [prices]);
+  const getPositionValue = useCallback((pos: DemoPosition) => { const p = prices[pos.symbol]?.ltp ?? liveMap.get(pos.symbol)?.ltp ?? 0; return p > 0 ? p * pos.qty : pos.avgCost * pos.qty; }, [prices, liveMap]);
+  const getPositionPnL = useCallback((pos: DemoPosition) => getPositionValue(pos) - pos.avgCost * pos.qty, [getPositionValue]);
+  const getLTP = useCallback((symbol: string) => prices[symbol]?.ltp ?? liveMap.get(symbol)?.ltp ?? 0, [prices, liveMap]);
 
-  const getPositionPnL = useCallback((pos: DemoPosition) => {
-    const val = getPositionValue(pos);
-    const cost = pos.avgCost * pos.qty;
-    return val - cost;
-  }, [getPositionValue]);
-
-  const totalPositionValue = useMemo(() =>
-    state?.positions.reduce((sum, p) => sum + getPositionValue(p), 0) ?? 0,
-    [state, getPositionValue]);
-
-  const totalUnrealizedPnL = useMemo(() =>
-    state?.positions.reduce((sum, p) => sum + getPositionPnL(p), 0) ?? 0,
-    [state, getPositionPnL]);
-
+  const totalPositionValue = useMemo(() => state?.positions.reduce((s, p) => s + getPositionValue(p), 0) ?? 0, [state, getPositionValue]);
+  const totalInvested = useMemo(() => state?.positions.reduce((s, p) => s + p.avgCost * p.qty, 0) ?? 0, [state]);
   const totalPortfolioValue = (state?.account.balance ?? 0) + totalPositionValue;
   const totalReturn = totalPortfolioValue - STARTING_BALANCE;
   const totalReturnPct = (totalReturn / STARTING_BALANCE) * 100;
 
-  // Place order
-  const placeOrder = useCallback((symbol: string, side: "buy" | "sell", qty: number, signalSnapshot?: DemoOrder["signalSnapshot"]) => {
+  const placeOrder = useCallback((symbol: string, side: "buy" | "sell", qty: number, customPrice?: number, signalSnapshot?: DemoOrder["signalSnapshot"]) => {
     if (!state) return { success: false, error: "No account" };
-
-    const priceData = prices[symbol];
-    const price = priceData?.ltp ?? 0;
+    const ltp = prices[symbol]?.ltp ?? liveMap.get(symbol)?.ltp ?? 0;
+    const price = customPrice && customPrice > 0 ? customPrice : ltp;
     const prevC = prevClose[symbol]?.prevClose ?? 0;
-    const pos = state.positions.find(p => p.symbol === symbol);
-    const posQty = pos?.qty ?? 0;
-
-    const validation = validateOrder(side, qty, price, prevC, state.account.balance, posQty);
-    if (!validation.valid) return { success: false, error: validation.error };
-
-    const fees = calcFees(side, qty, price);
-    const tradeValue = fees.tradeValue;
-    let newBalance = state.account.balance;
-    const newPositions = [...state.positions];
-
-    if (side === "buy") {
-      newBalance -= (tradeValue + fees.total);
-      const existing = newPositions.find(p => p.symbol === symbol);
-      if (existing) {
-        const newQty = existing.qty + qty;
-        existing.avgCost = ((existing.avgCost * existing.qty) + (price * qty)) / newQty;
-        existing.qty = newQty;
-      } else {
-        newPositions.push({ symbol, qty, avgCost: price, openedAt: Date.now() });
-      }
-    } else {
-      newBalance += (tradeValue - fees.total);
-      const existing = newPositions.find(p => p.symbol === symbol);
-      if (existing) {
-        existing.qty -= qty;
-        if (existing.qty <= 0) {
-          const idx = newPositions.indexOf(existing);
-          newPositions.splice(idx, 1);
-        }
+    const posQty = state.positions.find(p => p.symbol === symbol)?.qty ?? 0;
+    
+    // Validate price is within LTP ±2%
+    if (ltp > 0 && customPrice) {
+      const lower = ltp * 0.98;
+      const upper = ltp * 1.02;
+      if (customPrice < lower || customPrice > upper) {
+        return { success: false, error: `Price must be within LTP ±2%: Rs ${npr(lower)} – Rs ${npr(upper)}` };
       }
     }
-
-    const order: DemoOrder = {
-      id: orderId(), ts: Date.now(), symbol, side, qty, price,
-      fees: fees.total, total: tradeValue, balanceAfter: newBalance,
+    
+    // Sell: must own the stock
+    if (side === "sell" && posQty <= 0) {
+      return { success: false, error: `You don't own ${symbol}. Only owned stocks can be sold.` };
+    }
+    if (side === "sell" && qty > posQty) {
+      return { success: false, error: `Only ${posQty} shares of ${symbol} owned. Cannot sell ${qty}.` };
+    }
+    
+    const validation = validateOrder(side, qty, price, prevC, state.account.balance, posQty);
+    if (!validation.valid) return { success: false, error: validation.error };
+    
+    // Create as pending order (will fill based on floorsheet volume)
+    const pending: DemoPendingOrder = {
+      id: orderId(),
+      ts: Date.now(),
+      symbol,
+      side,
+      qty,
+      filled: 0,
+      price,
       signalSnapshot: signalSnapshot ?? null,
     };
-
+    
     const newState: DemoState = {
-      account: { ...state.account, balance: newBalance },
-      positions: newPositions,
-      orders: [order, ...state.orders],
+      ...state,
+      pendingOrders: [pending, ...(state.pendingOrders ?? [])],
     };
     saveState(userId, newState);
     setState(newState);
-    return { success: true, order };
-  }, [state, prices, prevClose, userId]);
+    return { success: true, pending };
+  }, [state, prices, liveMap, prevClose, userId]);
 
-  const handleReset = () => {
-    const fresh = resetAccount(userId);
-    setState(fresh);
-    setResetConfirm(false);
+  const handleReset = () => { setState(resetAccount(userId)); setResetConfirm(false); };
+  const openTicket = (symbol?: string, price?: number) => { setTicketSymbol(symbol ?? ""); setTicketPrice(price ?? 0); setTicketSignal(null); setTicketOpen(true); };
+  const openTicketFromParams = (sym: string, price: number, signal: DemoOrder["signalSnapshot"]) => { setTicketSymbol(sym); setTicketPrice(price); setTicketSignal(signal); setTicketOpen(true); };
+
+  const handleQuickBuy = () => {
+    const sym = buySymbol.toUpperCase().trim();
+    if (!sym) { setBuyMsg("Enter a stock symbol!"); return; }
+    const ltp = prices[sym]?.ltp ?? liveMap.get(sym)?.ltp ?? 0;
+    if (ltp <= 0) { setBuyMsg(`No live price for ${sym}!`); return; }
+    
+    const qty = parseInt(buyQty);
+    if (!qty || qty < 1) { setBuyMsg("Enter valid quantity!"); return; }
+    
+    // Use manual price if provided, otherwise LTP
+    const customPrice = buyPrice ? parseFloat(buyPrice) : 0;
+    const orderPrice = customPrice > 0 ? customPrice : ltp;
+    
+    // Check balance
+    const fees = calcFees("buy", qty, orderPrice);
+    const totalCost = fees.tradeValue + fees.total;
+    if (totalCost > (state?.account.balance ?? 0)) {
+      setBuyMsg(`Insufficient balance! Need Rs ${npr(totalCost)}, have Rs ${npr(state?.account.balance ?? 0)}`);
+      return;
+    }
+    
+    const result = placeOrder(sym, "buy", qty, customPrice > 0 ? customPrice : undefined);
+    if (result.success) {
+      setBuyMsg(`ORDER: ${sym} x ${qty} @ Rs ${npr(orderPrice)} (fills from floorsheet)`);
+      setBuyQty(""); setBuyPrice(""); setBuySearch(""); setBuySymbol("");
+    } else setBuyMsg(result.error ?? "Order failed");
+    setTimeout(() => setBuyMsg(""), 5000);
   };
 
-  const openTicket = (symbol?: string, price?: number) => {
-    setTicketSymbol(symbol ?? "");
-    setTicketPrice(price ?? 0);
-    setTicketSignal(null);
-    setTicketOpen(true);
-  };
-
-  const openTicketFromParams = (sym: string, price: number, signal: DemoOrder["signalSnapshot"]) => {
-    setTicketSymbol(sym);
-    setTicketPrice(price);
-    setTicketSignal(signal);
-    setTicketOpen(true);
-  };
+  // All stocks from live market data (complete list like /market page)
+  const allLiveStocks = useMemo(() => {
+    const list = live.data?.data ?? [];
+    return list.filter(s => s.lastTradedPrice > 0).sort((a, b) => b.lastTradedPrice - a.lastTradedPrice);
+  }, [live.data]);
+  const stockSuggestions = useMemo(() => {
+    if (!buySearch.trim()) return allLiveStocks.slice(0, 12);
+    const q = buySearch.toUpperCase().trim();
+    return allLiveStocks.filter(s => s.symbol.toUpperCase().includes(q) || (s.securityName ?? "").toUpperCase().includes(q)).slice(0, 12);
+  }, [allLiveStocks, buySearch]);
 
   return (
     <div className="space-y-4">
-      {/* Auto-open ticket from stock page URL params */}
-      <Suspense fallback={null}>
-        <SearchParamsHandler onOpen={openTicketFromParams} />
-      </Suspense>
-
-      {/* DEMO Banner */}
+      <Suspense fallback={null}><SearchParamsHandler onOpen={openTicketFromParams} /></Suspense>
       <div className="rounded-xl border-2 border-amber-500 bg-amber-500/10 px-4 py-3 text-center">
-        <div className="text-base font-extrabold text-amber-700 dark:text-amber-400">
-          DEMO ACCOUNT — फेक पैसा, वास्तविक ट्रेड होइन
-        </div>
-        <div className="text-xs text-amber-600 dark:text-amber-500 mt-0.5">
-          Virtual NPR {num(STARTING_BALANCE)} balance · No real money · No real brokerage · For learning only
-        </div>
+        <div className="text-base font-extrabold text-amber-700 dark:text-amber-400">🏦 NEPSE FULL PORTFOLIO + P/L TRACKER</div>
+        <div className="text-xs text-amber-600 dark:text-amber-500 mt-0.5">Virtual NPR {num(STARTING_BALANCE)} balance · No real money · For learning only</div>
+        <Link href="/" className="mt-2 inline-block text-xs font-semibold text-primary hover:underline">← Back to Dashboard</Link>
       </div>
 
-      {/* Account Summary */}
-      {state && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <StatCard label="Cash Balance" value={`Rs ${npr(state.account.balance)}`} />
-          <StatCard label="Portfolio Value" value={`Rs ${npr(totalPortfolioValue)}`} sub={totalReturn >= 0 ? "text-up" : "text-down"} />
-          <StatCard label="Total Return" value={`${totalReturn >= 0 ? "+" : ""}${npr(totalReturn)}`} sub={totalReturnPct >= 0 ? "text-up" : "text-down"} />
-          <StatCard label="Return %" value={`${totalReturnPct >= 0 ? "+" : ""}${totalReturnPct.toFixed(2)}%`} sub={totalReturnPct >= 0 ? "text-up" : "text-down"} />
-        </div>
-      )}
-
-      {/* Tabs */}
-      <div className="flex gap-1 rounded-xl border border-border bg-surface p-1">
-        {([
-          { key: "dashboard", label: "📊 Dashboard" },
-          { key: "orders", label: "📋 Orders" },
-          { key: "performance", label: "📈 Performance" },
-        ] as const).map((t) => (
-          <button key={t.key} onClick={() => setTab(t.key)}
-            className={`flex-1 rounded-lg px-4 py-2 text-sm font-semibold transition ${tab === t.key ? "bg-amber-500 text-white shadow-sm" : "text-muted hover:bg-surface-2"}`}>
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Tab Content */}
-      {tab === "dashboard" && state && (
-        <DashboardTab
-          state={state} prices={prices}
-          getPositionValue={getPositionValue} getPositionPnL={getPositionPnL}
-          totalPositionValue={totalPositionValue} totalUnrealizedPnL={totalUnrealizedPnL}
-          openTicket={openTicket}
-          resetConfirm={resetConfirm} setResetConfirm={setResetConfirm}
-          handleReset={handleReset}
-        />
-      )}
-
-      {tab === "orders" && state && (
-        <OrdersTab state={state} prices={prices} />
-      )}
-
-      {tab === "performance" && state && (
-        <PerformanceTab state={state} prices={prices}
-          getPositionValue={getPositionValue}
-          totalPortfolioValue={totalPortfolioValue} totalReturn={totalReturn}
-        />
-      )}
-
-      {/* Order Ticket Modal */}
-      {ticketOpen && state && (
-        <OrderTicketModal
-          state={state} prices={prices} prevClose={prevClose}
-          symbol={ticketSymbol} initPrice={ticketPrice}
-          signalSnapshot={ticketSignal}
-          onClose={() => setTicketOpen(false)}
-          onPlace={placeOrder}
-        />
-      )}
-
-      {/* Trade Now Button */}
-      <div className="flex justify-center pb-6">
-        <button onClick={() => openTicket()}
-          className="rounded-xl bg-amber-500 px-8 py-3 text-sm font-extrabold text-white shadow-md transition hover:bg-amber-600 active:scale-95">
-          🎯 Place Demo Trade
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/* ─── Dashboard Tab ─── */
-function DashboardTab({ state, prices, getPositionValue, getPositionPnL, totalPositionValue, totalUnrealizedPnL, openTicket, resetConfirm, setResetConfirm, handleReset }: {
-  state: DemoState; prices: PriceMap;
-  getPositionValue: (p: DemoPosition) => number; getPositionPnL: (p: DemoPosition) => number;
-  totalPositionValue: number; totalUnrealizedPnL: number;
-  openTicket: (s?: string, p?: number) => void;
-  resetConfirm: boolean; setResetConfirm: (v: boolean) => void; handleReset: () => void;
-}) {
-  return (
-    <div className="space-y-4">
-      {/* Positions */}
-      <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-base font-bold">Open Positions ({state.positions.length})</h3>
-          <span className="text-xs text-muted">
-            Invested: Rs {npr(state.positions.reduce((s, p) => s + p.avgCost * p.qty, 0))} ·
-            Current: Rs {npr(totalPositionValue)} ·
-            Unrealized P&L: <span className={totalUnrealizedPnL >= 0 ? "text-up" : "text-down"}>{totalUnrealizedPnL >= 0 ? "+" : ""}Rs {npr(totalUnrealizedPnL)}</span>
-          </span>
-        </div>
-
-        {state.positions.length === 0 ? (
-          <div className="py-8 text-center text-muted">No open positions. Click &quot;Place Demo Trade&quot; to start trading.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-xs text-muted">
-                  <th className="py-2 text-left">Symbol</th>
-                  <th className="py-2 text-right">Qty</th>
-                  <th className="py-2 text-right">Avg Cost</th>
-                  <th className="py-2 text-right">Current Price</th>
-                  <th className="py-2 text-right">Value</th>
-                  <th className="py-2 text-right">P&L</th>
-                  <th className="py-2 text-right">P&L %</th>
-                  <th className="py-2 text-center">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {state.positions.map((pos) => {
-                  const curPrice = prices[pos.symbol]?.ltp ?? 0;
-                  const val = getPositionValue(pos);
-                  const pnl = getPositionPnL(pos);
-                  const pnlPct = pos.avgCost > 0 ? ((curPrice - pos.avgCost) / pos.avgCost) * 100 : 0;
+      <div className="grid gap-3 lg:grid-cols-3">
+        {/* BUY PANEL */}
+        <div className="rounded-xl border border-border bg-surface p-4 shadow-sm">
+          <h3 className="mb-3 text-base font-bold">🛒 Buy Stock</h3>
+          
+          {/* Stock Search */}
+          <div className="relative mb-2">
+            <input
+              value={buySearch}
+              onChange={(e) => { setBuySearch(e.target.value.toUpperCase()); setBuySymbol(""); setShowSuggestions(true); }}
+              onFocus={() => setShowSuggestions(true)}
+              onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+              placeholder="Type stock symbol (e.g. NABIL, NTC...)"
+              className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm font-bold uppercase outline-none focus:border-amber-500"
+            />
+            {buySymbol && <div className="absolute right-3 top-2 text-xs font-bold text-up">✓ {buySymbol}</div>}
+            {showSuggestions && stockSuggestions.length > 0 && (
+              <div className="absolute z-50 mt-1 max-h-[260px] w-full overflow-y-auto rounded-lg border border-border bg-surface-2 shadow-lg">
+                {stockSuggestions.map((s) => {
+                  const ltp = s.lastTradedPrice;
+                  const ch = s.percentageChange ?? 0;
                   return (
-                    <tr key={pos.symbol} className="border-b border-border/50 hover:bg-surface-2/50">
-                      <td className="py-2 font-bold">
-                        <Link href={`/stock/${pos.symbol}`} className="text-primary hover:underline">{pos.symbol}</Link>
-                      </td>
-                      <td className="py-2 text-right tabular-nums">{num(pos.qty)}</td>
-                      <td className="py-2 text-right tabular-nums">{npr(pos.avgCost)}</td>
-                      <td className="py-2 text-right tabular-nums">{curPrice > 0 ? npr(curPrice) : "-"}</td>
-                      <td className="py-2 text-right tabular-nums">{npr(val)}</td>
-                      <td className={`py-2 text-right tabular-nums font-bold ${pnl >= 0 ? "text-up" : "text-down"}`}>
-                        {pnl >= 0 ? "+" : ""}{npr(pnl)}
-                      </td>
-                      <td className={`py-2 text-right tabular-nums font-bold ${pnlPct >= 0 ? "text-up" : "text-down"}`}>
-                        {pnlPct >= 0 ? "+" : ""}{pnlPct.toFixed(2)}%
-                      </td>
-                      <td className="py-2 text-center">
-                        <button onClick={() => openTicket(pos.symbol, curPrice)}
-                          className="rounded bg-amber-500/10 px-2 py-0.5 text-xs font-bold text-amber-700 hover:bg-amber-500/20 dark:text-amber-400">
-                          Trade
-                        </button>
-                      </td>
-                    </tr>
+                    <button key={s.symbol} onClick={() => { setBuySymbol(s.symbol); setBuySearch(s.symbol); setShowSuggestions(false); }} className="flex w-full items-center justify-between px-3 py-1.5 text-left text-sm hover:bg-amber-500/10">
+                      <span className="flex items-center gap-1.5">
+                        <span className="font-bold text-primary">{s.symbol}</span>
+                        <span className="text-[10px] text-muted hidden sm:inline">{s.securityName?.slice(0, 18)}</span>
+                      </span>
+                      <span className="flex items-center gap-2 tabular-nums">
+                        <span className="text-xs font-semibold text-foreground">Rs {npr(ltp)}</span>
+                        <span className={`text-[10px] font-bold w-12 text-right ${ch >= 0 ? "text-up" : "text-down"}`}>{ch >= 0 ? "+" : ""}{pct(ch)}</span>
+                      </span>
+                    </button>
                   );
                 })}
-              </tbody>
-            </table>
+              </div>
+            )}
           </div>
-        )}
-      </div>
 
-      {/* Reset */}
-      <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
-        <h3 className="mb-2 text-sm font-bold">⚙️ Account Management</h3>
-        {!resetConfirm ? (
-          <button onClick={() => setResetConfirm(true)}
-            className="rounded-lg border border-down/30 bg-down-bg px-4 py-2 text-xs font-bold text-down hover:bg-down-bg/80">
-            Reset Demo Account
-          </button>
-        ) : (
-          <div className="flex items-center gap-3">
-            <span className="text-sm font-bold text-down">Are you sure? This will wipe all positions and trades.</span>
-            <button onClick={handleReset}
-              className="rounded-lg bg-down px-4 py-2 text-xs font-bold text-white">Yes, Reset</button>
-            <button onClick={() => setResetConfirm(false)}
-              className="rounded-lg border border-border px-4 py-2 text-xs font-bold text-muted hover:bg-surface-2">Cancel</button>
+          {/* Quantity */}
+          <input value={buyQty} onChange={(e) => setBuyQty(e.target.value)} type="number" min={1} placeholder="Quantity (shares)" className="mb-2 w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm font-bold outline-none focus:border-amber-500" />
+
+          {/* Manual Price (optional) */}
+          <div className="mb-2">
+            <input value={buyPrice} onChange={(e) => setBuyPrice(e.target.value)} type="number" step="0.01" placeholder={`Price (LTP: ${npr(prices[buySymbol]?.ltp ?? liveMap.get(buySymbol)?.ltp ?? 0)}) — optional`} className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm font-bold outline-none focus:border-amber-500" />
+            {buySymbol && (prices[buySymbol]?.ltp ?? liveMap.get(buySymbol)?.ltp ?? 0) > 0 && (
+              <div className="mt-1 text-[10px] text-muted">Allowed range: <b className="text-foreground">Rs {npr((prices[buySymbol]?.ltp ?? liveMap.get(buySymbol)?.ltp ?? 0) * 0.98)}</b> – <b className="text-foreground">Rs {npr((prices[buySymbol]?.ltp ?? liveMap.get(buySymbol)?.ltp ?? 0) * 1.02)}</b> (LTP ±2%)</div>
+            )}
           </div>
-        )}
-      </div>
-    </div>
-  );
-}
 
-/* ─── Orders Tab ─── */
-function OrdersTab({ state, prices }: { state: DemoState; prices: PriceMap }) {
-  const [filter, setFilter] = useState("");
-  const filtered = filter
-    ? state.orders.filter(o => o.symbol.includes(filter.toUpperCase()))
-    : state.orders;
+          {/* Summary */}
+          <div className="mb-2 rounded-lg bg-surface-2 p-2 text-xs text-muted">
+            {(() => {
+              const ltp = prices[buySymbol]?.ltp ?? liveMap.get(buySymbol)?.ltp ?? 0;
+              const orderPrice = buyPrice ? parseFloat(buyPrice) : ltp;
+              const qty = buyQty ? parseInt(buyQty) || 0 : 0;
+              const amt = qty * orderPrice;
+              return (
+                <>
+                  <div>LTP: <span className="font-bold text-foreground">{buySymbol ? npr(ltp) : "—"}</span>
+                    {buyPrice && orderPrice > 0 && <span className="ml-2">Your Price: <span className="font-bold text-amber-500">Rs {npr(orderPrice)}</span></span>}
+                  </div>
+                  {buySymbol && qty > 0 && (
+                    <div className="mt-1">
+                      <span>Qty: <b className="text-foreground">{num(qty)}</b> shares</span>
+                      <span className="mx-2">·</span>
+                      <span>Amount: <b className="text-amber-500">Rs {npr(amt)}</b></span>
+                    </div>
+                  )}
+                  <div className="mt-1">Cash: <b className="text-foreground">Rs {npr(state?.account.balance ?? 0)}</b></div>
+                </>
+              );
+            })()}
+          </div>
+          <button onClick={handleQuickBuy} className="w-full rounded-lg bg-up py-2.5 text-sm font-extrabold text-white transition hover:bg-up/90 active:scale-95">BUY</button>
+          {buyMsg && <div className={`mt-2 rounded-lg px-3 py-1.5 text-xs font-bold ${buyMsg.includes("ORDER PLACED") ? "bg-up-bg text-up" : "bg-down-bg text-down"}`}>{buyMsg}</div>}
+          <button onClick={() => openTicket()} className="mt-2 w-full rounded-lg border border-border bg-surface-2 py-2 text-xs font-bold text-muted transition hover:bg-surface hover:text-foreground">🎯 Advanced Trade (Buy/Sell)</button>
+        </div>
 
-  // Realized P&L calculation
-  const realizedPnL = useMemo(() => {
-    let pnl = 0;
-    const buys: Record<string, { qty: number; totalCost: number }> = {};
-    for (const o of [...state.orders].reverse()) {
-      if (!buys[o.symbol]) buys[o.symbol] = { qty: 0, totalCost: 0 };
-      if (o.side === "buy") {
-        buys[o.symbol].qty += o.qty;
-        buys[o.symbol].totalCost += o.price * o.qty;
-      } else {
-        const avgCost = buys[o.symbol].qty > 0 ? buys[o.symbol].totalCost / buys[o.symbol].qty : 0;
-        pnl += (o.price - avgCost) * o.qty - o.fees;
-        buys[o.symbol].qty -= o.qty;
-        buys[o.symbol].totalCost = buys[o.symbol].qty > 0 ? avgCost * buys[o.symbol].qty : 0;
-      }
-    }
-    return pnl;
-  }, [state.orders]);
-
-  // Signal-followed stats
-  const signalStats = useMemo(() => {
-    const withSignal = state.orders.filter(o => o.signalSnapshot);
-    const followed = withSignal.filter(o => {
-      const rec = o.signalSnapshot?.recommendation ?? "";
-      return (o.side === "buy" && (rec.includes("Buy"))) || (o.side === "sell" && (rec.includes("Sell")));
-    });
-    return { total: withSignal.length, followed: followed.length };
-  }, [state.orders]);
-
-  return (
-    <div className="space-y-4">
-      {/* Summary */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatCard label="Total Orders" value={num(state.orders.length)} />
-        <StatCard label="Realized P&L" value={`${realizedPnL >= 0 ? "+" : ""}Rs ${npr(realizedPnL)}`} sub={realizedPnL >= 0 ? "text-up" : "text-down"} />
-        <StatCard label="Signal-Followed" value={`${signalStats.followed}/${signalStats.total}`} />
-        <StatCard label="Open Positions" value={num(state.positions.length)} />
-      </div>
-
-      {/* Filter */}
-      <div className="flex items-center gap-3">
-        <input value={filter} onChange={(e) => setFilter(e.target.value.toUpperCase())}
-          placeholder="Filter by symbol..."
-          className="flex-1 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-semibold outline-none focus:border-amber-500 uppercase" />
-      </div>
-
-      {/* Orders Table */}
-      <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
-        <h3 className="mb-3 text-base font-bold">Trade Ledger</h3>
-        {filtered.length === 0 ? (
-          <div className="py-8 text-center text-muted">No trades yet.</div>
-        ) : (
-          <div className="overflow-x-auto">
+        {/* LIVE MARKET */}
+        <div className="rounded-xl border border-border bg-surface p-4 shadow-sm">
+          <h3 className="mb-3 text-base font-bold">📡 Live Market (LTP + Volume)</h3>
+          <div className="max-h-[300px] overflow-y-auto">
             <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-xs text-muted">
-                  <th className="py-2 text-left">Time</th>
-                  <th className="py-2 text-left">Symbol</th>
-                  <th className="py-2 text-center">Side</th>
-                  <th className="py-2 text-right">Qty</th>
-                  <th className="py-2 text-right">Price</th>
-                  <th className="py-2 text-right">Fees</th>
-                  <th className="py-2 text-right">Total</th>
-                  <th className="py-2 text-right">Balance</th>
-                  <th className="py-2 text-center">Signal</th>
-                </tr>
-              </thead>
+              <thead><tr className="border-b border-border text-xs text-muted"><th className="py-1.5 text-left">Stock</th><th className="py-1.5 text-right">LTP</th><th className="py-1.5 text-right">Chg</th><th className="py-1.5 text-right">Vol</th></tr></thead>
               <tbody>
-                {filtered.map((o) => (
-                  <tr key={o.id} className="border-b border-border/50 hover:bg-surface-2/50">
-                    <td className="py-2 text-xs text-muted">{new Date(o.ts).toLocaleString("en-GB", { dateStyle: "short", timeStyle: "short" })}</td>
-                    <td className="py-2 font-bold">
-                      <Link href={`/stock/${o.symbol}`} className="text-primary hover:underline">{o.symbol}</Link>
-                    </td>
-                    <td className="py-2 text-center">
-                      <span className={`rounded px-1.5 py-0.5 text-[10px] font-extrabold ${o.side === "buy" ? "bg-up-bg text-up" : "bg-down-bg text-down"}`}>
-                        {o.side.toUpperCase()}
-                      </span>
-                    </td>
-                    <td className="py-2 text-right tabular-nums">{num(o.qty)}</td>
-                    <td className="py-2 text-right tabular-nums">{npr(o.price)}</td>
-                    <td className="py-2 text-right tabular-nums text-muted">{npr(o.fees)}</td>
-                    <td className="py-2 text-right tabular-nums">{npr(o.total)}</td>
-                    <td className="py-2 text-right tabular-nums font-semibold">{npr(o.balanceAfter)}</td>
-                    <td className="py-2 text-center text-xs">
-                      {o.signalSnapshot ? (
-                        <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-primary">
-                          {o.signalSnapshot.recommendation}
-                        </span>
-                      ) : (
-                        <span className="text-muted">-</span>
-                      )}
-                    </td>
+                {allLiveStocks.slice(0, 15).map((s) => {
+                  const chg = s.percentageChange ?? 0;
+                  return (
+                  <tr key={s.symbol} className="border-b border-border/30 hover:bg-surface-2/50">
+                    <td className="py-1.5 font-bold text-primary">{s.symbol}</td>
+                    <td className="py-1.5 text-right font-bold tabular-nums text-cyan-400">{npr(s.lastTradedPrice)}</td>
+                    <td className={`py-1.5 text-right text-xs font-bold tabular-nums ${chg >= 0 ? "text-up" : "text-down"}`}>{chg >= 0 ? "+" : ""}{pct(chg)}</td>
+                    <td className="py-1.5 text-right text-xs tabular-nums text-muted">{(s.totalTradeQuantity ?? 0) > 0 ? num(s.totalTradeQuantity) : "—"}</td>
                   </tr>
-                ))}
+                  );
+                })}
+                {allLiveStocks.length === 0 && <tr><td colSpan={4} className="py-6 text-center text-muted">Loading live data...</td></tr>}
               </tbody>
             </table>
           </div>
-        )}
-      </div>
-    </div>
-  );
-}
+        </div>
 
-/* ─── Performance Tab ─── */
-function PerformanceTab({ state, prices, getPositionValue, totalPortfolioValue, totalReturn }: {
-  state: DemoState; prices: PriceMap;
-  getPositionValue: (p: DemoPosition) => number;
-  totalPortfolioValue: number; totalReturn: number;
-}) {
-  const totalReturnPct = (totalReturn / STARTING_BALANCE) * 100;
-
-  // Win/loss stats from closed trades
-  const { wins, losses, avgWin, avgLoss, winRate } = useMemo(() => {
-    const buys: Record<string, { qty: number; totalCost: number }> = {};
-    const trades: { pnl: number }[] = [];
-    for (const o of [...state.orders].reverse()) {
-      if (!buys[o.symbol]) buys[o.symbol] = { qty: 0, totalCost: 0 };
-      if (o.side === "buy") {
-        buys[o.symbol].qty += o.qty;
-        buys[o.symbol].totalCost += o.price * o.qty;
-      } else {
-        const avgCost = buys[o.symbol].qty > 0 ? buys[o.symbol].totalCost / buys[o.symbol].qty : 0;
-        const pnl = (o.price - avgCost) * o.qty - o.fees;
-        trades.push({ pnl });
-        buys[o.symbol].qty -= o.qty;
-        buys[o.symbol].totalCost = buys[o.symbol].qty > 0 ? avgCost * buys[o.symbol].qty : 0;
-      }
-    }
-    const w = trades.filter(t => t.pnl > 0);
-    const l = trades.filter(t => t.pnl <= 0);
-    return {
-      wins: w.length, losses: l.length,
-      avgWin: w.length > 0 ? w.reduce((s, t) => s + t.pnl, 0) / w.length : 0,
-      avgLoss: l.length > 0 ? l.reduce((s, t) => s + t.pnl, 0) / l.length : 0,
-      winRate: trades.length > 0 ? (w.length / trades.length) * 100 : 0,
-    };
-  }, [state.orders]);
-
-  // Equity curve data points
-  const equityCurve = useMemo(() => {
-    const points: { ts: number; value: number }[] = [{ ts: state.account.createdAt, value: STARTING_BALANCE }];
-    let bal = STARTING_BALANCE;
-    const posMap: Record<string, { qty: number; avgCost: number }> = {};
-    for (const o of [...state.orders].reverse()) {
-      if (o.side === "buy") {
-        bal -= o.total + o.fees;
-        if (!posMap[o.symbol]) posMap[o.symbol] = { qty: 0, avgCost: 0 };
-        const prev = posMap[o.symbol];
-        const newQty = prev.qty + o.qty;
-        prev.avgCost = prev.qty > 0 ? ((prev.avgCost * prev.qty) + (o.price * o.qty)) / newQty : o.price;
-        prev.qty = newQty;
-      } else {
-        bal += o.total - o.fees;
-        if (posMap[o.symbol]) posMap[o.symbol].qty -= o.qty;
-      }
-      // Calculate portfolio value at this point
-      let posVal = 0;
-      for (const [sym, p] of Object.entries(posMap)) {
-        if (p.qty > 0) posVal += (prices[sym]?.ltp ?? p.avgCost) * p.qty;
-      }
-      points.push({ ts: o.ts, value: bal + posVal });
-    }
-    return points;
-  }, [state.orders, state.account.createdAt, prices]);
-
-  // Signal outcome
-  const signalOutcome = useMemo(() => {
-    const signalTrades = state.orders.filter(o => o.signalSnapshot);
-    const buySignals = signalTrades.filter(o => o.side === "buy" && o.signalSnapshot?.recommendation?.includes("Buy"));
-    const sellSignals = signalTrades.filter(o => o.side === "sell" && o.signalSnapshot?.recommendation?.includes("Sell"));
-    return { total: signalTrades.length, buySignals: buySignals.length, sellSignals: sellSignals.length };
-  }, [state.orders]);
-
-  const maxEquity = Math.max(...equityCurve.map(p => p.value), STARTING_BALANCE);
-  const minEquity = Math.min(...equityCurve.map(p => p.value), STARTING_BALANCE);
-
-  return (
-    <div className="space-y-4">
-      {/* Stats */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatCard label="Total Return" value={`${totalReturnPct >= 0 ? "+" : ""}${totalReturnPct.toFixed(2)}%`} sub={totalReturnPct >= 0 ? "text-up" : "text-down"} />
-        <StatCard label="Win Rate" value={`${winRate.toFixed(1)}%`} sub={`${wins}W / ${losses}L`} />
-        <StatCard label="Avg Win" value={`+Rs ${npr(avgWin)}`} sub="text-up" />
-        <StatCard label="Avg Loss" value={`Rs ${npr(avgLoss)}`} sub="text-down" />
-      </div>
-
-      {/* Equity Curve */}
-      <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
-        <h3 className="mb-3 text-base font-bold">📈 Equity Curve</h3>
-        {equityCurve.length <= 1 ? (
-          <div className="py-8 text-center text-muted">Place some trades to see the equity curve.</div>
-        ) : (
-          <div className="relative h-48">
-            {/* Simple bar chart */}
-            <div className="flex h-full items-end gap-0.5">
-              {equityCurve.map((p, i) => {
-                const range = maxEquity - minEquity || 1;
-                const height = ((p.value - minEquity) / range) * 100;
-                const color = p.value >= STARTING_BALANCE ? "bg-up" : "bg-down";
-                return (
-                  <div key={i} className={`flex-1 ${color} rounded-t opacity-80 transition-all`}
-                    style={{ height: `${Math.max(height, 2)}%` }}
-                    title={`Rs ${npr(p.value)} — ${new Date(p.ts).toLocaleDateString()}`} />
-                );
-              })}
-            </div>
-            {/* Reference line at starting balance */}
-            <div className="absolute left-0 right-0 border-t border-dashed border-muted"
-              style={{ bottom: `${((STARTING_BALANCE - minEquity) / (maxEquity - minEquity || 1)) * 100}%` }} />
-          </div>
-        )}
-        <div className="mt-2 flex justify-between text-xs text-muted">
-          <span>Start: Rs {npr(STARTING_BALANCE)}</span>
-          <span>Current: Rs {npr(totalPortfolioValue)}</span>
+        {/* PORTFOLIO */}
+        <div className="rounded-xl border border-border bg-surface p-4 shadow-sm">
+          <h3 className="mb-3 text-base font-bold">💼 Portfolio</h3>
+          <table className="w-full text-sm">
+            <thead><tr className="border-b border-border text-xs text-muted"><th className="py-1.5 text-left">Stock</th><th className="py-1.5 text-right">Qty</th><th className="py-1.5 text-right">Avg</th><th className="py-1.5 text-right">P/L</th></tr></thead>
+            <tbody>
+              {state?.positions.map((pos) => { const ltp = getLTP(pos.symbol); const pl = (ltp - pos.avgCost) * pos.qty; return (
+                <tr key={pos.symbol} className="border-b border-border/30 hover:bg-surface-2/50">
+                  <td className="py-1.5 font-bold text-primary">{pos.symbol}</td>
+                  <td className="py-1.5 text-right tabular-nums">{num(pos.qty)}</td>
+                  <td className="py-1.5 text-right tabular-nums">{npr(pos.avgCost)}</td>
+                  <td className={`py-1.5 text-right font-bold tabular-nums ${pl >= 0 ? "text-up" : "text-down"}`}>{pl >= 0 ? "+" : ""}{npr(pl)}</td>
+                </tr>
+              ); })}
+              {(!state || state.positions.length === 0) && <tr><td colSpan={4} className="py-6 text-center text-muted">No positions yet</td></tr>}
+            </tbody>
+          </table>
         </div>
       </div>
 
-      {/* Signal Outcome */}
-      <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
-        <h3 className="mb-3 text-base font-bold">🎯 Signal Outcome Report</h3>
-        {signalOutcome.total === 0 ? (
-          <div className="py-4 text-center text-muted">No signal-followed trades yet. Use the &quot;Demo Trade&quot; button from stock signal cards.</div>
+      {/* PENDING ORDERS - Shows orders waiting to be filled based on floorsheet volume */}
+      {state && (state.pendingOrders?.length ?? 0) > 0 && (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 shadow-sm">
+          <h3 className="mb-3 text-base font-bold text-amber-600 dark:text-amber-400">⏳ Pending Orders (Waiting for Floorsheet Volume)</h3>
+          <table className="w-full text-sm">
+            <thead><tr className="border-b border-border text-xs text-muted"><th className="py-1.5 text-left">Symbol</th><th className="py-1.5 text-left">Side</th><th className="py-1.5 text-right">Ordered</th><th className="py-1.5 text-right">Filled</th><th className="py-1.5 text-right">Remaining</th><th className="py-1.5 text-right">Price</th><th className="py-1.5 text-right">Progress</th></tr></thead>
+            <tbody>
+              {(state.pendingOrders ?? []).map((po) => {
+                const remaining = po.qty - po.filled;
+                const pct = po.qty > 0 ? (po.filled / po.qty) * 100 : 0;
+                const available = prices[po.symbol]?.totalQty ?? 0;
+                return (
+                  <tr key={po.id} className="border-b border-border/30">
+                    <td className="py-2 font-bold text-primary">{po.symbol}</td>
+                    <td className={`py-2 font-bold uppercase ${po.side === "buy" ? "text-up" : "text-down"}`}>{po.side}</td>
+                    <td className="py-2 text-right tabular-nums">{num(po.qty)}</td>
+                    <td className="py-2 text-right tabular-nums text-up">{num(po.filled)}</td>
+                    <td className="py-2 text-right tabular-nums text-amber-500">{num(remaining)}</td>
+                    <td className="py-2 text-right tabular-nums">{npr(po.price)}</td>
+                    <td className="py-2 text-right">
+                      <div className="flex items-center gap-2">
+                        <div className="h-2 w-20 overflow-hidden rounded-full bg-surface-2">
+                          <div className="h-full rounded-full bg-amber-500 transition-all" style={{ width: `${pct}%` }} />
+                        </div>
+                        <span className="text-xs tabular-nums">{pct.toFixed(0)}%</span>
+                      </div>
+                      {available > 0 && <div className="text-[10px] text-muted">Market: {num(available)} shares</div>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <div className="mt-2 text-[10px] text-muted">Orders fill gradually as market volume increases (up to 30% of floorsheet volume per check)</div>
+        </div>
+      )}
+
+      {/* ACCOUNT SUMMARY */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <SCard label="Initial Capital" value={`Rs ${num(STARTING_BALANCE)}`} />
+        <SCard label="Cash Remaining" value={`Rs ${npr(state?.account.balance ?? STARTING_BALANCE)}`} highlight />
+        <SCard label="Total Invested" value={`Rs ${npr(totalInvested)}`} />
+        <SCard label="Total Equity" value={`Rs ${npr(totalPortfolioValue)}`} highlight />
+        <SCard label="Net Profit/Loss" value={`${totalReturn >= 0 ? "+" : ""}Rs ${npr(totalReturn)}`} valueClass={totalReturn >= 0 ? "text-up" : "text-down"} highlight />
+      </div>
+
+      <div className="rounded-xl border border-border bg-surface p-4 shadow-sm">
+        <div className="flex items-center justify-between text-sm">
+          <span className="font-bold text-muted">Total Return</span>
+          <span className={`text-lg font-extrabold tabular-nums ${totalReturnPct >= 0 ? "text-up" : "text-down"}`}>{totalReturnPct >= 0 ? "+" : ""}{totalReturnPct.toFixed(2)}%</span>
+        </div>
+        <div className="mt-2 h-3 w-full overflow-hidden rounded-full bg-surface-2">
+          <div className={`h-full rounded-full transition-all ${totalReturnPct >= 0 ? "bg-up" : "bg-down"}`} style={{ width: `${Math.min(Math.max((totalReturnPct + 10) / 20 * 100, 0), 100)}%` }} />
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-surface p-4 shadow-sm">
+        <h3 className="mb-2 text-sm font-bold">⚙️ Account Management</h3>
+        {!resetConfirm ? (
+          <button onClick={() => setResetConfirm(true)} className="rounded-lg border border-down/30 bg-down-bg px-4 py-2 text-xs font-bold text-down hover:bg-down-bg/80">Reset Demo Account</button>
         ) : (
-          <div className="grid grid-cols-3 gap-4 text-center">
-            <div className="rounded-lg bg-surface-2 p-3">
-              <div className="text-xs text-muted">Signal Trades</div>
-              <div className="text-lg font-bold">{signalOutcome.total}</div>
-            </div>
-            <div className="rounded-lg bg-up-bg/50 p-3">
-              <div className="text-xs text-muted">Buy Signals Followed</div>
-              <div className="text-lg font-bold text-up">{signalOutcome.buySignals}</div>
-            </div>
-            <div className="rounded-lg bg-down-bg/50 p-3">
-              <div className="text-xs text-muted">Sell Signals Followed</div>
-              <div className="text-lg font-bold text-down">{signalOutcome.sellSignals}</div>
-            </div>
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-bold text-down">Are you sure?</span>
+            <button onClick={handleReset} className="rounded-lg bg-down px-4 py-2 text-xs font-bold text-white">Yes, Reset</button>
+            <button onClick={() => setResetConfirm(false)} className="rounded-lg border border-border px-4 py-2 text-xs font-bold text-muted hover:bg-surface-2">Cancel</button>
           </div>
         )}
       </div>
+
+      {ticketOpen && state && <OrderTicketModal state={state} prices={prices} prevClose={prevClose} symbol={ticketSymbol} initPrice={ticketPrice} signalSnapshot={ticketSignal} onClose={() => setTicketOpen(false)} onPlace={placeOrder} />}
     </div>
   );
 }
 
-/* ─── Order Ticket Modal ─── */
+function SCard({ label, value, valueClass, highlight }: { label: string; value: string; valueClass?: string; highlight?: boolean }) {
+  return (
+    <div className={`rounded-xl border p-3 shadow-sm ${highlight ? "border-amber-500/30 bg-amber-500/5" : "border-border bg-surface"}`}>
+      <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">{label}</div>
+      <div className={`mt-0.5 text-base font-bold tabular-nums ${valueClass ?? ""}`}>{value}</div>
+    </div>
+  );
+}
+
 function OrderTicketModal({ state, prices, prevClose, symbol, initPrice, signalSnapshot, onClose, onPlace }: {
-  state: DemoState; prices: PriceMap; prevClose: PrevCloseMap;
-  symbol: string; initPrice: number;
-  signalSnapshot?: DemoOrder["signalSnapshot"];
-  onClose: () => void;
-  onPlace: (symbol: string, side: "buy" | "sell", qty: number, signalSnapshot?: DemoOrder["signalSnapshot"]) => { success: boolean; error?: string; order?: DemoOrder };
+  state: DemoState; prices: PriceMap; prevClose: PrevCloseMap; symbol: string; initPrice: number;
+  signalSnapshot?: DemoOrder["signalSnapshot"]; onClose: () => void;
+  onPlace: (symbol: string, side: "buy" | "sell", qty: number, customPrice?: number, signalSnapshot?: DemoOrder["signalSnapshot"]) => { success: boolean; error?: string; pending?: DemoPendingOrder };
 }) {
   const [sym, setSym] = useState(symbol);
   const [side, setSide] = useState<"buy" | "sell">("buy");
   const [qty, setQty] = useState(10);
+  const [manualPrice, setManualPrice] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
-
-  const price = prices[sym]?.ltp ?? initPrice;
+  const ltp = prices[sym]?.ltp ?? initPrice;
+  const orderPrice = manualPrice ? parseFloat(manualPrice) : ltp;
   const prevC = prevClose[sym]?.prevClose ?? 0;
-  const fees = price > 0 && qty > 0 ? calcFees(side, qty, price) : null;
+  const fees = orderPrice > 0 && qty > 0 ? calcFees(side, qty, orderPrice) : null;
   const totalCost = fees ? fees.tradeValue + fees.total : 0;
-  const pos = state.positions.find(p => p.symbol === sym);
-  const posQty = pos?.qty ?? 0;
+  const posQty = state.positions.find(p => p.symbol === sym)?.qty ?? 0;
 
   const handleSubmit = () => {
     if (!sym.trim()) { setError("Enter a symbol"); return; }
-    if (price <= 0) { setError("No live price available for this symbol"); return; }
-
-    const validation = validateOrder(side, qty, price, prevC, state.account.balance, posQty);
-    if (!validation.valid) { setError(validation.error ?? "Invalid order"); return; }
-
-    const result = onPlace(sym.toUpperCase(), side, qty, signalSnapshot ?? undefined);
-    if (result.success) {
-      setSuccess(true);
-      setTimeout(onClose, 1500);
-    } else {
-      setError(result.error ?? "Order failed");
+    if (orderPrice <= 0) { setError("No price available"); return; }
+    
+    // Sell: must own the stock
+    if (side === "sell" && posQty <= 0) { setError(`You don't own ${sym}. Only owned stocks can be sold.`); return; }
+    if (side === "sell" && qty > posQty) { setError(`Only ${posQty} shares owned.`); return; }
+    
+    // Buy: check balance
+    if (side === "buy" && fees && (fees.tradeValue + fees.total) > state.account.balance) {
+      setError(`Insufficient balance! Need Rs ${npr(fees.tradeValue + fees.total)}`); return;
     }
+    
+    const customPrice = manualPrice ? parseFloat(manualPrice) : undefined;
+    const result = onPlace(sym.toUpperCase(), side, qty, customPrice, signalSnapshot ?? undefined);
+    if (result.success) { setSuccess(true); setTimeout(onClose, 1500); } else setError(result.error ?? "Order failed");
   };
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
       <div className="w-full max-w-md rounded-2xl border-2 border-amber-500 bg-surface p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        {/* Header */}
         <div className="mb-4 flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-extrabold">🎯 Demo Trade</h2>
-            <div className="text-xs text-amber-600 dark:text-amber-400 font-bold">DEMO — फेक पैसा, वास्तविक ट्रेड होइन</div>
-          </div>
+          <div><h2 className="text-lg font-extrabold">🎯 Demo Trade</h2><div className="text-xs text-amber-600 dark:text-amber-400 font-bold">DEMO — फेक पैसा, वास्तविक ट्रेड होइन</div></div>
           <button onClick={onClose} className="text-2xl text-muted hover:text-foreground">&times;</button>
         </div>
-
-        {success ? (
-          <div className="py-8 text-center">
-            <div className="text-3xl mb-2">✅</div>
-            <div className="text-lg font-bold text-up">Order Executed!</div>
-          </div>
-        ) : (
+        {success ? (<div className="py-8 text-center"><div className="text-3xl mb-2">⏳</div><div className="text-lg font-bold text-amber-500">Order Placed!</div><div className="mt-2 text-xs text-muted">Fills gradually based on floorsheet volume</div></div>) : (
           <>
-            {/* Signal snapshot */}
-            {signalSnapshot && (
-              <div className="mb-3 rounded-lg border border-primary/30 bg-primary/5 p-2 text-xs">
-                <span className="font-bold text-primary">Signal: </span>
-                <span className="font-semibold">{signalSnapshot.recommendation}</span>
-                <span className="ml-2 text-muted">Confidence: {signalSnapshot.confidence}%</span>
-                {signalSnapshot.trend && <span className="ml-2 text-muted">Trend: {signalSnapshot.trend}</span>}
-              </div>
-            )}
-
-            {/* Symbol */}
-            <div className="mb-3">
-              <label className="mb-1 block text-xs font-bold text-muted">Symbol</label>
-              <input value={sym} onChange={(e) => setSym(e.target.value.toUpperCase())}
-                placeholder="e.g. NABIL"
-                className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm font-bold uppercase outline-none focus:border-amber-500" />
+            {signalSnapshot && <div className="mb-3 rounded-lg border border-primary/30 bg-primary/5 p-2 text-xs"><span className="font-bold text-primary">Signal: </span><span className="font-semibold">{signalSnapshot.recommendation}</span></div>}
+            <div className="mb-3"><label className="mb-1 block text-xs font-bold text-muted">Symbol</label><input value={sym} onChange={(e) => setSym(e.target.value.toUpperCase())} placeholder="e.g. NABIL" className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm font-bold uppercase outline-none focus:border-amber-500" /></div>
+            <div className="mb-3"><label className="mb-1 block text-xs font-bold text-muted">LTP (Live)</label><div className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm font-bold tabular-nums">{ltp > 0 ? `Rs ${npr(ltp)}` : <span className="text-muted">No price</span>}</div></div>
+            <div className="mb-3"><label className="mb-1 block text-xs font-bold text-muted">Your Price (optional, LTP ±2%)</label><input value={manualPrice} onChange={(e) => setManualPrice(e.target.value)} type="number" step="0.01" placeholder={`Default: LTP = ${npr(ltp)}`} className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm font-bold tabular-nums outline-none focus:border-amber-500" />
+              {ltp > 0 && <div className="mt-1 text-[10px] text-muted">Range: Rs {npr(ltp * 0.98)} – Rs {npr(ltp * 1.02)}</div>}
             </div>
-
-            {/* Price */}
-            <div className="mb-3">
-              <label className="mb-1 block text-xs font-bold text-muted">Current Price (Live)</label>
-              <div className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm font-bold tabular-nums">
-                {price > 0 ? `Rs ${npr(price)}` : <span className="text-muted">No price available</span>}
-              </div>
-            </div>
-
-            {/* Side toggle */}
             <div className="mb-3 flex gap-2">
-              <button onClick={() => setSide("buy")}
-                className={`flex-1 rounded-lg py-2 text-sm font-bold transition ${side === "buy" ? "bg-up text-white" : "bg-surface-2 text-muted hover:bg-up-bg"}`}>
-                BUY
-              </button>
-              <button onClick={() => setSide("sell")}
-                className={`flex-1 rounded-lg py-2 text-sm font-bold transition ${side === "sell" ? "bg-down text-white" : "bg-surface-2 text-muted hover:bg-down-bg"}`}>
-                SELL
-              </button>
+              <button onClick={() => setSide("buy")} className={`flex-1 rounded-lg py-2 text-sm font-bold transition ${side === "buy" ? "bg-up text-white" : "bg-surface-2 text-muted hover:bg-up-bg"}`}>BUY</button>
+              <button onClick={() => setSide("sell")} className={`flex-1 rounded-lg py-2 text-sm font-bold transition ${side === "sell" ? "bg-down text-white" : "bg-surface-2 text-muted hover:bg-down-bg"}`}>SELL</button>
             </div>
-
-            {/* Quantity */}
-            <div className="mb-3">
-              <label className="mb-1 block text-xs font-bold text-muted">Quantity (min 10)</label>
-              <input type="number" min={10} value={qty}
-                onChange={(e) => setQty(Math.max(0, parseInt(e.target.value) || 0))}
-                className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm font-bold tabular-nums outline-none focus:border-amber-500" />
-            </div>
-
-            {/* Fee breakdown */}
-            {fees && price > 0 && (
-              <div className="mb-3 rounded-lg bg-surface-2 p-3 text-xs space-y-1">
-                <div className="flex justify-between"><span className="text-muted">Trade Value</span><span className="tabular-nums">Rs {npr(fees.tradeValue)}</span></div>
-                <div className="flex justify-between"><span className="text-muted">Broker Commission</span><span className="tabular-nums">Rs {npr(fees.brokerComm)}</span></div>
-                <div className="flex justify-between"><span className="text-muted">SEBON Fee</span><span className="tabular-nums">Rs {npr(fees.sebonFee)}</span></div>
-                <div className="flex justify-between"><span className="text-muted">DP Fee</span><span className="tabular-nums">Rs {npr(fees.dpFee)}</span></div>
-                <div className="flex justify-between border-t border-border pt-1 font-bold"><span>Total {side === "buy" ? "Cost" : "Proceeds"}</span><span className="tabular-nums">Rs {npr(totalCost)}</span></div>
-              </div>
-            )}
-
-            {/* Validation info */}
-            {side === "sell" && posQty > 0 && (
-              <div className="mb-2 text-xs text-muted">Available to sell: <b>{posQty}</b> shares</div>
-            )}
-            <div className="mb-3 text-xs text-muted">Cash balance: <b>Rs {npr(state.account.balance)}</b></div>
-
-            {/* Error */}
+            <div className="mb-3"><label className="mb-1 block text-xs font-bold text-muted">Quantity (min 10)</label><input type="number" min={10} value={qty} onChange={(e) => setQty(Math.max(0, parseInt(e.target.value) || 0))} className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm font-bold tabular-nums outline-none focus:border-amber-500" /></div>
+            {fees && orderPrice > 0 && <div className="mb-3 rounded-lg bg-surface-2 p-3 text-xs space-y-1">
+              <div className="flex justify-between"><span className="text-muted">Trade Value</span><span className="tabular-nums">Rs {npr(fees.tradeValue)}</span></div>
+              <div className="flex justify-between"><span className="text-muted">Brokerage+Fees</span><span className="tabular-nums">Rs {npr(fees.total)}</span></div>
+              <div className="flex justify-between border-t border-border pt-1 font-bold"><span>Total {side === "buy" ? "Cost" : "Proceeds"}</span><span className="tabular-nums">Rs {npr(totalCost)}</span></div>
+            </div>}
+            {side === "sell" && posQty > 0 && <div className="mb-2 text-xs text-muted">Available to sell: <b>{posQty}</b> shares</div>}
+            <div className="mb-3 text-xs text-muted">Cash: <b>Rs {npr(state.account.balance)}</b></div>
             {error && <div className="mb-3 rounded-lg bg-down-bg px-3 py-2 text-xs font-bold text-down">{error}</div>}
-
-            {/* Submit */}
-            <button onClick={handleSubmit}
-              className={`w-full rounded-lg py-3 text-sm font-extrabold text-white transition active:scale-95 ${side === "buy" ? "bg-up hover:bg-up/90" : "bg-down hover:bg-down/90"}`}>
-              Confirm {side === "buy" ? "BUY" : "SELL"} — {num(qty)} shares
-            </button>
+            <button onClick={handleSubmit} className={`w-full rounded-lg py-3 text-sm font-extrabold text-white transition active:scale-95 ${side === "buy" ? "bg-up hover:bg-up/90" : "bg-down hover:bg-down/90"}`}>Confirm {side === "buy" ? "BUY" : "SELL"} — {num(qty)} shares</button>
           </>
         )}
       </div>
@@ -721,29 +544,11 @@ function OrderTicketModal({ state, prices, prevClose, symbol, initPrice, signalS
   );
 }
 
-/* ─── Search Params Handler (wrapped in Suspense) ─── */
 function SearchParamsHandler({ onOpen }: { onOpen: (sym: string, price: number, signal: DemoOrder["signalSnapshot"]) => void }) {
-  const searchParams = useSearchParams();
+  const sp = useSearchParams();
   useEffect(() => {
-    const sym = searchParams.get("symbol");
-    const price = searchParams.get("price");
-    const rec = searchParams.get("rec");
-    const conf = searchParams.get("conf");
-    const trend = searchParams.get("trend");
-    if (sym) {
-      const signal = rec ? { recommendation: rec, confidence: conf ? parseInt(conf) : 0, trend: trend || null } : null;
-      onOpen(sym, price ? parseFloat(price) : 0, signal);
-    }
-  }, [searchParams, onOpen]);
+    const sym = sp.get("symbol"); const price = sp.get("price"); const rec = sp.get("rec"); const conf = sp.get("conf"); const trend = sp.get("trend");
+    if (sym) { const signal = rec ? { recommendation: rec, confidence: conf ? parseInt(conf) : 0, trend: trend || null } : null; onOpen(sym, price ? parseFloat(price) : 0, signal); }
+  }, [sp, onOpen]);
   return null;
-}
-
-/* ─── Shared Components ─── */
-function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
-  return (
-    <div className="rounded-xl border border-border bg-surface p-3 shadow-sm">
-      <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">{label}</div>
-      <div className={`mt-0.5 text-lg font-bold tabular-nums ${sub?.includes("up") ? "text-up" : sub?.includes("down") ? "text-down" : ""}`}>{value}</div>
-    </div>
-  );
 }
