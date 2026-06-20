@@ -35,17 +35,16 @@ type Summary = {
 
 async function fetchLive(): Promise<LiveStock[]> {
   try {
-    const res = await fetch("https://merolagani.com", {
-      signal: AbortSignal.timeout(8000),
-      headers: { "User-Agent": "Mozilla/5.0" },
+    // Try Vercel production URL first, then localhost for dev
+    const baseUrl = process.env.VERCEL_URL 
+      ? `https://${process.env.VERCEL_URL}`
+      : process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+    
+    const res = await fetch(`${baseUrl}/api/live`, {
+      signal: AbortSignal.timeout(10000),
     });
     if (!res.ok) return [];
-    // Parse from our own /api/live instead
-    const localRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/api/live`, {
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!localRes.ok) return [];
-    const json = await localRes.json();
+    const json = await res.json();
     return json?.data || [];
   } catch {
     return [];
