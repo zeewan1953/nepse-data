@@ -82,10 +82,13 @@ async function analyze(stocks: LiveStock[]): Promise<Summary> {
   let change = 0;
   try {
     const nepse = getNepse();
-    const indexData = await safeNepseCall(() => nepse.getNepseIndex(), "NEPSE Index") as Array<{ currentValue?: number; close?: number; change?: number }>;
-    if (Array.isArray(indexData) && indexData.length > 0) {
-      nepseIndex = indexData[0].currentValue || indexData[0].close || 0;
-      change = indexData[0].change || 0;
+    const indexData = await safeNepseCall(() => nepse.getNepseIndex(), "NEPSE Index") as Array<{ index?: string; currentValue?: number; close?: number; change?: number }>;
+    if (Array.isArray(indexData)) {
+      const nepseIdx = indexData.find((i) => i.index === "NEPSE Index");
+      if (nepseIdx) {
+        nepseIndex = nepseIdx.currentValue || nepseIdx.close || 0;
+        change = nepseIdx.change || 0;
+      }
     }
   } catch { /* fallback */ }
   
