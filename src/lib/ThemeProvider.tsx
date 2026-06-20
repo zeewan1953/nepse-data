@@ -6,15 +6,15 @@ type ThemeContextType = {
   toggle: () => void;
 };
 
-const ThemeContext = createContext<ThemeContextType>({ dark: true, toggle: () => {} });
+const ThemeContext = createContext<ThemeContextType>({ dark: false, toggle: () => {} });
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [dark, setDark] = useState(true);
+  const [dark, setDark] = useState(false);
 
   useEffect(() => {
-    const saved = localStorage.getItem("dari-sir-theme");
-    if (saved !== null) setDark(saved === "dark");
-    else if (window.matchMedia("(prefers-color-scheme: light)").matches) setDark(false);
+    // Always light mode
+    setDark(false);
+    document.documentElement.classList.remove("dark");
   }, []);
 
   useEffect(() => {

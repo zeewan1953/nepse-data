@@ -134,6 +134,9 @@ export default function AppHeader() {
   const mkt = useMarketSession();
   const open = mkt.session !== "closed";
 
+  /* Mobile menu state */
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   /* Dropdown states */
   const [searchOpen, setSearchOpen] = useState(false);
   const [bellOpen, setBellOpen] = useState(false);
@@ -218,7 +221,16 @@ export default function AppHeader() {
             </div>
           </Link>
 
-          {/* Navigation Pill */}
+          {/* Mobile Menu Button */}
+          <button
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="grid h-8 w-8 place-items-center rounded-lg md:hidden"
+            style={{ background: mobileMenuOpen ? "#0F6E56" : "transparent", color: mobileMenuOpen ? "#fff" : "#555" }}
+          >
+            <Icon d={mobileMenuOpen ? icons.x : "M3 6h18M3 12h18M3 18h18"} size={18} />
+          </button>
+
+          {/* Navigation Pill - Desktop */}
           <nav className="hidden md:flex flex-1 justify-center">
             <div className="flex items-center gap-0.5 rounded-[10px] border p-[3px]" style={{ background: "#F5F5F0", borderColor: "rgba(0,0,0,0.12)" }}>
               {NAV.map((item) => {
@@ -411,6 +423,34 @@ export default function AppHeader() {
           </div>
         </div>
       </div>
+
+      {/* ── Mobile Navigation Menu ── */}
+      {mobileMenuOpen && (
+        <div className="border-b md:hidden" style={{ borderColor: "rgba(0,0,0,0.12)", background: "#fff" }}>
+          <nav className="flex flex-col p-2">
+            {NAV.map((item) => {
+              const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition"
+                  style={active ? { background: "#0F6E56", color: "#fff" } : { background: "transparent", color: "#555" }}
+                >
+                  <Icon d={item.icon} size={18} />
+                  <span>{item.label}</span>
+                  {item.badge && (
+                    <span className="ml-auto grid h-5 min-w-5 place-items-center rounded-full px-1.5 text-[10px] font-bold text-white" style={{ background: "#c0392b" }}>
+                      {newsCount}
+                    </span>
+                  )}
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
+      )}
 
       {/* ── Live Ticker Bar ──────────────────────────────── */}
       <div className="flex items-center overflow-hidden border-b" style={{ height: 30, background: "#F5F5F0", borderColor: "rgba(0,0,0,0.12)" }}>

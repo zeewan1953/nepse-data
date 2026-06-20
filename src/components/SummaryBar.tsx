@@ -51,7 +51,7 @@ export default function SummaryBar() {
 
   return (
     <div className="sticky top-[78px] z-40 border-b border-border bg-surface/95 backdrop-blur">
-      <div className="mx-auto flex max-w-7xl items-center gap-x-5 gap-y-1 px-4 py-1.5 text-xs">
+      <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 gap-y-1 px-4 py-1.5 text-xs">
         <Item label="NEPSE">
           <span className="font-bold tabular-nums text-foreground">{npr(nepse?.currentValue ?? nepse?.close)}</span>
         </Item>
@@ -64,17 +64,17 @@ export default function SummaryBar() {
           <span className="font-bold tabular-nums text-foreground">Rs {compact(agg.turnover)}</span>
         </Item>
         <Item label="Volume">
-          <span className="font-bold tabular-nums text-foreground">{num(agg.volume)}</span>
+          <span className="font-bold tabular-nums text-foreground">{compact(agg.volume)}</span>
         </Item>
         <Item label="Mood">
           <span className={`font-bold ${moodTone === "up" ? "text-up" : moodTone === "down" ? "text-down" : "text-muted"}`}>
             {agg.mood}
           </span>
         </Item>
-        <div className="ml-auto hidden items-center gap-1 text-[10px] text-muted sm:flex">
+        <div className="ml-auto flex items-center gap-1 text-[10px] text-muted">
           <span className="text-up">▲ {agg.up}</span>
           <span className="text-down">▼ {agg.down}</span>
-          <span>— {agg.flat}</span>
+          <span className="hidden sm:inline">— {agg.flat}</span>
         </div>
       </div>
     </div>

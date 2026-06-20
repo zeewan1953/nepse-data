@@ -1,796 +1,503 @@
 "use client";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import { usePoll } from "@/lib/useLive";
-import type { MarketStatus } from "@/lib/types";
-import { classifySymbol, TYPE_BADGE } from "@/lib/types";
+import type { LiveMarketData, MarketStatus } from "@/lib/types";
 import { num, compact } from "@/lib/format";
+import "./broker-dashboard.css";
 
 /* ─── Types ─── */
-type Broker = { id: string; buyQty: number; buyAmt: number; sellQty: number; sellAmt: number; netQty: number; netAmt: number };
-type StockAgg = { symbol: string; name: string; qty: number; amount: number; trades: number; avgPrice?: number };
-type DateOverview = {
-  date: string;
+type BrokerAnalysis = {
+  generatedAt: number;
+  source?: string;
+  floorCount?: number;
   totals: { trades: number; qty: number; amount: number; brokers: number; stocks: number };
-  netFlow: Broker[]; topBuyers: Broker[]; topSellers: Broker[]; stocks: StockAgg[];
-  dates: string[];
+  aggressiveBuy: Array<{ broker: string; stock: string; volume: number; percent: number }>;
+  aggressiveSell: Array<{ broker: string; stock: string; volume: number; percent: number }>;
+  brokerFavorites: Array<{ broker: string; favorites: string[] }>;
+  zeroSum: Array<{ stock: string; buyer: string; seller: string; net: string }>;
+  aiSignals: Array<{ type: string; stock: string; reason: string; confidence: number; level: string }>;
+  liveCount: number;
 };
-type BrokerStock = {
-  symbol: string; name: string; buyQty: number; buyAmt: number; sellQty: number; sellAmt: number;
-  netQty: number; netAmt: number; buyTrades: number; sellTrades: number;
-  avgBuyPrice: number; avgSellPrice: number;
-  aggressive: "buy" | "sell" | "mixed";
-};
-type BrokerResp = {
-  date: string; broker: string;
-  stocks: BrokerStock[];
-  totals: {
-    buyAmt: number; sellAmt: number; netAmt: number; buyQty: number; sellQty: number;
-    avgBuyPrice: number; avgSellPrice: number; buyTrades: number; sellTrades: number;
-  };
-};
-type StockBrokerEntry = {
-  id: string; buyQty: number; buyAmt: number; sellQty: number; sellAmt: number;
-  netQty: number; netAmt: number; avgBuyPrice: number; avgSellPrice: number;
-  action: "aggressive-buy" | "aggressive-sell" | "hold" | "none";
-};
-type StockResp = {
-  date: string;
-  stocks: StockAgg[];
-  stockBrokers: Record<string, StockBrokerEntry[]>;
-};
-type SyncResp = { date: string; tradeCount: number; syncedAt: number; dates: string[] };
 
-/* ─── Helpers ─── */
-function todayStr(): string { return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kathmandu" }); }
+/* ─── Market Clock ─── */
+function useNepseClock() {
+  const [now, setNow] = useState(new Date());
+  useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t); }, []);
+  const h = now.getHours(), m = now.getMinutes();
+  const mins = h * 60 + m;
+  const open = mins >= 600 && mins < 915;
+  const timeStr = now.toLocaleTimeString("en-GB", { timeZone: "Asia/Kathmandu" });
+  let countdown = "";
+  if (open) {
+    const closeMins = 915 - mins;
+    countdown = `${Math.floor(closeMins / 60)}h ${(closeMins % 60)}m to close`;
+  } else if (mins < 600) {
+    const openMins = 600 - mins;
+    countdown = `${Math.floor(openMins / 60)}h ${(openMins % 60)}m to open`;
+  } else {
+    countdown = "Market closed";
+  }
+  return { timeStr, open, countdown };
+}
 
-/* ─── Main Dashboard ─── */
+/* ─── Main Page ─── */
 export default function FloorsheetDashboard() {
   const status = usePoll<MarketStatus>("/api/market-status", 30_000);
   const open = status.data?.isOpen?.toUpperCase() === "OPEN";
-  const [date, setDate] = useState(todayStr());
-  const [tab, setTab] = useState<"overview" | "broker" | "stock">("overview");
+  const clock = useNepseClock();
 
-  // Unified search state
-  const [searchInput, setSearchInput] = useState("");
-  const [searchType, setSearchType] = useState<"none" | "broker" | "stock">("none");
-  const [searchValue, setSearchValue] = useState("");
+  // Real data from new comprehensive API
+  const ba = usePoll<BrokerAnalysis>("/api/broker-analysis", open ? 15_000 : 120_000);
+  // Live market data for ticker
+  const live = usePoll<{ data: LiveMarketData[]; count: number }>("/api/live", 30_000);
 
-  // Auto-sync
-  const sync = usePoll<SyncResp>("/api/floorsheet/sync", open ? 3_000 : 60_000);
-  useEffect(() => { if (sync.data?.date) setDate(sync.data.date); }, [sync.data?.date]);
-  const availableDates = sync.data?.dates ?? [];
+  // UI state
+  const [globalSearch, setGlobalSearch] = useState("");
+  const [aggSearch, setAggSearch] = useState("");
+  const [activeTab, setActiveTab] = useState<"overview" | "broker" | "stock">("overview");
 
-  // Handle unified search
-  const handleSearch = useCallback((e: React.FormEvent) => {
-    e.preventDefault();
-    const val = searchInput.trim();
-    if (!val) { setSearchType("none"); setSearchValue(""); return; }
-    if (/^\d+$/.test(val)) {
-      setSearchType("broker");
-      setSearchValue(val);
-      setTab("broker");
-    } else {
-      setSearchType("stock");
-      setSearchValue(val.toUpperCase());
-      setTab("stock");
+  // Live stats
+  const liveStats = useMemo(() => {
+    const d = (live.data as { data?: LiveMarketData[] })?.data;
+    if (!d?.length) return null;
+    const up = d.filter((r) => r.percentageChange > 0).length;
+    const down = d.filter((r) => r.percentageChange < 0).length;
+    const totalVol = d.reduce((s, r) => s + r.totalTradeQuantity, 0);
+    const totalAmt = d.reduce((s, r) => s + r.totalTradeValue, 0);
+    return { stocks: d.length, up, down, totalVol, totalAmt };
+  }, [live.data]);
+
+  // Ticker from live data
+  const tickerItems = useMemo(() => {
+    const d = (live.data as { data?: LiveMarketData[] })?.data;
+    if (!d?.length) return [];
+    return d.slice(0, 20).map((r) => ({
+      symbol: r.symbol, price: r.lastTradedPrice,
+      change: r.percentageChange, vol: num(r.totalTradeQuantity),
+    }));
+  }, [live.data]);
+
+  // Real aggressive data from broker analysis
+  const aggressiveBuy = ba.data?.aggressiveBuy || [];
+  const aggressiveSell = ba.data?.aggressiveSell || [];
+  const brokerFavorites = ba.data?.brokerFavorites || [];
+  const zeroSum = ba.data?.zeroSum || [];
+  const aiSignals = ba.data?.aiSignals || [];
+  const totals = ba.data?.totals;
+
+  // Global search filter
+  const q = globalSearch.trim().toLowerCase();
+
+  const filteredAggBuy = useMemo(() => {
+    let items = aggressiveBuy;
+    if (aggSearch) {
+      const aq = aggSearch.toLowerCase();
+      items = items.filter((i) => i.stock.toLowerCase().includes(aq) || i.broker.includes(aq));
     }
-  }, [searchInput]);
+    if (q) {
+      items = items.filter((i) => i.stock.toLowerCase().includes(q) || i.broker.includes(q));
+    }
+    return items;
+  }, [aggSearch, q, aggressiveBuy]);
 
-  const clearSearch = useCallback(() => {
-    setSearchInput("");
-    setSearchType("none");
-    setSearchValue("");
-  }, []);
+  const filteredAggSell = useMemo(() => {
+    let items = aggressiveSell;
+    if (aggSearch) {
+      const aq = aggSearch.toLowerCase();
+      items = items.filter((i) => i.stock.toLowerCase().includes(aq) || i.broker.includes(aq));
+    }
+    if (q) {
+      items = items.filter((i) => i.stock.toLowerCase().includes(q) || i.broker.includes(q));
+    }
+    return items;
+  }, [aggSearch, q, aggressiveSell]);
+
+  const filteredFavorites = useMemo(() => {
+    if (!q) return brokerFavorites;
+    return brokerFavorites.filter((b) =>
+      b.broker.includes(q) || b.favorites.some((s) => s.toLowerCase().includes(q))
+    );
+  }, [q, brokerFavorites]);
+
+  const filteredZeroSum = useMemo(() => {
+    if (!q) return zeroSum;
+    return zeroSum.filter((z) => z.stock.toLowerCase().includes(q) || z.buyer.includes(q) || z.seller.includes(q));
+  }, [q, zeroSum]);
+
+  const filteredAiSignals = useMemo(() => {
+    if (!q) return aiSignals;
+    return aiSignals.filter((s) => s.stock.toLowerCase().includes(q) || s.type.toLowerCase().includes(q) || s.reason.toLowerCase().includes(q));
+  }, [q, aiSignals]);
+
+  // Match count for display
+  const matchCount = useMemo(() => {
+    if (!q) return -1;
+    return filteredAggBuy.length + filteredAggSell.length + filteredFavorites.length + filteredZeroSum.length + filteredAiSignals.length;
+  }, [q, filteredAggBuy, filteredAggSell, filteredFavorites, filteredZeroSum, filteredAiSignals]);
+
+  // Market depth from live data (top gainers = buy pressure, top losers = sell pressure)
+  const depthData = useMemo(() => {
+    const d = (live.data as { data?: LiveMarketData[] })?.data;
+    if (!d?.length) return { bids: [], asks: [] };
+    const sorted = [...d].sort((a, b) => b.totalTradeValue - a.totalTradeValue);
+    const bids = sorted.filter((r) => r.percentageChange > 0).slice(0, 5);
+    const asks = sorted.filter((r) => r.percentageChange < 0).slice(0, 5);
+    return { bids, asks };
+  }, [live.data]);
 
   return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-extrabold text-foreground">Broker & Floorsheet Analysis</h1>
-          <p className="text-sm text-muted">
-            DB-backed · {sync.data ? `${num(sync.data.tradeCount)} trades synced` : "syncing…"}
-            {sync.data?.syncedAt ? ` · ${new Date(sync.data.syncedAt).toLocaleTimeString("en-GB")}` : ""}
-            {open ? " · auto 3s" : " · market closed"}
-          </p>
+    <div className="ba-dashboard">
+      {/* ── HEADER ── */}
+      <div className="ba-header">
+        <div className="ba-logo">
+          <i className="fas fa-brain" /> Broker Analysis
         </div>
-        <div className="flex items-center gap-3">
-          <Link href="/broker-flow" className="rounded-lg border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/20">
-            📊 Advanced Broker Flow
-          </Link>
-          <input
-            type="date"
-            value={date}
-            max={todayStr()}
-            onChange={(e) => setDate(e.target.value)}
-            className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-semibold text-foreground outline-none focus:border-primary"
-          />
-          <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${open ? "bg-up-bg text-up" : "bg-surface-2 text-muted"}`}>
-            {open ? "🔴 Live" : "⏸ Paused"}
+      </div>
+
+      {/* ── SEARCH + TABS ROW ── */}
+      <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
+        <div className="ba-search" style={{ flex: 1, minWidth: 200 }}>
+          <i className="fas fa-search" />
+          <input value={globalSearch} onChange={(e) => setGlobalSearch(e.target.value)} placeholder="Search broker, stock, symbol..." />
+        </div>
+        {matchCount >= 0 && (
+          <span className="ba-search-count" style={{ whiteSpace: "nowrap" }}>
+            {matchCount} {matchCount === 1 ? "match" : "matches"}
           </span>
+        )}
+        <div className="ba-tabs" style={{ margin: 0, border: "none", padding: 0 }}>
+          {(["overview", "broker", "stock"] as const).map((tab) => (
+            <button key={tab} className={`ba-tab ${activeTab === tab ? "active" : ""}`} onClick={() => setActiveTab(tab)}>
+              <i className={`fas ${tab === "overview" ? "fa-th-large" : tab === "broker" ? "fa-building" : "fa-chart-line"}`} />
+              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Unified Search Bar */}
-      <form onSubmit={handleSearch} className="flex items-center gap-2 rounded-xl border border-border bg-surface p-3 shadow-sm">
-        <span className="text-lg">🔍</span>
-        <input
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-          className="flex-1 rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm font-semibold outline-none focus:border-primary"
-          placeholder="Search stock symbol (e.g. NABIL) or broker number (e.g. 42)…"
-        />
-        <button type="submit" className="rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-white hover:bg-primary-700">
-          Search
-        </button>
-        {searchType !== "none" && (
-          <button type="button" onClick={clearSearch} className="rounded-lg border border-border px-3 py-2 text-sm font-semibold text-muted hover:bg-surface-2">
-            ✕ Clear
-          </button>
-        )}
-        {searchType !== "none" && (
-          <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${searchType === "broker" ? "bg-primary/15 text-primary" : "bg-up-bg text-up"}`}>
-            {searchType === "broker" ? `🏢 Broker #${searchValue}` : `📈 ${searchValue}`}
-          </span>
-        )}
-      </form>
-
-      {/* Tabs */}
-      <div className="flex gap-1 rounded-xl border border-border bg-surface p-1">
-        {([
-          { key: "overview", label: "📊 Overview" },
-          { key: "broker", label: "🏢 Broker View" },
-          { key: "stock", label: "📈 Stock View" },
-        ] as const).map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={`flex-1 rounded-lg px-4 py-2 text-sm font-semibold transition ${tab === t.key ? "bg-primary text-white shadow-sm" : "text-muted hover:bg-surface-2 hover:text-foreground"}`}
-          >
-            {t.label}
-          </button>
-        ))}
+      {/* ── STATS ── */}
+      <div className="ba-stats" style={{ marginBottom: 12 }}>
+        <div className="ba-stat">
+          <div className="ba-stat-label"><i className="fas fa-exchange-alt" /> Floorsheet Trades</div>
+          <div className="ba-stat-value gold">{totals ? num(totals.trades) : ba.loading ? "..." : "-"}</div>
+          <div className="ba-stat-sub">{totals ? `${totals.brokers} brokers, ${totals.stocks} stocks` : "Loading..."}</div>
+        </div>
+        <div className="ba-stat">
+          <div className="ba-stat-label"><i className="fas fa-coins" /> Total Amount</div>
+          <div className="ba-stat-value gold">Rs {totals ? compact(totals.amount) : "-"}</div>
+          <div className="ba-stat-sub">{totals ? `${num(totals.qty)} shares traded` : "from floorsheet"}</div>
+        </div>
+        <div className="ba-stat">
+          <div className="ba-stat-label"><i className="fas fa-arrow-up" /> Advances</div>
+          <div className="ba-stat-value green">{num(liveStats?.up ?? 0)}</div>
+          <div className="ba-stat-sub">{liveStats ? `${((liveStats.up / liveStats.stocks) * 100).toFixed(0)}% of ${liveStats.stocks}` : "from live market"}</div>
+        </div>
+        <div className="ba-stat">
+          <div className="ba-stat-label"><i className="fas fa-arrow-down" /> Declines</div>
+          <div className="ba-stat-value red">{num(liveStats?.down ?? 0)}</div>
+          <div className="ba-stat-sub">{liveStats ? `${((liveStats.down / liveStats.stocks) * 100).toFixed(0)}% of ${liveStats.stocks}` : "from live market"}</div>
+        </div>
+        <div className="ba-stat">
+          <div className="ba-stat-label"><i className="fas fa-chart-line" /> Turnover</div>
+          <div className="ba-stat-value blue">Rs {compact(liveStats?.totalAmt ?? 0)}</div>
+          <div className="ba-stat-sub">{liveStats ? `${num(liveStats.totalVol)} total volume` : "live market"}</div>
+        </div>
       </div>
 
-      {/* Tab Content */}
-      {tab === "overview" && <OverviewTab date={date} />}
-      {tab === "broker" && <BrokerTab date={date} brokerId={searchType === "broker" ? searchValue : null} />}
-      {tab === "stock" && <StockTab date={date} filterSymbol={searchType === "stock" ? searchValue : null} />}
-
-      {/* Agent Insight */}
-      <AgentInsight marketOpen={open ?? false} />
-
-      {/* Broker Deep-Dive */}
-      <BrokerDeepDive marketOpen={open ?? false} />
-    </div>
-  );
-}
-
-/* ─── Overview Tab ─── */
-function OverviewTab({ date }: { date: string }) {
-  const { data, loading } = usePoll<DateOverview>(`/api/fs-date?date=${date}`, 3_000);
-
-  if (loading && !data) return <div className="py-10 text-center text-muted">Loading floorsheet data…</div>;
-  if (!data || data.totals.trades === 0) return <div className="rounded-xl border border-border bg-surface p-8 text-center text-muted">No data for {date}. Pick another date.</div>;
-
-  return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat label="Total Trades" value={num(data.totals.trades)} />
-        <Stat label="Turnover" value={`Rs ${compact(data.totals.amount)}`} />
-        <Stat label="Active Brokers" value={num(data.totals.brokers)} />
-        <Stat label="Stocks Traded" value={num(data.totals.stocks)} />
-      </div>
-      <div className="grid gap-4 lg:grid-cols-2">
-        <NetFlowCard title="Biggest Net Buyers" rows={data.netFlow.filter((b) => b.netAmt > 0).slice(0, 10)} tone="up" />
-        <NetFlowCard title="Biggest Net Sellers" rows={data.netFlow.filter((b) => b.netAmt < 0).slice(-10).reverse()} tone="down" />
-      </div>
-      <div className="grid gap-4 lg:grid-cols-2">
-        <BrokerTable title="Top Buyers (by value)" rows={data.topBuyers} mode="buy" />
-        <BrokerTable title="Top Sellers (by value)" rows={data.topSellers} mode="sell" />
-      </div>
-      <StockTable stocks={data.stocks} />
-    </div>
-  );
-}
-
-/* ─── Broker Tab ─── */
-function BrokerTab({ date, brokerId: externalId }: { date: string; brokerId: string | null }) {
-  const [brokerId, setBrokerId] = useState(externalId ?? "1");
-  const [search, setSearch] = useState(externalId ?? "1");
-  const { data, loading } = usePoll<BrokerResp>(`/api/fs-broker?date=${date}&broker=${brokerId}`, 3_000);
-
-  // Sync with external search
-  useEffect(() => {
-    if (externalId) { setBrokerId(externalId); setSearch(externalId); }
-  }, [externalId]);
-
-  const chartStocks = useMemo(() => {
-    if (!data?.stocks) return [];
-    return [...data.stocks].sort((a, b) => b.netAmt - a.netAmt).slice(0, 12);
-  }, [data]);
-  const maxBar = useMemo(() => Math.max(...chartStocks.map((s) => Math.max(s.buyAmt, s.sellAmt)), 1), [chartStocks]);
-  const buyRatio = data ? (data.totals.buyAmt / (data.totals.buyAmt + data.totals.sellAmt) * 100) : 0;
-
-  return (
-    <div className="space-y-5">
-      {/* Inline broker search */}
-      <div className="flex items-center gap-3 rounded-xl border border-border bg-surface p-4">
-        <span className="text-sm font-semibold text-muted">Broker #</span>
-        <form onSubmit={(e) => { e.preventDefault(); const n = search.replace(/\D/g, ""); if (n) setBrokerId(n); }} className="flex flex-1 items-center gap-2">
-          <input value={search} onChange={(e) => setSearch(e.target.value.replace(/\D/g, ""))}
-            className="w-20 rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-sm font-semibold outline-none focus:border-primary" placeholder="1" />
-          <button type="submit" className="rounded-lg bg-primary px-4 py-1.5 text-sm font-semibold text-white hover:bg-primary-700">Search</button>
-        </form>
-        <span className="text-xs text-muted">auto 3s</span>
-      </div>
-
-      {loading && !data && <div className="py-10 text-center text-muted">Loading broker #{brokerId}…</div>}
-
-      {data && (
+      {/* ── OVERVIEW TAB ── */}
+      {activeTab === "overview" && (
         <>
-          {/* Summary with avg prices */}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-            <Stat label="Buy Amt" value={compact(data.totals.buyAmt)} sub="text-up" />
-            <Stat label="Sell Amt" value={compact(data.totals.sellAmt)} />
-            <Stat label="Net Amt" value={`${data.totals.netAmt >= 0 ? "+" : ""}${compact(data.totals.netAmt)}`} />
-            <Stat label="Avg Buy Price" value={data.totals.avgBuyPrice > 0 ? `Rs ${data.totals.avgBuyPrice.toFixed(2)}` : "—"} />
-            <Stat label="Avg Sell Price" value={data.totals.avgSellPrice > 0 ? `Rs ${data.totals.avgSellPrice.toFixed(2)}` : "—"} />
-            <Stat label="Stocks" value={String(data.stocks.length)} sub={`Buy ratio: ${buyRatio.toFixed(1)}%`} />
-          </div>
-
-          {/* Buy vs Sell Bar Chart */}
-          {chartStocks.length > 0 && (
-            <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
-              <h3 className="mb-3 text-base font-bold">📊 Buy vs Sell — Broker #{brokerId}</h3>
-              <div className="flex items-end justify-between gap-2" style={{ height: 180 }}>
-                {chartStocks.map((s) => {
-                  const buyH = Math.max((s.buyAmt / maxBar) * 140, 4);
-                  const sellH = Math.max((s.sellAmt / maxBar) * 140, 4);
+          {/* AI Signals */}
+          {filteredAiSignals.length > 0 && (
+            <>
+              <div className="ba-section-title">
+                <i className="fas fa-robot" /> AI Smart Signals {q && <span className="ba-match-badge">{filteredAiSignals.length}</span>} <span className="ba-section-line" />
+              </div>
+              <section className="ba-signal-grid">
+                {filteredAiSignals.map((s, i) => {
+                  const icon = s.type === "BUY" ? "fa-arrow-trend-up" : s.type === "SELL" ? "fa-arrow-trend-down" : s.type === "HOLD" ? "fa-minus" : "fa-chart-line";
+                  const color = s.type === "BUY" ? "var(--ba-green)" : s.type === "SELL" ? "var(--ba-red)" : s.type === "HOLD" ? "var(--ba-gold)" : "var(--ba-blue)";
                   return (
-                    <div key={s.symbol} className="flex flex-col items-center" style={{ width: "8%", minWidth: 28 }}>
-                      <div className="flex items-end gap-0.5" style={{ height: 140, width: "100%" }}>
-                        <div className="rounded-t-md bg-up" style={{ height: buyH, width: "46%" }} title={`Buy: ${compact(s.buyAmt)}`} />
-                        <div className="rounded-t-md bg-down" style={{ height: sellH, width: "46%" }} title={`Sell: ${compact(s.sellAmt)}`} />
+                    <div key={i} className="ba-signal-card">
+                      <div className={`ba-signal-icon ${s.type === "BUY" ? "buy" : s.type === "SELL" ? "sell" : s.type === "HOLD" ? "hold" : "neutral"}`}>
+                        <i className={`fas ${icon}`} />
                       </div>
-                      <div className="mt-1 w-full truncate text-center text-[9px] font-semibold text-muted">{s.symbol.replace(/\d+/g, "")}</div>
+                      <div>
+                        <div className="ba-signal-main" style={{ color }}>{s.type}</div>
+                        <div className="ba-signal-sub">{s.stock} - {s.reason}</div>
+                      </div>
+                      <span className={`ba-signal-conf ${s.level}`}>{s.confidence}%</span>
                     </div>
                   );
                 })}
-              </div>
-              <div className="mt-3 flex items-center gap-4 text-xs font-medium">
-                <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-up" /> Buy</span>
-                <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-down" /> Sell</span>
-                <span className="ml-auto">Net: <b className={data.totals.netAmt >= 0 ? "text-up" : "text-down"}>{data.totals.netAmt >= 0 ? "+" : ""}{compact(data.totals.netAmt)}</b></span>
-              </div>
-            </div>
+              </section>
+            </>
           )}
 
-          {/* Stock table with avg prices + aggressive */}
-          <div className="overflow-x-auto rounded-2xl border border-border bg-surface shadow-sm">
-            <div className="border-b border-border px-5 py-3 font-bold">Stocks traded by Broker #{brokerId} ({data.stocks.length})</div>
-            <table className="w-full text-sm">
-              <thead className="bg-surface-2 text-xs uppercase text-muted">
-                <tr>
-                  <th className="px-3 py-2 text-left">Symbol</th>
-                  <th className="px-3 py-2 text-right">Buy Qty</th>
-                  <th className="px-3 py-2 text-right">Buy Amt</th>
-                  <th className="px-3 py-2 text-right">Avg Buy ₹</th>
-                  <th className="px-3 py-2 text-right">Sell Qty</th>
-                  <th className="px-3 py-2 text-right">Sell Amt</th>
-                  <th className="px-3 py-2 text-right">Avg Sell ₹</th>
-                  <th className="px-3 py-2 text-right">Net Amt</th>
-                  <th className="px-3 py-2 text-center">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.stocks.map((s) => (
-                  <tr key={s.symbol} className="border-t border-border hover:bg-surface-2">
-                    <td className="px-3 py-2 font-bold"><Link href={`/stock/${s.symbol}`} className="text-primary hover:underline">{s.symbol.replace(/\d+/g, "")}</Link></td>
-                    <td className="px-3 py-2 text-right text-up tabular-nums">{num(s.buyQty)}</td>
-                    <td className="px-3 py-2 text-right text-up tabular-nums">{compact(s.buyAmt)}</td>
-                    <td className="px-3 py-2 text-right text-up tabular-nums">{s.avgBuyPrice > 0 ? `Rs ${s.avgBuyPrice.toFixed(2)}` : "—"}</td>
-                    <td className="px-3 py-2 text-right text-down tabular-nums">{num(s.sellQty)}</td>
-                    <td className="px-3 py-2 text-right text-down tabular-nums">{compact(s.sellAmt)}</td>
-                    <td className="px-3 py-2 text-right text-down tabular-nums">{s.avgSellPrice > 0 ? `Rs ${s.avgSellPrice.toFixed(2)}` : "—"}</td>
-                    <td className={`px-3 py-2 text-right font-bold tabular-nums ${s.netAmt >= 0 ? "text-up" : "text-down"}`}>{s.netAmt >= 0 ? "+" : ""}{compact(s.netAmt)}</td>
-                    <td className="px-3 py-2 text-center">
-                      <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${
-                        s.aggressive === "buy" ? "bg-up-bg text-up" :
-                        s.aggressive === "sell" ? "bg-down-bg text-down" :
-                        "bg-surface-2 text-muted"
-                      }`}>
-                        {s.aggressive === "buy" ? "🟢 Agg Buy" : s.aggressive === "sell" ? "🔴 Agg Sell" : "Mixed"}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-                {data.stocks.length === 0 && <tr><td colSpan={9} className="px-3 py-8 text-center text-muted">No trades for this broker on {date}.</td></tr>}
-              </tbody>
-            </table>
+          {/* Order Flow */}
+          <div className="ba-section-title">
+            <i className="fas fa-exchange-alt" /> Market Depth <span className="ba-section-line" />
           </div>
+          <section className="ba-order-grid">
+            <div className="ba-order-card">
+              <div className="ba-card-head">
+                <h4><i className="fas fa-layer-group" style={{ color: "var(--ba-gold)" }} /> Buy Pressure (Top Stocks)</h4>
+                <span className="ba-pill ba-pill-buy">Bid</span>
+              </div>
+              {depthData.bids.length > 0 ? depthData.bids.map((r, i) => {
+                const maxVol = Math.max(...depthData.bids.map((x) => x.totalTradeQuantity));
+                return (
+                  <div key={i} className="ba-depth-row">
+                    <span className="ba-depth-price" style={{ color: "var(--ba-green)" }}>{r.symbol}</span>
+                    <span className="ba-depth-vol">{num(r.totalTradeQuantity)}</span>
+                    <div className="ba-depth-bar-wrap"><div className="ba-depth-fill bid" style={{ width: `${(r.totalTradeQuantity / maxVol) * 100}%` }} /></div>
+                  </div>
+                );
+              }) : <div className="ba-no-results">Waiting for live data...</div>}
+            </div>
+            <div className="ba-order-card">
+              <div className="ba-card-head">
+                <h4><i className="fas fa-layer-group" style={{ color: "var(--ba-red)" }} /> Sell Pressure (Top Stocks)</h4>
+                <span className="ba-pill ba-pill-sell">Ask</span>
+              </div>
+              {depthData.asks.length > 0 ? depthData.asks.map((r, i) => {
+                const maxVol = Math.max(...depthData.asks.map((x) => x.totalTradeQuantity));
+                return (
+                  <div key={i} className="ba-depth-row">
+                    <span className="ba-depth-price" style={{ color: "var(--ba-red)" }}>{r.symbol}</span>
+                    <span className="ba-depth-vol">{num(r.totalTradeQuantity)}</span>
+                    <div className="ba-depth-bar-wrap"><div className="ba-depth-fill ask" style={{ width: `${(r.totalTradeQuantity / maxVol) * 100}%` }} /></div>
+                  </div>
+                );
+              }) : <div className="ba-no-results">Waiting for live data...</div>}
+            </div>
+          </section>
+
+          {/* Aggressive Buy / Sell */}
+          <div className="ba-section-title">
+            <i className="fas fa-fire" /> Aggressive Buy / Sell
+            <div className="ba-mini-search">
+              <i className="fas fa-search" />
+              <input value={aggSearch} onChange={(e) => setAggSearch(e.target.value)} placeholder="Filter..." />
+            </div>
+            <span className="ba-section-line" />
+          </div>
+          <section className="ba-agg-grid">
+            <div className="ba-agg-card">
+              <div className="ba-card-head">
+                <h4><i className="fas fa-arrow-up" style={{ color: "var(--ba-green)" }} /> Aggressive Buy</h4>
+                <span className="ba-agg-pill ba-agg-pill-buy">High Momentum</span>
+              </div>
+              {filteredAggBuy.length > 0 ? filteredAggBuy.map((item, i) => (
+                <div key={i} className="ba-agg-item">
+                  <div className="ba-agg-item-head">
+                    <span><span className="ba-broker">Broker {item.broker}</span><span className="ba-stock-arrow"> {"->"} {item.stock}</span></span>
+                    <span className="ba-volume bull">+{item.volume.toFixed(2)} Cr</span>
+                  </div>
+                  <div className="ba-impact-bar"><div className="ba-impact-fill bull" style={{ width: `${item.percent}%` }} /></div>
+                </div>
+              )) : <div className="ba-no-results">{aggSearch ? "No matches" : ba.loading ? "Loading floorsheet..." : "No aggressive buy detected"}</div>}
+            </div>
+            <div className="ba-agg-card">
+              <div className="ba-card-head">
+                <h4><i className="fas fa-arrow-down" style={{ color: "var(--ba-red)" }} /> Aggressive Sell</h4>
+                <span className="ba-agg-pill ba-agg-pill-sell">High Selling</span>
+              </div>
+              {filteredAggSell.length > 0 ? filteredAggSell.map((item, i) => (
+                <div key={i} className="ba-agg-item">
+                  <div className="ba-agg-item-head">
+                    <span><span className="ba-broker">Broker {item.broker}</span><span className="ba-stock-arrow"> {"->"} {item.stock}</span></span>
+                    <span className="ba-volume bear">-{item.volume.toFixed(2)} Cr</span>
+                  </div>
+                  <div className="ba-impact-bar"><div className="ba-impact-fill bear" style={{ width: `${item.percent}%` }} /></div>
+                </div>
+              )) : <div className="ba-no-results">{aggSearch ? "No matches" : ba.loading ? "Loading floorsheet..." : "No aggressive sell detected"}</div>}
+            </div>
+          </section>
         </>
       )}
-    </div>
-  );
-}
 
-/* ─── Stock Tab ─── */
-function StockTab({ date, filterSymbol }: { date: string; filterSymbol: string | null }) {
-  const [query, setQuery] = useState("");
-  const effectiveQuery = filterSymbol ?? query;
-  const { data, loading } = usePoll<StockResp>(`/api/fs-stock?date=${date}${effectiveQuery ? `&symbol=${effectiveQuery}` : ""}`, 3_000);
-  const [expanded, setExpanded] = useState<string | null>(null);
-
-  // Sync external filter
-  useEffect(() => { if (filterSymbol) setQuery(filterSymbol); }, [filterSymbol]);
-
-  const filtered = useMemo(() => {
-    if (!data?.stocks) return [];
-    if (filterSymbol) return data.stocks; // API already filtered
-    if (!query) return data.stocks;
-    const q = query.toLowerCase();
-    return data.stocks.filter((s) => s.symbol.toLowerCase().includes(q) || s.name.toLowerCase().includes(q));
-  }, [data, query, filterSymbol]);
-
-  if (loading && !data) return <div className="py-10 text-center text-muted">Loading stock data…</div>;
-  if (!data) return null;
-
-  return (
-    <div className="space-y-5">
-      {/* Search (only shown when no external filter) */}
-      {!filterSymbol && (
-        <div className="flex items-center gap-3 rounded-xl border border-border bg-surface p-4">
-          <span className="text-sm font-semibold text-muted">🔍</span>
-          <input value={query} onChange={(e) => setQuery(e.target.value)}
-            className="flex-1 rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-sm outline-none focus:border-primary"
-            placeholder="Search stock symbol or name…" />
-          <span className="text-xs text-muted">{filtered.length} stocks</span>
-        </div>
-      )}
-      {filterSymbol && (
-        <div className="flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 p-3">
-          <span className="text-sm font-bold text-primary">📈 Showing: {filterSymbol}</span>
-          <span className="text-xs text-muted">{filtered.length} result(s)</span>
-        </div>
-      )}
-
-      {/* Stock list with expandable broker breakdown */}
-      <div className="overflow-x-auto rounded-2xl border border-border bg-surface shadow-sm">
-        <table className="w-full text-sm">
-          <thead className="bg-surface-2 text-xs uppercase text-muted">
-            <tr>
-              <th className="px-3 py-2 text-left">Symbol</th>
-              <th className="px-3 py-2 text-left">Company</th>
-              <th className="px-3 py-2 text-right">Trades</th>
-              <th className="px-3 py-2 text-right">Quantity</th>
-              <th className="px-3 py-2 text-right">Turnover</th>
-              <th className="px-3 py-2 text-right">Avg Price</th>
-              <th className="px-3 py-2 text-center">Brokers</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((s) => {
-              const brokers = data.stockBrokers[s.symbol] ?? [];
-              const isExpanded = expanded === s.symbol;
-              return (
-                <StockRow key={s.symbol} s={s} brokers={brokers} expanded={isExpanded} onToggle={() => setExpanded(isExpanded ? null : s.symbol)} />
-              );
-            })}
-            {filtered.length === 0 && <tr><td colSpan={7} className="px-3 py-8 text-center text-muted">No stocks found.</td></tr>}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function StockRow({ s, brokers, expanded, onToggle }: {
-  s: StockAgg; brokers: StockBrokerEntry[];
-  expanded: boolean; onToggle: () => void;
-}) {
-  const aggBuyBrokers = brokers.filter((b) => b.action === "aggressive-buy");
-  const aggSellBrokers = brokers.filter((b) => b.action === "aggressive-sell");
-  const holdBrokers = brokers.filter((b) => b.action === "hold");
-  const maxBrokerAmt = Math.max(...brokers.map((b) => Math.max(b.buyAmt, b.sellAmt)), 1);
-
-  return (
-    <>
-      <tr className="cursor-pointer border-t border-border hover:bg-surface-2" onClick={onToggle}>
-        <td className="px-3 py-2 font-bold text-primary">
-          <Link href={`/stock/${s.symbol}`} className="hover:underline" onClick={(e) => e.stopPropagation()}>{s.symbol.replace(/\d+/g, "")}</Link>
-        </td>
-        <td className="max-w-[200px] truncate px-3 py-2 text-muted">{s.name}</td>
-        <td className="px-3 py-2 text-right tabular-nums">{num(s.trades)}</td>
-        <td className="px-3 py-2 text-right tabular-nums">{num(s.qty)}</td>
-        <td className="px-3 py-2 text-right tabular-nums">{compact(s.amount)}</td>
-        <td className="px-3 py-2 text-right tabular-nums font-semibold">{s.avgPrice ? `Rs ${s.avgPrice.toFixed(2)}` : "—"}</td>
-        <td className="px-3 py-2 text-center">
-          <span className="flex items-center justify-center gap-1.5 text-xs">
-            <span className="rounded bg-up-bg px-1.5 py-0.5 font-semibold text-up">{aggBuyBrokers.length}B</span>
-            <span className="rounded bg-down-bg px-1.5 py-0.5 font-semibold text-down">{aggSellBrokers.length}S</span>
-            {holdBrokers.length > 0 && <span className="rounded bg-surface-2 px-1.5 py-0.5 font-semibold text-muted">{holdBrokers.length}H</span>}
-          </span>
-        </td>
-      </tr>
-      {expanded && (
-        <tr className="border-t border-border bg-surface-2">
-          <td colSpan={7} className="px-4 py-3">
-            <div className="mb-2 text-xs font-bold text-muted">Broker Breakdown — Aggressive Buy / Sell / Hold ({brokers.length} brokers)</div>
-            {/* Aggressive brokers highlight */}
-            {(aggBuyBrokers.length > 0 || aggSellBrokers.length > 0) && (
-              <div className="mb-3 flex flex-wrap gap-2">
-                {aggBuyBrokers.map((b) => (
-                  <span key={b.id} className="rounded-full bg-up-bg px-2 py-0.5 text-xs font-bold text-up">
-                    🟢 #{b.id} Agg Buy {compact(b.buyAmt)}
-                  </span>
-                ))}
-                {aggSellBrokers.map((b) => (
-                  <span key={b.id} className="rounded-full bg-down-bg px-2 py-0.5 text-xs font-bold text-down">
-                    🔴 #{b.id} Agg Sell {compact(b.sellAmt)}
-                  </span>
-                ))}
+      {/* ── BROKER TAB ── */}
+      {activeTab === "broker" && (
+        <>
+          {/* Broker Favorites */}
+          <div className="ba-section-title">
+            <i className="fas fa-star" /> Broker Favorites (Most Traded Stocks) {q && <span className="ba-match-badge">{filteredFavorites.length}</span>} <span className="ba-section-line" />
+          </div>
+          <section className="ba-fav-grid">
+            {filteredFavorites.length > 0 ? filteredFavorites.map((b) => (
+              <div key={b.broker} className="ba-fav-card">
+                <div className="ba-fav-broker"><i className="fas fa-building" style={{ color: "var(--ba-gold)", marginRight: 8 }} />Broker #{b.broker}</div>
+                <div className="ba-fav-tags">
+                  {b.favorites.map((s) => (
+                    <Link key={s} href={`/stock/${s}`} className="ba-fav-tag">{s}</Link>
+                  ))}
+                </div>
               </div>
-            )}
-            {/* Bar chart */}
-            {brokers.length > 0 && (
-              <div className="mb-3 flex items-end gap-1.5 overflow-x-auto" style={{ maxHeight: 160 }}>
-                {brokers.slice(0, 20).map((b) => {
-                  const buyH = Math.max((b.buyAmt / maxBrokerAmt) * 120, 3);
-                  const sellH = Math.max((b.sellAmt / maxBrokerAmt) * 120, 3);
-                  return (
-                    <div key={b.id} className="flex flex-col items-center" style={{ minWidth: 24 }}>
-                      <div className="flex items-end gap-px" style={{ height: 120 }}>
-                        <div className="rounded-t bg-up" style={{ height: buyH, width: 10 }} title={`Buy: ${compact(b.buyAmt)}`} />
-                        <div className="rounded-t bg-down" style={{ height: sellH, width: 10 }} title={`Sell: ${compact(b.sellAmt)}`} />
-                      </div>
-                      <div className="mt-0.5 text-[8px] font-bold text-muted">#{b.id}</div>
-                      <div className={`text-[8px] font-bold ${
-                        b.action === "aggressive-buy" ? "text-up" : b.action === "aggressive-sell" ? "text-down" : "text-muted"
-                      }`}>
-                        {b.action === "aggressive-buy" ? "AGG.B" : b.action === "aggressive-sell" ? "AGG.S" : "HOLD"}
-                      </div>
-                    </div>
-                  );
-                })}
+            )) : <div className="ba-no-results">{ba.loading ? "Loading floorsheet..." : "No broker data available"}</div>}
+          </section>
+
+          {/* Broker Holding Chart */}
+          <div className="ba-section-title">
+            <i className="fas fa-warehouse" /> Broker Net Holding (Kitta) <span className="ba-section-line" />
+          </div>
+          <section className="ba-holding-card">
+            <div className="ba-holding-count">{brokerFavorites.length} active brokers</div>
+            <BrokerHoldingChart favorites={brokerFavorites} />
+          </section>
+
+          {/* Zero-Sum */}
+          {filteredZeroSum.length > 0 && (
+            <>
+              <div className="ba-section-title">
+                <i className="fas fa-balance-scale-right" /> Zero-Sum Positions {q && <span className="ba-match-badge">{filteredZeroSum.length}</span>} <span className="ba-section-line" />
               </div>
-            )}
-            {/* Table with avg prices */}
-            <div className="max-h-60 overflow-auto">
-              <table className="w-full text-xs">
-                <thead className="sticky top-0 bg-surface-2 text-[10px] uppercase text-muted">
-                  <tr>
-                    <th className="px-2 py-1 text-left">Broker</th>
-                    <th className="px-2 py-1 text-right">Buy Qty</th>
-                    <th className="px-2 py-1 text-right">Avg Buy ₹</th>
-                    <th className="px-2 py-1 text-right">Sell Qty</th>
-                    <th className="px-2 py-1 text-right">Avg Sell ₹</th>
-                    <th className="px-2 py-1 text-right">Net Amt</th>
-                    <th className="px-2 py-1 text-center">Action</th>
-                  </tr>
+              <section className="ba-zero-list">
+                {filteredZeroSum.map((item, i) => (
+                  <div key={i} className="ba-zero-item">
+                    <span className="ba-zero-stock">{item.stock}</span>
+                    <span className="ba-zero-detail">
+                      <i className="fas fa-arrow-up" style={{ color: "var(--ba-green)", marginRight: 4 }} /> Buyer: #{item.buyer}
+                    </span>
+                    <span className="ba-zero-detail">
+                      <i className="fas fa-arrow-down" style={{ color: "var(--ba-red)", marginRight: 4 }} /> Seller: #{item.seller}
+                    </span>
+                    <span className="ba-zero-net" style={{ color: item.net.startsWith("+") ? "var(--ba-green)" : "var(--ba-red)" }}>
+                      {item.net}
+                    </span>
+                  </div>
+                ))}
+              </section>
+            </>
+          )}
+        </>
+      )}
+
+      {/* ── STOCK TAB ── */}
+      {activeTab === "stock" && (
+        <>
+          {/* Most Active Stocks from floorsheet */}
+          <div className="ba-section-title">
+            <i className="fas fa-fire-alt" /> Most Active Stocks (from Floorsheet) <span className="ba-section-line" />
+          </div>
+          <section className="ba-order-card" style={{ marginBottom: 22 }}>
+            {aggressiveBuy.length > 0 || aggressiveSell.length > 0 ? (
+              <table className="ba-stock-table">
+                <thead>
+                  <tr><th>#</th><th>Stock</th><th>Agg. Buy Broker</th><th>Volume (Cr)</th><th>Agg. Sell Broker</th><th>Volume (Cr)</th></tr>
                 </thead>
                 <tbody>
-                  {brokers.slice(0, 30).map((b) => (
-                    <tr key={b.id} className="border-t border-border">
-                      <td className="px-2 py-1 font-bold">#{b.id}</td>
-                      <td className="px-2 py-1 text-right text-up tabular-nums">{b.buyQty > 0 ? num(b.buyQty) : "—"}</td>
-                      <td className="px-2 py-1 text-right text-up tabular-nums">{b.avgBuyPrice > 0 ? `Rs ${b.avgBuyPrice.toFixed(2)}` : "—"}</td>
-                      <td className="px-2 py-1 text-right text-down tabular-nums">{b.sellQty > 0 ? num(b.sellQty) : "—"}</td>
-                      <td className="px-2 py-1 text-right text-down tabular-nums">{b.avgSellPrice > 0 ? `Rs ${b.avgSellPrice.toFixed(2)}` : "—"}</td>
-                      <td className={`px-2 py-1 text-right font-semibold tabular-nums ${b.netAmt >= 0 ? "text-up" : "text-down"}`}>{b.netAmt >= 0 ? "+" : ""}{compact(b.netAmt)}</td>
-                      <td className="px-2 py-1 text-center">
-                        <span className={`rounded px-1 text-[9px] font-bold uppercase ${
-                          b.action === "aggressive-buy" ? "bg-up-bg text-up" :
-                          b.action === "aggressive-sell" ? "bg-down-bg text-down" :
-                          "bg-surface-2 text-muted"
-                        }`}>
-                          {b.action === "aggressive-buy" ? "AGG.BUY" : b.action === "aggressive-sell" ? "AGG.SELL" : "HOLD"}
-                        </span>
-                      </td>
+                  {Array.from({ length: Math.max(aggressiveBuy.length, aggressiveSell.length) }).map((_, i) => (
+                    <tr key={i}>
+                      <td>{i + 1}</td>
+                      <td><Link href={`/stock/${aggressiveBuy[i]?.stock || aggressiveSell[i]?.stock || ""}`} className="ba-stock-link">{aggressiveBuy[i]?.stock || aggressiveSell[i]?.stock || "-"}</Link></td>
+                      <td style={{ color: "var(--ba-green)" }}>#{aggressiveBuy[i]?.broker || "-"}</td>
+                      <td style={{ color: "var(--ba-green)" }}>{aggressiveBuy[i] ? `+${aggressiveBuy[i].volume.toFixed(2)}` : "-"}</td>
+                      <td style={{ color: "var(--ba-red)" }}>#{aggressiveSell[i]?.broker || "-"}</td>
+                      <td style={{ color: "var(--ba-red)" }}>{aggressiveSell[i] ? `${aggressiveSell[i].volume.toFixed(2)}` : "-"}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            </div>
-            {brokers.length === 0 && <div className="text-sm text-muted">No broker data.</div>}
-          </td>
-        </tr>
-      )}
-    </>
-  );
-}
+            ) : <div className="ba-no-results">{ba.loading ? "Loading floorsheet data..." : "No floorsheet data available"}</div>}
+          </section>
 
-/* ─── Agent Insight ─── */
-type Analysis = {
-  totals: { trades: number; sampled: number; qty: number; amount: number; brokers: number; stocks: number; truncated: boolean };
-  netFlow: Broker[]; topBuyers: Broker[]; topSellers: Broker[]; stocks: StockAgg[]; generatedAt: number; error?: string;
-};
-type LiveChangeResp = { data: { symbol: string; percentageChange: number }[] };
-
-function AgentInsight({ marketOpen }: { marketOpen: boolean }) {
-  const { data, updatedAt } = usePoll<Analysis>("/api/floorsheet/analysis", marketOpen ? 3_000 : 60_000);
-  const live = usePoll<LiveChangeResp>("/api/live", marketOpen ? 3_000 : 60_000);
-  const retained = useRef<Analysis | null>(null);
-  if (data && data.totals.sampled > 0) retained.current = data;
-  const analysis = data?.totals.sampled ? data : retained.current;
-
-  const changeMap = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const r of live.data?.data ?? []) m.set(r.symbol, r.percentageChange);
-    return m;
-  }, [live.data]);
-
-  if (!analysis || analysis.totals.sampled === 0) {
-    return (
-      <section className="rounded-xl border border-primary/30 bg-surface p-4 shadow-sm">
-        <h2 className="font-bold">🤖 Agent — Market Insight</h2>
-        <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${marketOpen ? "bg-up-bg text-up" : "bg-surface-2 text-muted"}`}>
-          {marketOpen ? "🔴 Live · waiting for data…" : "⏸ Paused"}
-        </span>
-      </section>
-    );
-  }
-
-  const buyers = analysis.netFlow.filter((b) => b.netAmt > 0).slice(0, 5);
-  const sellers = analysis.netFlow.filter((b) => b.netAmt < 0).slice(-5).reverse();
-  const moneyStocks = analysis.stocks.slice(0, 6);
-  const accumulation = analysis.stocks.slice(0, 40).map((s) => ({ ...s, chg: changeMap.get(s.symbol) ?? 0 })).filter((s) => s.chg > 0).sort((a, b) => b.amount - a.amount).slice(0, 6);
-
-  return (
-    <section className="rounded-xl border border-primary/40 bg-gradient-to-br from-surface to-surface-2 p-4 shadow-sm">
-      <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <h2 className="font-bold">🤖 Agent — Market Insight</h2>
-          <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${marketOpen ? "bg-up-bg text-up" : "bg-surface-2 text-muted"}`}>
-            {marketOpen ? "🔴 Live" : "⏸ Paused"}{updatedAt ? ` · ${new Date(updatedAt).toLocaleTimeString("en-GB")}` : ""}
-          </span>
-        </div>
-        <span className="text-xs text-muted">auto from {num(analysis.totals.sampled)} trades · 3s refresh</span>
-      </div>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <InsightBox title="🟢 Accumulating brokers" tone="up">
-          {buyers.length ? buyers.map((b) => (<li key={b.id} className="flex justify-between"><span>Broker #{b.id}</span><span className="font-semibold text-up tabular-nums">+{compact(b.netAmt)}</span></li>)) : <li className="text-muted">—</li>}
-        </InsightBox>
-        <InsightBox title="🔴 Distributing brokers" tone="down">
-          {sellers.length ? sellers.map((b) => (<li key={b.id} className="flex justify-between"><span>Broker #{b.id}</span><span className="font-semibold text-down tabular-nums">{compact(b.netAmt)}</span></li>)) : <li className="text-muted">—</li>}
-        </InsightBox>
-        <InsightBox title="📈 Being accumulated">
-          {accumulation.length ? accumulation.map((s) => (<li key={s.symbol} className="flex justify-between"><Link href={`/stock/${s.symbol}`} className="text-primary hover:underline">{s.symbol}</Link><span className="font-semibold text-up tabular-nums">+{s.chg.toFixed(1)}%</span></li>)) : <li className="text-muted">heavy-volume + rising stock chaina abai</li>}
-        </InsightBox>
-        <InsightBox title="💰 Money flowing into">
-          {moneyStocks.map((s) => (<li key={s.symbol} className="flex justify-between"><Link href={`/stock/${s.symbol}`} className="text-primary hover:underline">{s.symbol}</Link><span className="text-muted tabular-nums">{compact(s.amount)}</span></li>))}
-        </InsightBox>
-      </div>
-      <p className="mt-3 text-sm">
-        💡 <b>Summary:</b> Rs {compact(analysis.totals.amount)} turnover across {num(analysis.totals.brokers)} brokers.{" "}
-        {buyers[0] && <>Top accumulator <b className="text-up">#{buyers[0].id}</b> (+{compact(buyers[0].netAmt)}). </>}
-        {sellers[0] && <>Top distributor <b className="text-down">#{sellers[0].id}</b> ({compact(sellers[0].netAmt)}). </>}
-        {accumulation[0] && <>Smart-money interest: <b>{accumulation.map((a) => a.symbol).slice(0, 3).join(", ")}</b>.</>}
-      </p>
-    </section>
-  );
-}
-
-function InsightBox({ title, tone, children }: { title: string; tone?: "up" | "down"; children: React.ReactNode }) {
-  return (
-    <div className="rounded-lg border border-border bg-surface p-3">
-      <div className={`mb-1 text-xs font-bold ${tone === "up" ? "text-up" : tone === "down" ? "text-down" : "text-foreground"}`}>{title}</div>
-      <ul className="space-y-0.5 text-sm tabular-nums">{children}</ul>
-    </div>
-  );
-}
-
-/* ─── Shared components ─── */
-function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
-  return (
-    <div className="rounded-xl border border-border bg-surface p-3 shadow-sm">
-      <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">{label}</div>
-      <div className="mt-0.5 font-bold tabular-nums">{value}</div>
-      {sub && <div className="text-[10px] text-muted">{sub}</div>}
-    </div>
-  );
-}
-
-function NetFlowCard({ title, rows, tone }: { title: string; rows: Broker[]; tone: "up" | "down" }) {
-  const max = Math.max(1, ...rows.map((r) => Math.abs(r.netAmt)));
-  return (
-    <div className="rounded-xl border border-border bg-surface shadow-sm">
-      <div className="border-b border-border px-4 py-3 font-bold">{title}</div>
-      <div className="space-y-2 p-4">
-        {rows.length === 0 && <div className="py-4 text-center text-sm text-muted">None</div>}
-        {rows.map((r) => (
-          <div key={r.id} className="flex items-center gap-2 text-sm">
-            <span className="w-12 shrink-0 font-bold">#{r.id}</span>
-            <div className="relative h-5 flex-1 overflow-hidden rounded bg-surface-2">
-              <div className={`h-full ${tone === "up" ? "bg-up" : "bg-down"}`} style={{ width: `${(Math.abs(r.netAmt) / max) * 100}%`, opacity: 0.75 }} />
-            </div>
-            <span className={`w-20 shrink-0 text-right font-semibold tabular-nums ${tone === "up" ? "text-up" : "text-down"}`}>{compact(Math.abs(r.netAmt))}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function BrokerTable({ title, rows, mode }: { title: string; rows: Broker[]; mode: "buy" | "sell" }) {
-  return (
-    <div className="rounded-xl border border-border bg-surface shadow-sm">
-      <div className="border-b border-border px-4 py-3 font-bold">{title}</div>
-      <table className="w-full text-sm">
-        <thead className="bg-surface-2 text-xs uppercase text-muted">
-          <tr><th className="px-3 py-2 text-left">Broker</th><th className="px-3 py-2 text-right">Qty</th><th className="px-3 py-2 text-right">Value</th><th className="px-3 py-2 text-right">Net</th></tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.id} className="border-t border-border hover:bg-surface-2">
-              <td className="px-3 py-1.5 font-semibold">#{r.id}</td>
-              <td className="px-3 py-1.5 text-right tabular-nums">{num(mode === "buy" ? r.buyQty : r.sellQty)}</td>
-              <td className="px-3 py-1.5 text-right tabular-nums">{compact(mode === "buy" ? r.buyAmt : r.sellAmt)}</td>
-              <td className={`px-3 py-1.5 text-right font-semibold tabular-nums ${r.netAmt >= 0 ? "text-up" : "text-down"}`}>{r.netAmt >= 0 ? "+" : ""}{compact(r.netAmt)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function StockTable({ stocks }: { stocks: StockAgg[] }) {
-  const [openSym, setOpenSym] = useState<string | null>(null);
-  return (
-    <div className="rounded-xl border border-border bg-surface shadow-sm">
-      <div className="border-b border-border px-4 py-3 font-bold">Stock-wise Activity</div>
-      <div className="max-h-[28rem] overflow-auto">
-        <table className="w-full text-sm">
-          <thead className="sticky top-0 bg-surface-2 text-xs uppercase text-muted">
-            <tr>
-              <th className="px-3 py-2 text-left">Symbol</th><th className="px-3 py-2 text-left">Type</th><th className="px-3 py-2 text-left">Company</th>
-              <th className="px-3 py-2 text-right">Trades</th><th className="px-3 py-2 text-right">Quantity</th><th className="px-3 py-2 text-right">Turnover</th>
-            </tr>
-          </thead>
-          <tbody>
-            {stocks.map((s) => {
-              const sType = classifySymbol(s.symbol, s.name);
-              return (
-                <tr key={s.symbol} className="border-t border-border hover:bg-surface-2">
-                  <td className="px-3 py-1.5 font-bold text-primary"><Link href={`/stock/${s.symbol}`} className="hover:underline">{s.symbol}</Link></td>
-                  <td className="px-3 py-1.5"><span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${TYPE_BADGE[sType]}`}>{sType}</span></td>
-                  <td className="max-w-[220px] truncate px-3 py-1.5 text-muted">{s.name}</td>
-                  <td className="px-3 py-1.5 text-right tabular-nums">{num(s.trades)}</td>
-                  <td className="px-3 py-1.5 text-right tabular-nums">{num(s.qty)}</td>
-                  <td className="px-3 py-1.5 text-right tabular-nums">{compact(s.amount)}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-/* ─── Individual Broker Deep-Dive (live API) ─── */
-type LiveBrokerStock = { symbol: string; name: string; buyQty: number; buyAmt: number; sellQty: number; sellAmt: number; netQty: number; netAmt: number; ltp: number; change: number; volume: number };
-type LiveBrokerResp = {
-  broker: number; stocks: LiveBrokerStock[]; totals: { buyAmt: number; sellAmt: number; netAmt: number };
-  accumulation: LiveBrokerStock[]; distribution: LiveBrokerStock[]; liveCount: number; asOf: string; error?: string;
-};
-
-function BrokerDeepDive({ marketOpen }: { marketOpen: boolean }) {
-  const [brokerId, setBrokerId] = useState(1);
-  const [input, setInput] = useState("1");
-  const { data, error, loading, updatedAt } = usePoll<LiveBrokerResp>(`/api/broker-live/${brokerId}`, marketOpen ? 3_000 : 60_000);
-  useEffect(() => { setInput(String(brokerId)); }, [brokerId]);
-
-  const chartStocks = useMemo(() => {
-    if (!data?.stocks) return [];
-    return [...data.stocks].sort((a, b) => b.netAmt - a.netAmt).slice(0, 12);
-  }, [data]);
-  const maxBar = useMemo(() => Math.max(...chartStocks.map((s) => Math.max(s.buyAmt, s.sellAmt)), 1), [chartStocks]);
-  const buyRatio = data ? (data.totals.buyAmt / (data.totals.buyAmt + data.totals.sellAmt) * 100) : 0;
-
-  return (
-    <section className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border bg-surface p-4 shadow-sm">
-        <div className="flex items-center gap-4">
-          <h2 className="text-lg font-bold"><span className="mr-2 text-primary">🏢</span>Broker Deep-Dive (Live)</h2>
-          <div className="flex items-center gap-3 rounded-full border border-border bg-surface-2 px-4 py-1.5">
-            <span className="text-xs font-semibold text-muted">Broker #</span>
-            <form onSubmit={(e) => { e.preventDefault(); const n = Number(input.replace(/\D/g, "")); if (n >= 1 && n <= 999) setBrokerId(n); }} className="flex items-center gap-2">
-              <input type="text" inputMode="numeric" value={input} onChange={(e) => setInput(e.target.value.replace(/\D/g, ""))}
-                className="w-14 bg-transparent text-sm font-semibold outline-none" placeholder="1" />
-              <button type="submit" className="rounded-md bg-primary px-2.5 py-1 text-xs font-semibold text-white hover:bg-primary-700">Search</button>
-            </form>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 text-xs">
-          {updatedAt && (
-            <span className={`rounded-full px-2.5 py-1 font-semibold ${marketOpen ? "bg-up-bg text-up" : "bg-surface-2 text-muted"}`}>
-              {marketOpen ? "🔴 Live" : "⏸ Paused"} · {new Date(updatedAt).toLocaleTimeString("en-GB")}
-            </span>
+          {/* Zero-Sum Stocks */}
+          {filteredZeroSum.length > 0 && (
+            <>
+              <div className="ba-section-title">
+                <i className="fas fa-balance-scale" /> Contested Stocks (Buy vs Sell) {q && <span className="ba-match-badge">{filteredZeroSum.length}</span>} <span className="ba-section-line" />
+              </div>
+              <section className="ba-order-card" style={{ marginBottom: 22 }}>
+                {filteredZeroSum.map((item, i) => (
+                  <div key={i} className="ba-week-item">
+                    <div className="ba-week-head">
+                      <span className="ba-week-stock"><Link href={`/stock/${item.stock}`}>{item.stock}</Link></span>
+                      <span className="ba-week-vol">Buyer: #{item.buyer} vs Seller: #{item.seller}</span>
+                    </div>
+                    <div className="ba-week-bar-wrap">
+                      <div className="ba-week-marker" style={{
+                        left: "50%",
+                        background: item.net.startsWith("+") ? "var(--ba-green)" : "var(--ba-red)",
+                      }} />
+                    </div>
+                    <div className="ba-week-labels">
+                      <span style={{ color: "var(--ba-red)" }}>Sell: #{item.seller}</span>
+                      <span style={{ color: item.net.startsWith("+") ? "var(--ba-green)" : "var(--ba-red)", fontWeight: 700 }}>Net: {item.net}</span>
+                      <span style={{ color: "var(--ba-green)" }}>Buy: #{item.buyer}</span>
+                    </div>
+                  </div>
+                ))}
+              </section>
+            </>
           )}
-        </div>
-      </div>
-
-      {loading && !data && <div className="rounded-xl border border-border bg-surface p-8 text-center text-muted">Loading broker #{brokerId}…</div>}
-      {error && <div className="rounded-lg bg-down-bg p-4 text-sm text-down">{error}</div>}
-
-      {data && !loading && (
-        <>
-          {(data.accumulation.length > 0 || data.distribution.length > 0) && (
-            <div className="grid gap-4 md:grid-cols-2">
-              {data.accumulation.length > 0 && (
-                <div className="rounded-2xl border border-up/30 bg-up-bg p-4">
-                  <h3 className="mb-2 text-sm font-bold text-up">🟢 Accumulation</h3>
-                  {data.accumulation.map((s) => (
-                    <div key={s.symbol} className="flex items-center justify-between text-sm">
-                      <Link href={`/stock/${s.symbol}`} className="font-semibold hover:underline">{s.symbol.replace(/\d+/g, "")}</Link>
-                      <span className="flex gap-3 tabular-nums"><span className="text-up">+{compact(s.netAmt)}</span><span className="text-up">+{s.change.toFixed(2)}%</span></span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {data.distribution.length > 0 && (
-                <div className="rounded-2xl border border-down/30 bg-down-bg p-4">
-                  <h3 className="mb-2 text-sm font-bold text-down">🔴 Distribution</h3>
-                  {data.distribution.map((s) => (
-                    <div key={s.symbol} className="flex items-center justify-between text-sm">
-                      <Link href={`/stock/${s.symbol}`} className="font-semibold hover:underline">{s.symbol.replace(/\d+/g, "")}</Link>
-                      <span className="flex gap-3 tabular-nums"><span className="text-down">{compact(s.netAmt)}</span><span className="text-down">{s.change.toFixed(2)}%</span></span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="grid gap-5 lg:grid-cols-[1.6fr_1fr]">
-            <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
-              <h3 className="mb-3 text-base font-bold">📊 Buy vs Sell Activity</h3>
-              <div className="flex items-end justify-between gap-2" style={{ height: 180 }}>
-                {chartStocks.map((s) => {
-                  const buyH = Math.max((s.buyAmt / maxBar) * 140, 4);
-                  const sellH = Math.max((s.sellAmt / maxBar) * 140, 4);
-                  return (
-                    <div key={s.symbol} className="flex flex-col items-center" style={{ width: "8%", minWidth: 28 }}>
-                      <div className="flex items-end gap-0.5" style={{ height: 140, width: "100%" }}>
-                        <div className="rounded-t-md bg-up" style={{ height: buyH, width: "46%" }} />
-                        <div className="rounded-t-md bg-down" style={{ height: sellH, width: "46%" }} />
-                      </div>
-                      <div className="mt-1 w-full truncate text-center text-[9px] font-semibold text-muted">{s.symbol.replace(/\d+/g, "")}</div>
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="mt-3 flex items-center gap-4 text-xs font-medium">
-                <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-up" /> Buy</span>
-                <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-down" /> Sell</span>
-                <span className="ml-auto">Net: <b className={data.totals.netAmt >= 0 ? "text-up" : "text-down"}>{data.totals.netAmt >= 0 ? "+" : ""}{compact(data.totals.netAmt)}</b></span>
-              </div>
-            </div>
-            <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
-              <h3 className="mb-3 text-base font-bold">📄 Summary</h3>
-              <div className="space-y-1.5 rounded-xl border border-border bg-surface-2 p-3">
-                <SummaryRow label="Total Buy" value={compact(data.totals.buyAmt)} color="text-up" />
-                <SummaryRow label="Total Sell" value={compact(data.totals.sellAmt)} color="text-down" />
-                <SummaryRow label="Net Amount" value={`${data.totals.netAmt >= 0 ? "+" : ""}${compact(data.totals.netAmt)}`} color={data.totals.netAmt >= 0 ? "text-up" : "text-down"} />
-                <SummaryRow label="Stocks" value={String(data.stocks.length)} color="text-primary" />
-                <SummaryRow label="Buy Ratio" value={`${buyRatio.toFixed(1)}%`} color="text-purple-600" />
-              </div>
-            </div>
-          </div>
         </>
       )}
-    </section>
+    </div>
   );
 }
 
-function SummaryRow({ label, value, color }: { label: string; value: string; color: string }) {
-  return (
-    <div className="flex justify-between border-b border-border pb-1.5 text-sm last:border-0 last:pb-0">
-      <span className="text-muted">{label}</span>
-      <span className={`font-bold ${color}`}>{value}</span>
-    </div>
-  );
+/* ─── Broker Holding Chart ─── */
+function BrokerHoldingChart({ favorites }: { favorites: Array<{ broker: string; favorites: string[] }> }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const chartRef = useRef<import("chart.js").Chart | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function init() {
+      const { Chart, registerables } = await import("chart.js");
+      if (cancelled) return;
+      Chart.register(...registerables);
+      if (!canvasRef.current) return;
+      if (chartRef.current) chartRef.current.destroy();
+
+      const top = favorites.slice(0, 8);
+      const colors = ["#3bdd9a", "#4b8cfa", "#f56b7a", "#f5b842", "#a78bfa", "#f59e0b", "#06b6d4", "#ec4899"];
+
+      chartRef.current = new Chart(canvasRef.current, {
+        type: "bar",
+        data: {
+          labels: top.map((b) => `#${b.broker}`),
+          datasets: [{
+            label: "Top Stocks Count",
+            data: top.map((b) => b.favorites.length),
+            backgroundColor: top.map((_, i) => colors[i % colors.length]),
+            borderRadius: 8,
+            barThickness: 24,
+          }],
+        },
+        options: {
+          indexAxis: "y" as const,
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => {
+                  const broker = top[ctx.dataIndex];
+                  return `Favorites: ${broker.favorites.join(", ")}`;
+                },
+              },
+            },
+          },
+          scales: {
+            x: {
+              grid: { color: "rgba(26,45,74,0.3)" },
+              ticks: { color: "#8aa4d0" },
+            },
+            y: {
+              grid: { display: false },
+              ticks: { color: "#ecf3fa", font: { weight: "bold" as const } },
+            },
+          },
+        },
+      });
+    }
+    init();
+    return () => { cancelled = true; if (chartRef.current) chartRef.current.destroy(); };
+  }, [favorites]);
+
+  return <div style={{ height: Math.max(200, favorites.length * 40) }}><canvas ref={canvasRef} /></div>;
 }

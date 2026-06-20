@@ -133,6 +133,20 @@ async function migrateSchema(): Promise<void> {
     )
   `);
 
+  // Intraday 1-minute OHLCV candles for TradingView charts
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS intraday_candles (
+      symbol TEXT NOT NULL,
+      ts INTEGER NOT NULL,
+      open REAL NOT NULL DEFAULT 0,
+      high REAL NOT NULL DEFAULT 0,
+      low REAL NOT NULL DEFAULT 0,
+      close REAL NOT NULL DEFAULT 0,
+      volume REAL NOT NULL DEFAULT 0,
+      PRIMARY KEY (symbol, ts)
+    )
+  `);
+
   // Indexes for fast floorsheet queries
   try {
     await db.execute("CREATE INDEX IF NOT EXISTS idx_fs_date ON floorsheet_trades(tradeDate)");
@@ -143,6 +157,7 @@ async function migrateSchema(): Promise<void> {
     await db.execute("CREATE INDEX IF NOT EXISTS idx_bda_symbol ON broker_daily_agg(stockSymbol, tradeDate)");
     await db.execute("CREATE INDEX IF NOT EXISTS idx_bda_broker ON broker_daily_agg(tradeDate, brokerId)");
     await db.execute("CREATE INDEX IF NOT EXISTS idx_ohlcv_symbol ON stock_daily_ohlcv(symbol, tradeDate)");
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_intraday_symbol_ts ON intraday_candles(symbol, ts)");
   } catch { /* indexes may already exist */ }
 
   // Add createdAt column if missing
@@ -360,6 +375,23 @@ export async function getAvailableDates(): Promise<string[]> {
   return r.rows.map((row) => String(row.tradeDate));
 }
 
+// Get latest floorsheet data from DB (fallback when API is down)
+export async function getLatestFloorsheetFromDb(): Promise<FsTrade[]> {
+  const r = await db.execute(
+    "SELECT tradeDate, stockSymbol, securityName, buyerMemberId, sellerMemberId, contractQuantity, contractAmount, tradeOrder FROM floorsheet_trades ORDER BY tradeDate DESC, tradeOrder ASC LIMIT 10000"
+  );
+  return r.rows.map((row) => ({
+    tradeDate: String(row.tradeDate),
+    stockSymbol: String(row.stockSymbol),
+    securityName: String(row.securityName),
+    buyerMemberId: String(row.buyerMemberId),
+    sellerMemberId: String(row.sellerMemberId),
+    contractQuantity: Number(row.contractQuantity),
+    contractAmount: Number(row.contractAmount),
+    tradeOrder: Number(row.tradeOrder),
+  }));
+}
+
 // ─── OHLCV candles from DB for signal generation ─────────────────────────
 export type OhlcvCandle = {
   tradeDate: string;
@@ -442,4 +474,45 @@ export async function getBrokerFlowFromDb(date?: string): Promise<Map<string, Br
     });
   }
   return out;
+}
+
+// ─── Intraday candles (1-min OHLCV for TradingView UDF) ──────────────
+export type IntradayCandle = {
+  ts: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+};
+
+export async function saveIntradayCandles(symbol: string, candles: IntradayCandle[]): Promise<void> {
+  if (!candles.length) return;
+  const statements = candles.map((c) => ({
+    sql: `INSERT INTO intraday_candles(symbol, ts, open, high, low, close, volume)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(symbol, ts) DO UPDATE SET
+            open=excluded.open, high=excluded.high, low=excluded.low,
+            close=excluded.close, volume=excluded.volume`,
+    args: [symbol, c.ts, c.open, c.high, c.low, c.close, c.volume],
+  }));
+  await db.batch(statements, "write");
+}
+
+export async function getIntradayCandles(symbol: string, from?: number, to?: number, limit = 500): Promise<IntradayCandle[]> {
+  let sql = "SELECT ts, open, high, low, close, volume FROM intraday_candles WHERE symbol = ?";
+  const args: (string | number)[] = [symbol];
+  if (from !== undefined) { sql += " AND ts >= ?"; args.push(from); }
+  if (to !== undefined) { sql += " AND ts <= ?"; args.push(to); }
+  sql += " ORDER BY ts ASC";
+  if (limit > 0) { sql += " LIMIT ?"; args.push(limit); }
+  const r = await db.execute({ sql, args });
+  return r.rows.map((row) => ({
+    ts: Number(row.ts),
+    open: Number(row.open),
+    high: Number(row.high),
+    low: Number(row.low),
+    close: Number(row.close),
+    volume: Number(row.volume),
+  }));
 }

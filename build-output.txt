@@ -1,0 +1,599 @@
+﻿Γû▓ Next.js 16.2.7 (Turbopack)
+- Environments: .env.local
+
+  Creating an optimized production build ...
+node.exe : 
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+> Build error occurred
+Error: Turbopack build failed with 13 errors:
+./src/app/floorsheet/page.tsx:526:1
+The "use client" directive must be placed before other expressions. Move it to the top of the file to resolve this 
+issue.
+  [90m524 |[0m   [36mreturn[0m <div style={{ height: [35m250[0m }}><canvas ref={canvasRef} [35m/></div[0m>;
+  [90m525 |[0m }
+[31m[1m>[0m [90m526 |[0m [32m"use client"[0m;
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^[0m
+  [90m527 |[0m [36mimport[0m { useCallback, useEffect, useMemo, useRef, useState } [36mfrom[0m [32m"react"[0m;
+  [90m528 |[0m [36mimport[0m [33mLink[0m [36mfrom[0m [32m"next/link"[0m;
+  [90m529 |[0m [36mimport[0m { usePoll } [36mfrom[0m [32m"@/lib/useLive"[0m;
+
+Ecmascript file had an error
+
+Import traces:
+  Client Component Browser:
+    ./src/app/floorsheet/page.tsx [Client Component Browser]
+    ./src/app/floorsheet/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/floorsheet/page.tsx [Client Component SSR]
+    ./src/app/floorsheet/page.tsx [Server Component]
+
+
+./src/app/floorsheet/page.tsx:573:25
+the name `FloorsheetDashboard` is defined multiple times
+  [90m571 |[0m
+  [90m572 |[0m [90m/* ΓöÇΓöÇΓöÇ Main Dashboard ΓöÇΓöÇΓöÇ */[0m
+[31m[1m>[0m [90m573 |[0m [36mexport[0m [36mdefault[0m [36mfunction[0m [33mFloorsheetDashboard[0m() {
+  [90m    |[0m                         [31m[1m^^^^^^^^^^^^^^^^^^^[0m
+  [90m574 |[0m   [36mconst[0m status = usePoll<[33mMarketStatus[0m>([32m"/api/market-status"[0m, 
+[35m30[0m_000);
+  [90m575 |[0m   [36mconst[0m open = status.data?.isOpen?.toUpperCase() === [32m"OPEN"[0m;
+  [90m576 |[0m   [36mconst[0m [date, setDate] = useState(todayStr());
+
+Ecmascript file had an error
+
+Import traces:
+  Client Component Browser:
+    ./src/app/floorsheet/page.tsx [Client Component Browser]
+    ./src/app/floorsheet/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/floorsheet/page.tsx [Client Component SSR]
+    ./src/app/floorsheet/page.tsx [Server Component]
+
+
+./src/app/floorsheet/page.tsx:528:8
+the name `Link` is defined multiple times
+  [90m526 |[0m [32m"use client"[0m;
+  [90m527 |[0m [36mimport[0m { useCallback, useEffect, useMemo, useRef, useState } [36mfrom[0m [32m"react"[0m;
+[31m[1m>[0m [90m528 |[0m [36mimport[0m [33mLink[0m [36mfrom[0m [32m"next/link"[0m;
+  [90m    |[0m        [31m[1m^^^^[0m
+  [90m529 |[0m [36mimport[0m { usePoll } [36mfrom[0m [32m"@/lib/useLive"[0m;
+  [90m530 |[0m [36mimport[0m [36mtype[0m { [33mMarketStatus[0m } [36mfrom[0m [32m"@/lib/types"[0m;
+  [90m531 |[0m [36mimport[0m { classifySymbol, [33mTYPE_BADGE[0m } [36mfrom[0m [32m"@/lib/types"[0m;
+
+Ecmascript file had an error
+
+Import traces:
+  Client Component Browser:
+    ./src/app/floorsheet/page.tsx [Client Component Browser]
+    ./src/app/floorsheet/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/floorsheet/page.tsx [Client Component SSR]
+    ./src/app/floorsheet/page.tsx [Server Component]
+
+
+./src/app/floorsheet/page.tsx:532:15
+the name `compact` is defined multiple times
+  [90m530 |[0m [36mimport[0m [36mtype[0m { [33mMarketStatus[0m } [36mfrom[0m [32m"@/lib/types"[0m;
+  [90m531 |[0m [36mimport[0m { classifySymbol, [33mTYPE_BADGE[0m } [36mfrom[0m [32m"@/lib/types"[0m;
+[31m[1m>[0m [90m532 |[0m [36mimport[0m { num, compact } [36mfrom[0m [32m"@/lib/format"[0m;
+  [90m    |[0m               [31m[1m^^^^^^^[0m
+  [90m533 |[0m
+  [90m534 |[0m [90m/* ΓöÇΓöÇΓöÇ Types ΓöÇΓöÇΓöÇ */[0m
+  [90m535 |[0m [36mtype[0m [33mBroker[0m = { id: string; buyQty: number; buyAmt: number; sellQty: number; 
+sellAmt: num...
+
+Ecmascript file had an error
+
+Import traces:
+  Client Component Browser:
+    ./src/app/floorsheet/page.tsx [Client Component Browser]
+    ./src/app/floorsheet/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/floorsheet/page.tsx [Client Component SSR]
+    ./src/app/floorsheet/page.tsx [Server Component]
+
+
+./src/app/floorsheet/page.tsx:573:1
+the name `default` is exported multiple times
+  [90m571 |[0m
+  [90m572 |[0m [90m/* ΓöÇΓöÇΓöÇ Main Dashboard ΓöÇΓöÇΓöÇ */[0m
+[31m[1m>[0m [90m573 |[0m [36mexport[0m [36mdefault[0m [36mfunction[0m [33mFloorsheetDashboard[0m() {
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m574 |[0m   [36mconst[0m status = usePoll<[33mMarketStatus[0m>([32m"/api/market-status"[0m, 
+[35m30[0m_000);
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m575 |[0m   [36mconst[0m open = status.data?.isOpen?.toUpperCase() === [32m"OPEN"[0m;
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m576 |[0m   [36mconst[0m [date, setDate] = useState(todayStr());
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m577 |[0m   [36mconst[0m [tab, setTab] = useState<[32m"overview"[0m | [32m"broker"[0m | 
+[32m"stock"[0m>([32m"overview"[0m);
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m578 |[0m
+  [90m    |[0m [31m[1m^[0m
+[31m[1m>[0m [90m579 |[0m   [90m// Unified search state[0m
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m580 |[0m   [36mconst[0m [searchInput, setSearchInput] = useState([32m""[0m);
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m581 |[0m   [36mconst[0m [searchType, setSearchType] = useState<[32m"none"[0m | 
+[32m"broker"[0m | [32m"stock"[0m>([32m"none"[0m);
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m582 |[0m   [36mconst[0m [searchValue, setSearchValue] = useState([32m""[0m);
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m583 |[0m
+  [90m    |[0m [31m[1m^[0m
+[31m[1m>[0m [90m584 |[0m   [90m// Auto-sync[0m
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m585 |[0m   [36mconst[0m sync = usePoll<[33mSyncResp[0m>([32m"/api/floorsheet/sync"[0m, open 
+? [35m3[0m_000 : [35m60[0m_000);
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m586 |[0m   useEffect(() => { [36mif[0m (sync.data?.date) setDate(sync.data.date); }, 
+[sync.data?.date]);
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m587 |[0m   [36mconst[0m availableDates = sync.data?.dates ?? [];
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m588 |[0m
+  [90m    |[0m [31m[1m^[0m
+[31m[1m>[0m [90m589 |[0m   [90m// Handle unified search[0m
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m590 |[0m   [36mconst[0m handleSearch = useCallback((e: [33mReact[0m.[33mFormEvent[0m) => {
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m591 |[0m     e.preventDefault();
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m592 |[0m     [36mconst[0m val = searchInput.trim();
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m593 |[0m     [36mif[0m (!val) { setSearchType([32m"none"[0m); setSearchValue([32m""[0m); 
+[36mreturn[0m; }
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m594 |[0m     [36mif[0m ([35m/^\d+$/[0m.test(val)) {
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m595 |[0m       setSearchType([32m"broker"[0m);
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m596 |[0m       setSearchValue(val);
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m597 |[0m       setTab([32m"broker"[0m);
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m598 |[0m     } [36melse[0m {
+  [90m    |[0m [31m[1m^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m599 |[0m       setSearchType([32m"stock"[0m);
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m600 |[0m       setSearchValue(val.toUpperCase());
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m601 |[0m       setTab([32m"stock"[0m);
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m602 |[0m     }
+  [90m    |[0m [31m[1m^^^^^[0m
+[31m[1m>[0m [90m603 |[0m   }, [searchInput]);
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m604 |[0m
+  [90m    |[0m [31m[1m^[0m
+[31m[1m>[0m [90m605 |[0m   [36mconst[0m clearSearch = useCallback(() => {
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m606 |[0m     setSearchInput([32m""[0m);
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m607 |[0m     setSearchType([32m"none"[0m);
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m608 |[0m     setSearchValue([32m""[0m);
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m609 |[0m   }, []);
+  [90m    |[0m [31m[1m^^^^^^^^^[0m
+[31m[1m>[0m [90m610 |[0m
+  [90m    |[0m [31m[1m^[0m
+[31m[1m>[0m [90m611 |[0m   [36mreturn[0m (
+  [90m    |[0m [31m[1m^^^^^^^^^^[0m
+[31m[1m>[0m [90m612 |[0m     <div className=[32m"space-y-5"[0m>
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m613 |[0m       {[90m/* Header */[0m}
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m614 |[0m       <div className=[32m"flex flex-wrap items-end justify-between gap-3"[0m>
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m615 |[0m         <div>
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m616 |[0m           <h1 className=[32m"text-2xl font-extrabold 
+text-foreground"[0m>[33mBroker[0m & [33mFloorsheet[0m [33mAna...[0m
+  [90m    |[0m 
+[31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m617 |[0m           <p className=[32m"text-sm text-muted"[0m>
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m618 |[0m             [33mDB[0m-backed ┬╖ {sync.data ? 
+[32m`[0m${num(sync.data.tradeCount)[32m} trades synced`[0m : [32m"sync...[0m
+  [90m    |[0m 
+[31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m619 |[0m             {sync.data?.syncedAt ? [32m` ┬╖ [0m${[36mnew[0m 
+[33mDate[0m(sync.data.syncedAt).toLocaleTimeString([32m...[0m
+  [90m    |[0m 
+[31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m620 |[0m             {open ? [32m" ┬╖ auto 3s"[0m : [32m" ┬╖ market closed"[0m}
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m621 |[0m           </p>
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m622 |[0m         </div>
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m623 |[0m         <div className=[32m"flex items-center gap-3"[0m>
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m624 |[0m           <[33mLink[0m href=[32m"/broker-flow"[0m className=[32m"rounded-lg border 
+border-primary/30 bg-pri...[0m
+  [90m    |[0m 
+[31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m625 |[0m             ≡ƒôè [33mAdvanced[0m [33mBroker[0m [33mFlow[0m
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m626 |[0m           </[33mLink[0m>
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m627 |[0m           <input
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m628 |[0m             [36mtype[0m=[32m"date"[0m
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m629 |[0m             value={date}
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m630 |[0m             max={todayStr()}
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m631 |[0m             onChange={(e) => setDate(e.target.value)}
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m632 |[0m             className=[32m"rounded-lg border border-border bg-surface px-3 py-1.5 
+text-sm fon...[0m
+  [90m    |[0m 
+[31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m633 |[0m           />
+  [90m    |[0m [31m[1m^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m634 |[0m           <span className={[32m`rounded-full px-2.5 py-1 text-xs font-semibold 
+[0m${open ? [32m"bg-u...[0m
+  [90m    |[0m 
+[31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m635 |[0m             {open ? [32m"≡ƒö┤ Live"[0m : [32m"ΓÅ╕ Paused"[0m}
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m636 |[0m           </span>
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m637 |[0m         </div>
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m638 |[0m       </div>
+  [90m    |[0m [31m[1m^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m639 |[0m
+  [90m    |[0m [31m[1m^[0m
+[31m[1m>[0m [90m640 |[0m       {[90m/* Unified Search Bar */[0m}
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m641 |[0m       <form onSubmit={handleSearch} className=[32m"flex items-center gap-2 rounded-xl 
+border ...[0m
+  [90m    |[0m 
+[31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m642 |[0m         <span className=[32m"text-lg"[0m>≡ƒöì</span>
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m643 |[0m         <input
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m644 |[0m           value={searchInput}
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m645 |[0m           onChange={(e) => setSearchInput(e.target.value)}
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m646 |[0m           className=[32m"flex-1 rounded-lg border border-border bg-surface-2 px-3 py-2 
+text-s...[0m
+  [90m    |[0m 
+[31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m647 |[0m           placeholder=[32m"Search stock symbol (e.g. NABIL) or broker number (e.g. 
+42)ΓÇª"[0m
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m648 |[0m         />
+  [90m    |[0m [31m[1m^^^^^^^^^^[0m
+[31m[1m>[0m [90m649 |[0m         <button [36mtype[0m=[32m"submit"[0m className=[32m"rounded-lg bg-primary 
+px-5 py-2 text-sm font-sem...[0m
+  [90m    |[0m 
+[31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m650 |[0m           [33mSearch[0m
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m651 |[0m         </button>
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m652 |[0m         {searchType !== [32m"none"[0m && (
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m653 |[0m           <button [36mtype[0m=[32m"button"[0m onClick={clearSearch} 
+className=[32m"rounded-lg border border...[0m
+  [90m    |[0m 
+[31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m654 |[0m             Γ£ò [33mClear[0m
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m655 |[0m           </button>
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m656 |[0m         )}
+  [90m    |[0m [31m[1m^^^^^^^^^^[0m
+[31m[1m>[0m [90m657 |[0m         {searchType !== [32m"none"[0m && (
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m658 |[0m           <span className={[32m`rounded-full px-2.5 py-1 text-xs font-bold 
+[0m${searchType === [32m"...[0m
+  [90m    |[0m 
+[31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m659 |[0m             {searchType === [32m"broker"[0m ? [32m`≡ƒÅó Broker 
+#[0m${searchValue[32m}`[0m : [32m`≡ƒôê [0m${searchValue[32m}`[0m}
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m660 |[0m           </span>
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m661 |[0m         )}
+  [90m    |[0m [31m[1m^^^^^^^^^^[0m
+[31m[1m>[0m [90m662 |[0m       </form>
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m663 |[0m
+  [90m    |[0m [31m[1m^[0m
+[31m[1m>[0m [90m664 |[0m       {[90m/* Tabs */[0m}
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m665 |[0m       <div className=[32m"flex gap-1 rounded-xl border border-border bg-surface 
+p-1"[0m>
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m666 |[0m         {([
+  [90m    |[0m [31m[1m^^^^^^^^^^^[0m
+[31m[1m>[0m [90m667 |[0m           { key: [32m"overview"[0m, label: [32m"≡ƒôè Overview"[0m },
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m668 |[0m           { key: [32m"broker"[0m, label: [32m"≡ƒÅó Broker View"[0m },
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m669 |[0m           { key: [32m"stock"[0m, label: [32m"≡ƒôê Stock View"[0m },
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m670 |[0m         ] [36mas[0m [36mconst[0m).map((t) => (
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m671 |[0m           <button
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m672 |[0m             key={t.key}
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m673 |[0m             onClick={() => setTab(t.key)}
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m674 |[0m             className={[32m`flex-1 rounded-lg px-4 py-2 text-sm font-semibold 
+transition [0m${ta...
+  [90m    |[0m 
+[31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m675 |[0m           >
+  [90m    |[0m [31m[1m^^^^^^^^^^^[0m
+[31m[1m>[0m [90m676 |[0m             {t.label}
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m677 |[0m           </button>
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m678 |[0m         ))}
+  [90m    |[0m [31m[1m^^^^^^^^^^^[0m
+[31m[1m>[0m [90m679 |[0m       </div>
+  [90m    |[0m [31m[1m^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m680 |[0m
+  [90m    |[0m [31m[1m^[0m
+[31m[1m>[0m [90m681 |[0m       {[90m/* Tab Content */[0m}
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m682 |[0m       {tab === [32m"overview"[0m && <[33mOverviewTab[0m date={date} />}
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m683 |[0m       {tab === [32m"broker"[0m && <[33mBrokerTab[0m date={date} brokerId={searchType 
+=== [32m"broker"[0m ? sea...
+  [90m    |[0m 
+[31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m684 |[0m       {tab === [32m"stock"[0m && <[33mStockTab[0m date={date} 
+filterSymbol={searchType === [32m"stock"[0m ? se...
+  [90m    |[0m 
+[31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m685 |[0m
+  [90m    |[0m [31m[1m^[0m
+[31m[1m>[0m [90m686 |[0m       {[90m/* Agent Insight */[0m}
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m687 |[0m       <[33mAgentInsight[0m marketOpen={open ?? [36mfalse[0m} />
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m688 |[0m
+  [90m    |[0m [31m[1m^[0m
+[31m[1m>[0m [90m689 |[0m       {[90m/* Broker Deep-Dive */[0m}
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m690 |[0m       <[33mBrokerDeepDive[0m marketOpen={open ?? [36mfalse[0m} />
+  [90m    |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[31m[1m>[0m [90m691 |[0m     </div>
+  [90m    |[0m [31m[1m^^^^^^^^^^[0m
+[31m[1m>[0m [90m692 |[0m   );
+  [90m    |[0m [31m[1m^^^^[0m
+[31m[1m>[0m [90m693 |[0m }
+  [90m    |[0m [31m[1m^[0m
+  [90m694 |[0m
+  [90m695 |[0m [90m/* ΓöÇΓöÇΓöÇ Overview Tab ΓöÇΓöÇΓöÇ */[0m
+  [90m696 |[0m [36mfunction[0m [33mOverviewTab[0m({ date }: { date: string }) {
+
+Ecmascript file had an error
+
+Import traces:
+  Client Component Browser:
+    ./src/app/floorsheet/page.tsx [Client Component Browser]
+    ./src/app/floorsheet/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/floorsheet/page.tsx [Client Component SSR]
+    ./src/app/floorsheet/page.tsx [Server Component]
+
+
+./src/app/floorsheet/page.tsx:532:10
+the name `num` is defined multiple times
+  [90m530 |[0m [36mimport[0m [36mtype[0m { [33mMarketStatus[0m } [36mfrom[0m [32m"@/lib/types"[0m;
+  [90m531 |[0m [36mimport[0m { classifySymbol, [33mTYPE_BADGE[0m } [36mfrom[0m [32m"@/lib/types"[0m;
+[31m[1m>[0m [90m532 |[0m [36mimport[0m { num, compact } [36mfrom[0m [32m"@/lib/format"[0m;
+  [90m    |[0m          [31m[1m^^^[0m
+  [90m533 |[0m
+  [90m534 |[0m [90m/* ΓöÇΓöÇΓöÇ Types ΓöÇΓöÇΓöÇ */[0m
+  [90m535 |[0m [36mtype[0m [33mBroker[0m = { id: string; buyQty: number; buyAmt: number; sellQty: number; 
+sellAmt: num...
+
+Ecmascript file had an error
+
+Import traces:
+  Client Component Browser:
+    ./src/app/floorsheet/page.tsx [Client Component Browser]
+    ./src/app/floorsheet/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/floorsheet/page.tsx [Client Component SSR]
+    ./src/app/floorsheet/page.tsx [Server Component]
+
+
+./src/app/floorsheet/page.tsx:570:10
+the name `todayStr` is defined multiple times
+  [90m568 |[0m
+  [90m569 |[0m [90m/* ΓöÇΓöÇΓöÇ Helpers ΓöÇΓöÇΓöÇ */[0m
+[31m[1m>[0m [90m570 |[0m [36mfunction[0m todayStr(): string { [36mreturn[0m [36mnew[0m 
+[33mDate[0m().toLocaleDateString([32m"en-CA"[0m, { timeZone: [32m"...[0m
+  [90m    |[0m          [31m[1m^^^^^^^^[0m
+  [90m571 |[0m
+  [90m572 |[0m [90m/* ΓöÇΓöÇΓöÇ Main Dashboard ΓöÇΓöÇΓöÇ */[0m
+  [90m573 |[0m [36mexport[0m [36mdefault[0m [36mfunction[0m [33mFloorsheetDashboard[0m() {
+
+Ecmascript file had an error
+
+Import traces:
+  Client Component Browser:
+    ./src/app/floorsheet/page.tsx [Client Component Browser]
+    ./src/app/floorsheet/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/floorsheet/page.tsx [Client Component SSR]
+    ./src/app/floorsheet/page.tsx [Server Component]
+
+
+./src/app/floorsheet/page.tsx:527:10
+the name `useCallback` is defined multiple times
+  [90m525 |[0m }
+  [90m526 |[0m [32m"use client"[0m;
+[31m[1m>[0m [90m527 |[0m [36mimport[0m { useCallback, useEffect, useMemo, useRef, useState } [36mfrom[0m 
+[32m"react"[0m;
+  [90m    |[0m          [31m[1m^^^^^^^^^^^[0m
+  [90m528 |[0m [36mimport[0m [33mLink[0m [36mfrom[0m [32m"next/link"[0m;
+  [90m529 |[0m [36mimport[0m { usePoll } [36mfrom[0m [32m"@/lib/useLive"[0m;
+  [90m530 |[0m [36mimport[0m [36mtype[0m { [33mMarketStatus[0m } [36mfrom[0m [32m"@/lib/types"[0m;
+
+Ecmascript file had an error
+
+Import traces:
+  Client Component Browser:
+    ./src/app/floorsheet/page.tsx [Client Component Browser]
+    ./src/app/floorsheet/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/floorsheet/page.tsx [Client Component SSR]
+    ./src/app/floorsheet/page.tsx [Server Component]
+
+
+./src/app/floorsheet/page.tsx:527:23
+the name `useEffect` is defined multiple times
+  [90m525 |[0m }
+  [90m526 |[0m [32m"use client"[0m;
+[31m[1m>[0m [90m527 |[0m [36mimport[0m { useCallback, useEffect, useMemo, useRef, useState } [36mfrom[0m 
+[32m"react"[0m;
+  [90m    |[0m                       [31m[1m^^^^^^^^^[0m
+  [90m528 |[0m [36mimport[0m [33mLink[0m [36mfrom[0m [32m"next/link"[0m;
+  [90m529 |[0m [36mimport[0m { usePoll } [36mfrom[0m [32m"@/lib/useLive"[0m;
+  [90m530 |[0m [36mimport[0m [36mtype[0m { [33mMarketStatus[0m } [36mfrom[0m [32m"@/lib/types"[0m;
+
+Ecmascript file had an error
+
+Import traces:
+  Client Component Browser:
+    ./src/app/floorsheet/page.tsx [Client Component Browser]
+    ./src/app/floorsheet/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/floorsheet/page.tsx [Client Component SSR]
+    ./src/app/floorsheet/page.tsx [Server Component]
+
+
+./src/app/floorsheet/page.tsx:527:34
+the name `useMemo` is defined multiple times
+  [90m525 |[0m }
+  [90m526 |[0m [32m"use client"[0m;
+[31m[1m>[0m [90m527 |[0m [36mimport[0m { useCallback, useEffect, useMemo, useRef, useState } [36mfrom[0m 
+[32m"react"[0m;
+  [90m    |[0m                                  [31m[1m^^^^^^^[0m
+  [90m528 |[0m [36mimport[0m [33mLink[0m [36mfrom[0m [32m"next/link"[0m;
+  [90m529 |[0m [36mimport[0m { usePoll } [36mfrom[0m [32m"@/lib/useLive"[0m;
+  [90m530 |[0m [36mimport[0m [36mtype[0m { [33mMarketStatus[0m } [36mfrom[0m [32m"@/lib/types"[0m;
+
+Ecmascript file had an error
+
+Import traces:
+  Client Component Browser:
+    ./src/app/floorsheet/page.tsx [Client Component Browser]
+    ./src/app/floorsheet/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/floorsheet/page.tsx [Client Component SSR]
+    ./src/app/floorsheet/page.tsx [Server Component]
+
+
+./src/app/floorsheet/page.tsx:529:10
+the name `usePoll` is defined multiple times
+  [90m527 |[0m [36mimport[0m { useCallback, useEffect, useMemo, useRef, useState } [36mfrom[0m [32m"react"[0m;
+  [90m528 |[0m [36mimport[0m [33mLink[0m [36mfrom[0m [32m"next/link"[0m;
+[31m[1m>[0m [90m529 |[0m [36mimport[0m { usePoll } [36mfrom[0m [32m"@/lib/useLive"[0m;
+  [90m    |[0m          [31m[1m^^^^^^^[0m
+  [90m530 |[0m [36mimport[0m [36mtype[0m { [33mMarketStatus[0m } [36mfrom[0m [32m"@/lib/types"[0m;
+  [90m531 |[0m [36mimport[0m { classifySymbol, [33mTYPE_BADGE[0m } [36mfrom[0m [32m"@/lib/types"[0m;
+  [90m532 |[0m [36mimport[0m { num, compact } [36mfrom[0m [32m"@/lib/format"[0m;
+
+Ecmascript file had an error
+
+Import traces:
+  Client Component Browser:
+    ./src/app/floorsheet/page.tsx [Client Component Browser]
+    ./src/app/floorsheet/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/floorsheet/page.tsx [Client Component SSR]
+    ./src/app/floorsheet/page.tsx [Server Component]
+
+
+./src/app/floorsheet/page.tsx:527:43
+the name `useRef` is defined multiple times
+  [90m525 |[0m }
+  [90m526 |[0m [32m"use client"[0m;
+[31m[1m>[0m [90m527 |[0m [36mimport[0m { useCallback, useEffect, useMemo, useRef, useState } [36mfrom[0m 
+[32m"react"[0m;
+  [90m    |[0m                                           [31m[1m^^^^^^[0m
+  [90m528 |[0m [36mimport[0m [33mLink[0m [36mfrom[0m [32m"next/link"[0m;
+  [90m529 |[0m [36mimport[0m { usePoll } [36mfrom[0m [32m"@/lib/useLive"[0m;
+  [90m530 |[0m [36mimport[0m [36mtype[0m { [33mMarketStatus[0m } [36mfrom[0m [32m"@/lib/types"[0m;
+
+Ecmascript file had an error
+
+Import traces:
+  Client Component Browser:
+    ./src/app/floorsheet/page.tsx [Client Component Browser]
+    ./src/app/floorsheet/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/floorsheet/page.tsx [Client Component SSR]
+    ./src/app/floorsheet/page.tsx [Server Component]
+
+
+./src/app/floorsheet/page.tsx:527:51
+the name `useState` is defined multiple times
+  [90m525 |[0m }
+  [90m526 |[0m [32m"use client"[0m;
+[31m[1m>[0m [90m527 |[0m [36mimport[0m { useCallback, useEffect, useMemo, useRef, useState } [36mfrom[0m 
+[32m"react"[0m;
+  [90m    |[0m                                                   [31m[1m^^^^^^^^[0m
+  [90m528 |[0m [36mimport[0m [33mLink[0m [36mfrom[0m [32m"next/link"[0m;
+  [90m529 |[0m [36mimport[0m { usePoll } [36mfrom[0m [32m"@/lib/useLive"[0m;
+  [90m530 |[0m [36mimport[0m [36mtype[0m { [33mMarketStatus[0m } [36mfrom[0m [32m"@/lib/types"[0m;
+
+Ecmascript file had an error
+
+Import traces:
+  Client Component Browser:
+    ./src/app/floorsheet/page.tsx [Client Component Browser]
+    ./src/app/floorsheet/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/floorsheet/page.tsx [Client Component SSR]
+    ./src/app/floorsheet/page.tsx [Server Component]
+
+
+    at <unknown> (./src/app/floorsheet/page.tsx:526:1)
+    at <unknown> (./src/app/floorsheet/page.tsx:573:25)
+    at <unknown> (./src/app/floorsheet/page.tsx:528:8)
+    at <unknown> (./src/app/floorsheet/page.tsx:532:15)
+    at <unknown> (./src/app/floorsheet/page.tsx:573:1)
+    at <unknown> (./src/app/floorsheet/page.tsx:532:10)
+    at <unknown> (./src/app/floorsheet/page.tsx:570:10)
+    at <unknown> (./src/app/floorsheet/page.tsx:527:10)
+    at <unknown> (./src/app/floorsheet/page.tsx:527:23)
+    at <unknown> (./src/app/floorsheet/page.tsx:527:34)
+    at <unknown> (./src/app/floorsheet/page.tsx:529:10)
+    at <unknown> (./src/app/floorsheet/page.tsx:527:43)
+    at <unknown> (./src/app/floorsheet/page.tsx:527:51)

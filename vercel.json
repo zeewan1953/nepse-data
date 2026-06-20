@@ -1,0 +1,12 @@
+{
+  "routes": [
+    { "src": "/news(/.*)?", "dest": "/news", "headers": { "x-middleware-subcall": "true" } },
+    { "src": "/demo(/.*)?", "dest": "/demo", "headers": { "x-middleware-subcall": "true" } }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/collect",
+      "schedule": "*/1 * * * *"
+    }
+  ]
+}

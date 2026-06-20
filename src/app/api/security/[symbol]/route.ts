@@ -147,7 +147,7 @@ export async function GET(
         if (id) {
           const [details, history, depth] = await Promise.all([
             getSecurityDetailsById(id).catch(() => null) as Promise<SecurityDetails | null>,
-            getPriceHistoryById(id, 500).catch(() => null) as Promise<SecurityPriceVolumeHistory | null>,
+            getPriceHistoryById(id, 1000).catch(() => null) as Promise<SecurityPriceVolumeHistory | null>,
             nepse.getMarketDepth(symbol).catch(() => null),
           ]);
           if (details || history) {

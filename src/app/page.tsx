@@ -1,25 +1,11 @@
 "use client";
 import { useState, useMemo, useRef, useEffect } from "react";
 import Link from "next/link";
-import {
-  createChart,
-  CandlestickSeries,
-  LineSeries,
-  HistogramSeries,
-  ColorType,
-  CrosshairMode,
-  type IChartApi,
-  type ISeriesApi,
-  type CandlestickData,
-  type HistogramData,
-  type LineData,
-  type Time,
-} from "lightweight-charts";
-import { usePoll } from "@/lib/useLive";
+
+import { usePoll, usePersistentPoll } from "@/lib/useLive";
 import type { LiveMarketData, MarketStatus, NepseIndex, NepseSubIndex, TopTenItem } from "@/lib/types";
 import { classifySymbol, TYPE_BADGE } from "@/lib/types";
-import { npr, pct, changeClass, num } from "@/lib/format";
-import { generateSignal, type Signal } from "@/lib/signals";
+import { npr, pct, changeClass, num, compact } from "@/lib/format";
 import { useAuth } from "@/lib/useAuth";
 
 type IndicesResp = { index: NepseIndex[]; subIndices: NepseSubIndex[] };
@@ -113,6 +99,42 @@ type SignalRow = {
 };
 type SignalsResp = { signals: SignalRow[]; generatedAt: number };
 
+type AIRecommendation = {
+  symbol: string; name: string; ltp: number; change: number; pctChange: number;
+  recommendation: "Strong Buy" | "Buy" | "Hold" | "Sell" | "Strong Sell";
+  confidence: number; target: number | null; stopLoss: number | null;
+  reason: string; patterns: string[];
+  score: { technical: number; momentum: number; trend: number; volume: number; total: number };
+};
+type DeepResearchResp = {
+  success: boolean; generatedAt: number;
+  summary: { total: number; buy: number; sell: number; hold: number; avgConfidence: number };
+  recommendations: { buy: AIRecommendation[]; sell: AIRecommendation[]; hold: AIRecommendation[] };
+};
+
+type NepsSummary = {
+  generatedAt: number;
+  nepseIndex: number;
+  change: number;
+  changePct: number;
+  marketStatus: string;
+  support: { s1: number; s2: number; s3: number };
+  resistance: { r1: number; r2: number; r3: number };
+  pivot: number;
+  confidence: number;
+  points: string[];
+  accumulation: string[];
+  distribution: string[];
+  recommendation: string;
+  brokerActivity: string;
+  sentiment: string;
+  upCount: number;
+  downCount: number;
+  flatCount: number;
+  totalVolume: number;
+  totalValue: number;
+};
+
 function chgOf(g: TopTenItem): number {
   // The upstream API actually returns `percentageChange`; the TS type says
   // `percentChange`. Handle both so we never show 0% in movers.
@@ -149,22 +171,14 @@ export default function Dashboard() {
   const indices = usePoll<IndicesResp>("/api/indices", interval);
   const movers = usePoll<MoversResp>("/api/movers", interval);
   const signals = usePoll<SignalsResp>("/api/signals", open ? 5 * 60_000 : 10 * 60_000);
-  const live = usePoll<{ data: LiveMarketData[]; count: number }>("/api/live", 30_000);
+  const live = usePersistentPoll<{ data: LiveMarketData[]; count: number }>("/api/live", 30_000);
+  const deepResearch = usePoll<DeepResearchResp>("/api/deep-research", open ? 30_000 : 120_000);
+  const nepseSummary = usePoll<NepsSummary>("/api/nepse-summary", open ? 60_000 : 300_000);
 
   const nepse =
     indices.data?.index?.find((i) => i.index === "NEPSE Index") ?? indices.data?.index?.[0];
 
-  const [sigFilter, setSigFilter] = useState<"all" | "buy" | "sell">("all");
   const allSignals = signals.data?.signals ?? [];
-  const shown = allSignals.filter((s) =>
-    sigFilter === "all"
-      ? true
-      : sigFilter === "buy"
-        ? s.recommendation.includes("Buy")
-        : s.recommendation.includes("Sell"),
-  );
-  const buyCount = allSignals.filter((s) => s.recommendation.includes("Buy")).length;
-  const sellCount = allSignals.filter((s) => s.recommendation.includes("Sell")).length;
   // Show all stocks with breakout analysis (both valid and fake — users see why rejected)
   const breakouts = allSignals
     .filter((s) => s.instBreakout && (s.instBreakout.direction !== "NO TRADE" || s.instBreakout.score > 0))
@@ -188,8 +202,118 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* NEPSE Index Chart — below title */}
-      <NepseIndexChart />
+      {/* NEPSE AI Summary - Compact */}
+      {nepseSummary.data && nepseSummary.data.nepseIndex > 0 && (
+        <section className="rounded-lg border border-primary/30 bg-gradient-to-r from-primary/5 to-surface px-3 py-2 shadow-sm">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+            <span className="text-sm font-black text-primary">📊 NEPSE विश्लेषण</span>
+            <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold ${
+              nepseSummary.data.recommendation === "BUY" ? "bg-up-bg text-up" :
+              nepseSummary.data.recommendation === "SELL" ? "bg-down-bg text-down" :
+              "bg-warning-bg text-warning"
+            }`}>{nepseSummary.data.recommendation}</span>
+            <span className="text-muted">Index: <span className="font-bold">{nepseSummary.data.nepseIndex}</span></span>
+            <span className="text-up">S: {nepseSummary.data.support.s1}/{nepseSummary.data.support.s2}</span>
+            <span className="text-down">R: {nepseSummary.data.resistance.r1}/{nepseSummary.data.resistance.r2}</span>
+            <span className="text-muted">Pivot: <span className="font-bold">{nepseSummary.data.pivot}</span></span>
+            <span className="text-up">▲{nepseSummary.data.upCount}</span>
+            <span className="text-down">▼{nepseSummary.data.downCount}</span>
+            <span className="text-muted">{nepseSummary.data.sentiment}</span>
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px]">
+            <span className="text-muted">{nepseSummary.data.points.slice(0, 2).join(" • ")}</span>
+            {nepseSummary.data.accumulation.length > 0 && (
+              <span className="text-up">📈 {nepseSummary.data.accumulation.join(", ")}</span>
+            )}
+            {nepseSummary.data.distribution.length > 0 && (
+              <span className="text-down">📉 {nepseSummary.data.distribution.join(", ")}</span>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* AI Recommendations - Deep Research Engine (TOP) */}
+      {deepResearch.data?.success && deepResearch.data.recommendations && (
+        <section className="rounded-lg border border-primary/40 bg-gradient-to-r from-primary/5 to-surface shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-primary/20 px-3 py-2">
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-black">🧠 AI Deep Research</h2>
+              <span className="animate-pulse rounded bg-primary/20 px-1.5 py-0.5 text-[8px] font-bold text-primary">50+ INDICATORS</span>
+              <span className="rounded bg-up-bg px-1.5 py-0.5 text-[8px] font-bold text-up">{deepResearch.data.summary.buy} BUY</span>
+              <span className="rounded bg-down-bg px-1.5 py-0.5 text-[8px] font-bold text-down">{deepResearch.data.summary.sell} SELL</span>
+            </div>
+            <span className="text-[9px] text-muted">Confidence: {deepResearch.data.summary.avgConfidence}% | Updated: {new Date(deepResearch.data.generatedAt).toLocaleTimeString()}</span>
+          </div>
+          <div className="grid gap-3 p-3 md:grid-cols-2">
+            {/* Top 3 BUY */}
+            <div>
+              <div className="mb-2 flex items-center gap-1.5">
+                <span className="text-xs font-bold text-up">📈 Top 3 BUY Recommendations</span>
+              </div>
+              <div className="space-y-1.5">
+                {deepResearch.data.recommendations.buy.slice(0, 3).map((r, i) => (
+                  <Link key={r.symbol} href={`/stock/${r.symbol}`} className="flex items-center justify-between rounded-lg border border-up/30 bg-up-bg/30 p-2 transition hover:shadow hover:border-up/60">
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-up/20 text-[10px] font-bold text-up">#{i + 1}</span>
+                      <div>
+                        <div className="text-xs font-black text-primary">{r.symbol}</div>
+                        <div className="text-[9px] text-muted">{npr(r.ltp)} <span className={r.pctChange >= 0 ? "text-up" : "text-down"}>{r.pctChange >= 0 ? "+" : ""}{r.pctChange.toFixed(2)}%</span></div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="flex items-center gap-1">
+                        <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold ${r.recommendation === "Strong Buy" ? "bg-up text-white" : "bg-up/80 text-white"}`}>{r.recommendation}</span>
+                        <span className="text-[10px] font-bold text-up">{r.confidence}%</span>
+                      </div>
+                      {r.target && <div className="text-[8px] text-muted">TP: {npr(r.target)} | SL: {r.stopLoss ? npr(r.stopLoss) : "—"}</div>}
+                    </div>
+                  </Link>
+                ))}
+                {deepResearch.data.recommendations.buy.length === 0 && <div className="text-[10px] text-muted">No buy signals detected</div>}
+              </div>
+            </div>
+            {/* Top 3 SELL */}
+            <div>
+              <div className="mb-2 flex items-center gap-1.5">
+                <span className="text-xs font-bold text-down">📉 Top 3 SELL Recommendations</span>
+              </div>
+              <div className="space-y-1.5">
+                {deepResearch.data.recommendations.sell.slice(0, 3).map((r, i) => (
+                  <Link key={r.symbol} href={`/stock/${r.symbol}`} className="flex items-center justify-between rounded-lg border border-down/30 bg-down-bg/30 p-2 transition hover:shadow hover:border-down/60">
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-down/20 text-[10px] font-bold text-down">#{i + 1}</span>
+                      <div>
+                        <div className="text-xs font-black text-primary">{r.symbol}</div>
+                        <div className="text-[9px] text-muted">{npr(r.ltp)} <span className={r.pctChange >= 0 ? "text-up" : "text-down"}>{r.pctChange >= 0 ? "+" : ""}{r.pctChange.toFixed(2)}%</span></div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="flex items-center gap-1">
+                        <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold ${r.recommendation === "Strong Sell" ? "bg-down text-white" : "bg-down/80 text-white"}`}>{r.recommendation}</span>
+                        <span className="text-[10px] font-bold text-down">{r.confidence}%</span>
+                      </div>
+                      {r.target && <div className="text-[8px] text-muted">TP: {npr(r.target)} | SL: {r.stopLoss ? npr(r.stopLoss) : "—"}</div>}
+                    </div>
+                  </Link>
+                ))}
+                {deepResearch.data.recommendations.sell.length === 0 && <div className="text-[10px] text-muted">No sell signals detected</div>}
+              </div>
+            </div>
+          </div>
+          <div className="border-t border-primary/20 px-3 py-1.5">
+            <div className="flex flex-wrap items-center gap-3 text-[8px] text-muted">
+              <span className="font-bold">Score Breakdown:</span>
+              <span>Technical: RSI, Stoch, CCI</span>
+              <span>Momentum: MACD, Patterns</span>
+              <span>Trend: SMA, EMA, ADX</span>
+              <span>Volume: BB, VWAP</span>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Live Market Data Panel */}
+      <MarketPanel liveData={live.data ? (live.data as { data: LiveMarketData[] }).data : undefined} />
 
       {/* Two-column: Sector Indices + Paper Trading */}
       <div className="grid gap-3 lg:grid-cols-[1fr_220px]">
@@ -239,376 +363,200 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Movers — compact, above AI signals */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        <MoverCard title="Top Gainers" tone="up" rows={movers.data?.gainers ?? []} />
-        <MoverCard title="Top Losers" tone="down" rows={movers.data?.losers ?? []} />
-      </div>
-
-      {/* News removed - available at /news via header nav */}
-
-      {/* Top AI Signals — compact table */}
-      <section className="rounded-xl border border-border bg-surface shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
-          <h2 className="font-bold">🎯 Top Signals</h2>
-          <div className="flex items-center gap-1 rounded-lg bg-surface-2 p-0.5 text-xs font-semibold">
-            {([
-              ["all", `All ${allSignals.length || ""}`],
-              ["buy", `Buy ${buyCount || ""}`],
-              ["sell", `Sell ${sellCount || ""}`],
-            ] as const).map(([k, label]) => (
-              <button
-                key={k}
-                onClick={() => setSigFilter(k)}
-                className={`rounded-md px-3 py-1 transition ${
-                  sigFilter === k ? "bg-primary text-white" : "text-muted hover:text-foreground"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {signals.error && <div className="px-4 py-3 text-sm text-down">Error: {signals.error}</div>}
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-surface-2 text-xs uppercase text-muted">
-              <tr>
-                <th className="px-3 py-2 text-left">Symbol</th>
-                <th className="px-3 py-2 text-left">Type</th>
-                <th className="px-3 py-2 text-left">Signal</th>
-                <th className="px-3 py-2 text-left">Conf</th>
-                <th className="px-3 py-2 text-right">LTP</th>
-                <th className="px-3 py-2 text-right">% Chg</th>
-                <th className="px-3 py-2 text-center">Regime</th>
-                <th className="px-3 py-2 text-center">SMC</th>
-                <th className="px-3 py-2 text-center">Dir</th>
-                <th className="px-3 py-2 text-center">SMA 50</th>
-                <th className="px-3 py-2 text-center">SMA 200</th>
-                <th className="px-3 py-2 text-center">TMA/DMA</th>
-                <th className="px-3 py-2 text-center">MACD</th>
-                <th className="px-3 py-2 text-center">RSI</th>
-                <th className="px-3 py-2 text-right">SL</th>
-                <th className="px-3 py-2 text-right">TP1</th>
-                <th className="px-3 py-2 text-center">Broker</th>
-              </tr>
-            </thead>
-            <tbody>
-              {signals.loading && !signals.data && (
-                <tr>
-                  <td colSpan={17} className="px-3 py-8 text-center text-muted">
-                    Scanning active stocks…
-                  </td>
-                </tr>
-              )}
-              {shown.map((s) => {
-                const isBuy = s.recommendation.includes("Buy");
-                const isSell = s.recommendation.includes("Sell");
-                const col = isBuy ? "var(--up)" : isSell ? "var(--down)" : "var(--muted)";
-                const sType = classifySymbol(s.symbol, s.name);
-                const rsiColor =
-                  s.rsi === null ? "text-muted"
-                  : s.rsi < 30 ? "text-up font-bold"
-                  : s.rsi > 70 ? "text-down font-bold"
-                  : s.rsi > 55 ? "text-up"
-                  : s.rsi < 45 ? "text-down"
-                  : "text-muted";
+      {/* AI Signals + Breakout Signals - side by side */}
+      <div className="grid gap-3 lg:grid-cols-2">
+        {/* Top AI Signals */}
+        {allSignals.length > 0 && (
+          <section className="rounded-lg border border-primary/30 bg-surface shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-1.5 border-b border-border px-3 py-1.5">
+              <div className="flex items-center gap-1.5">
+                <h2 className="text-xs font-bold">🎯 Top AI</h2>
+                <span className="animate-pulse rounded bg-primary/10 px-1 py-0.5 text-[7px] font-bold text-primary">AI</span>
+                <span className="rounded bg-up-bg px-1 py-0.5 text-[7px] font-bold text-up">{allSignals.filter(s => s.recommendation === "Buy").length}B</span>
+                <span className="rounded bg-down-bg px-1 py-0.5 text-[7px] font-bold text-down">{allSignals.filter(s => s.recommendation === "Sell").length}S</span>
+              </div>
+            </div>
+            <div className="grid gap-1 p-1.5 sm:grid-cols-2">
+              {allSignals.filter((s) => s.recommendation !== "Hold" || s.confidence > 70).slice(0, 6).map((s) => {
+                const isBuy = s.recommendation === "Buy";
+                const isSell = s.recommendation === "Sell";
+                const confColor = s.confidence >= 80 ? "#22c55e" : s.confidence >= 60 ? "#f59e0b" : "#6b7280";
                 return (
-                  <tr key={s.symbol} className="border-t border-border hover:bg-surface-2">
-                    <td className="px-3 py-1.5">
-                      <Link href={`/stock/${s.symbol}`} className="font-bold text-primary hover:underline">
-                        {s.symbol}
-                      </Link>
-                    </td>
-                    <td className="px-3 py-1.5">
-                      <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${TYPE_BADGE[sType]}`}>
-                        {sType}
-                      </span>
-                    </td>
-                    <td className="px-3 py-1.5">
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-xs font-bold ${
-                          isBuy ? "bg-up-bg text-up" : isSell ? "bg-down-bg text-down" : "bg-surface text-muted"
-                        }`}
-                      >
-                        {s.recommendation}
-                      </span>
-                    </td>
-                    <td className="px-3 py-1.5">
-                      <div className="flex items-center gap-1.5">
-                        <div className="h-1.5 w-12 overflow-hidden rounded-full bg-border">
-                          <div className="h-full rounded-full" style={{ width: `${s.confidence}%`, background: col }} />
-                        </div>
-                        <span className="text-xs tabular-nums text-muted">{s.confidence}%</span>
+                  <Link key={s.symbol} href={`/stock/${s.symbol}`} className="rounded border border-border bg-surface-2 p-1.5 transition hover:shadow hover:border-primary/40">
+                    <div className="flex items-center justify-between">
+                      <div className="min-w-0">
+                        <div className="truncate text-[11px] font-black text-primary">{s.symbol}</div>
+                        <div className="text-[9px] text-muted">{npr(s.ltp)} <span className={`font-bold ${s.change >= 0 ? "text-up" : "text-down"}`}>{s.change >= 0 ? "+" : ""}{pct(s.change)}</span></div>
                       </div>
-                    </td>
-                    <td className="px-3 py-1.5 text-right font-semibold tabular-nums">{npr(s.ltp)}</td>
-                    <td className={`px-3 py-1.5 text-right tabular-nums ${changeClass(s.change)}`}>{pct(s.change)}</td>
-                    <td className="px-3 py-1.5 text-center">
-                      {s.institutional ? (
-                        <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
-                          s.institutional.regime === "Trending Bullish" ? "bg-up/10 text-up"
-                          : s.institutional.regime === "Trending Bearish" ? "bg-down/10 text-down"
-                          : s.institutional.regime === "High Volatility" ? "bg-amber-500/10 text-amber-600"
-                          : "bg-surface text-muted"
-                        }`}>
-                          {s.institutional.regime === "Trending Bullish" ? "BULL"
-                            : s.institutional.regime === "Trending Bearish" ? "BEAR"
-                            : s.institutional.regime === "High Volatility" ? "H.VOL"
-                            : "SIDE"}
-                        </span>
-                      ) : <span className="text-muted">—</span>}
-                    </td>
-                    <td className="px-3 py-1.5 text-center">
-                      {s.institutional ? (
-                        <span className={`text-xs font-extrabold tabular-nums ${
-                          s.institutional.score >= 88 ? "text-up"
-                          : s.institutional.score >= 70 ? "text-amber-600"
-                          : "text-muted"
-                        }`}>
-                          {s.institutional.score}
-                        </span>
-                      ) : <span className="text-muted">—</span>}
-                    </td>
-                    <td className="px-3 py-1.5 text-center">
-                      {s.institutional?.direction === "LONG" ? (
-                        <span className="text-xs font-extrabold text-up">LONG</span>
-                      ) : s.institutional?.direction === "SHORT" ? (
-                        <span className="text-xs font-extrabold text-down">SHORT</span>
-                      ) : (
-                        <span className="text-[10px] text-muted">—</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-1.5 text-center">
-                      {s.sma50 ? (
-                        <span className={`text-xs font-bold tabular-nums ${s.ltp > s.sma50 ? "text-up" : "text-down"}`}>
-                          {s.sma50.toFixed(0)}
-                        </span>
-                      ) : <span className="text-muted">—</span>}
-                    </td>
-                    <td className="px-3 py-1.5 text-center">
-                      {s.sma200 ? (
-                        <span className={`text-xs font-bold tabular-nums ${s.ltp > s.sma200 ? "text-up" : "text-down"}`}>
-                          {s.sma200.toFixed(0)}
-                        </span>
-                      ) : <span className="text-muted" title="Need 200+ candles">—</span>}
-                    </td>
-                    <td className="px-3 py-1.5 text-center">
-                      {s.tmaSignal ? (
-                        <span className={`text-[10px] font-extrabold ${
-                          s.tmaSignal === "golden" ? "text-up" :
-                          s.tmaSignal === "death" ? "text-down" :
-                          s.tmaSignal === "bullish" ? "text-up" : "text-down"
-                        }`}>
-                          {s.tmaSignal === "golden" ? "⭐ GLD" :
-                           s.tmaSignal === "death" ? "💀 DTH" :
-                           s.tmaSignal === "bullish" ? "▲ BUL" : "▼ BER"}
-                        </span>
-                      ) : <span className="text-muted">—</span>}
-                    </td>
-                    <td className="px-3 py-1.5 text-center">
-                      {s.macd ? (
-                        <span className={`text-xs font-bold tabular-nums ${s.macd.hist > 0 ? "text-up" : "text-down"}`}>
-                          {s.macd.hist > 0 ? "+" : ""}{s.macd.hist.toFixed(1)}
-                        </span>
-                      ) : <span className="text-muted">—</span>}
-                    </td>
-                    <td className={`px-3 py-1.5 text-center text-xs tabular-nums ${rsiColor}`}>
-                      {s.rsi !== null ? s.rsi.toFixed(0) : "—"}
-                    </td>
-                    <td className="px-3 py-1.5 text-right tabular-nums text-down text-xs">
-                      {s.institutional?.stopLoss !== null && s.institutional?.stopLoss
-                        ? npr(s.institutional.stopLoss)
-                        : s.atrStopLoss !== null ? npr(s.atrStopLoss) : s.stopLoss !== null ? npr(s.stopLoss) : "—"}
-                    </td>
-                    <td className="px-3 py-1.5 text-right tabular-nums text-up text-xs">
-                      {s.institutional?.tp1 !== null && s.institutional?.tp1
-                        ? npr(s.institutional.tp1)
-                        : npr(s.target1)}
-                    </td>
-                    <td className="px-3 py-1.5 text-center text-xs font-semibold">
-                      {s.broker?.bias === "accumulate" ? (
-                        <span className="text-up">🟢 #{s.broker.buyerId}</span>
-                      ) : s.broker?.bias === "distribute" ? (
-                        <span className="text-down">🔴 #{s.broker.sellerId}</span>
-                      ) : (
-                        <span className="text-muted">—</span>
-                      )}
-                    </td>
-                  </tr>
+                      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full" style={{ background: `${confColor}15`, border: `1.5px solid ${confColor}` }}>
+                        <span className="text-[8px] font-black" style={{ color: confColor }}>{s.confidence}</span>
+                      </div>
+                    </div>
+                    <div className="mt-0.5 flex items-center gap-1">
+                      <span className={`rounded px-1 py-0.5 text-[7px] font-bold ${isBuy ? "bg-up text-white" : isSell ? "bg-down text-white" : "bg-surface text-muted"}`}>
+                        {isBuy ? "BUY" : isSell ? "SELL" : "HOLD"}
+                      </span>
+                      {s.rsi && <span className="text-[7px] text-muted">RSI:{s.rsi.toFixed(0)}</span>}
+                    </div>
+                  </Link>
                 );
               })}
-              {signals.data && shown.length === 0 && (
-                <tr>
-                  <td colSpan={17} className="px-3 py-6 text-center text-muted">
-                    No {sigFilter === "all" ? "" : sigFilter} signals right now.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      {/* Breakout Signals (daily) — Institutional SMC — Always Visible */}
-      <section className="rounded-xl border-2 border-primary/30 bg-surface shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
-          <div className="flex items-center gap-2">
-            <h2 className="font-bold">⚡ Breakout Signals</h2>
-            <span className="animate-pulse rounded bg-primary/10 px-2 py-0.5 text-[9px] font-bold text-primary">SMC ENGINE</span>
-            <span className="rounded bg-up-bg px-1.5 py-0.5 text-[9px] font-bold text-up">{breakouts.filter(b => b.instBreakout?.status === "VALID BREAKOUT").length} VALID</span>
-            <span className="rounded bg-down-bg px-1.5 py-0.5 text-[9px] font-bold text-down">{breakouts.filter(b => b.instBreakout?.status === "FAKE BREAKOUT (AVOID)").length} FAKE</span>
-          </div>
-          <span className="text-[10px] text-muted">liquidity-validated • score ≥ 90</span>
-        </div>
-
-        {signals.loading && !signals.data ? (
-          <div className="px-4 py-8 text-center text-sm text-muted">Scanning market for breakouts…</div>
-        ) : breakouts.length > 0 ? (
-          <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3">
-            {breakouts.map((s) => {
-              const ib = s.instBreakout!;
-              const isValid = ib.status === "VALID BREAKOUT";
-              const confPct = Math.min(ib.score, 100);
-              const confColor = confPct >= 90 ? "#22c55e" : confPct >= 70 ? "#f59e0b" : "#6b7280";
-              const circumference = 2 * Math.PI * 28;
-              const dashOffset = circumference - (confPct / 100) * circumference;
-
-              return (
-                <div key={s.symbol} className={`relative rounded-xl border-2 p-3 transition hover:shadow-lg ${isValid ? "border-up/40 bg-up-bg/30" : "border-down/30 bg-down-bg/20 opacity-75"}`}>
-                  {/* Top row: Symbol + Confidence ring */}
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <Link href={`/stock/${s.symbol}`} className="text-lg font-black text-primary hover:underline">{s.symbol}</Link>
-                      <div className="text-xs text-muted">{npr(s.ltp)} <span className={`font-bold ${s.change >= 0 ? "text-up" : "text-down"}`}>{s.change >= 0 ? "+" : ""}{pct(s.change)}</span></div>
-                    </div>
-                    {/* Circular confidence gauge */}
-                    <div className="relative h-16 w-16">
-                      <svg className="h-16 w-16 -rotate-90" viewBox="0 0 64 64">
-                        <circle cx="32" cy="32" r="28" fill="none" stroke="currentColor" strokeWidth="4" className="text-border" />
-                        <circle cx="32" cy="32" r="28" fill="none" stroke={confColor} strokeWidth="4" strokeLinecap="round"
-                          strokeDasharray={circumference} strokeDashoffset={dashOffset}
-                          style={{ transition: "stroke-dashoffset 0.5s ease" }} />
-                      </svg>
-                      <div className="absolute inset-0 flex flex-col items-center justify-center">
-                        <span className="text-sm font-black tabular-nums" style={{ color: confColor }}>{confPct}%</span>
-                        <span className="text-[7px] text-muted">CONF</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Direction + Status badge */}
-                  <div className="mt-2 flex items-center gap-2">
-                    {ib.direction === "LONG" ? (
-                      <span className="rounded-full bg-up px-2.5 py-0.5 text-[10px] font-extrabold text-white">🟢 LONG</span>
-                    ) : ib.direction === "SHORT" ? (
-                      <span className="rounded-full bg-down px-2.5 py-0.5 text-[10px] font-extrabold text-white">🔴 SHORT</span>
-                    ) : (
-                      <span className="rounded-full bg-surface-2 px-2.5 py-0.5 text-[10px] font-bold text-muted">NO TRADE</span>
-                    )}
-                    <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold ${isValid ? "bg-up-bg text-up" : "bg-down-bg text-down"}`}>
-                      {isValid ? "✅ VALID" : "❌ FAKE"}
-                    </span>
-                    {/* Structure badge */}
-                    <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold ${
-                      ib.structure === "Compression" ? "bg-amber-500/10 text-amber-500"
-                      : ib.structure === "Accumulation" ? "bg-up/10 text-up"
-                      : ib.structure === "Distribution" ? "bg-down/10 text-down"
-                      : ib.structure === "Trending" ? "bg-blue-400/10 text-blue-400"
-                      : "bg-surface text-muted"
-                    }`}>
-                      {ib.structure === "Compression" ? "COMP" : ib.structure === "Accumulation" ? "ACCUM" : ib.structure === "Distribution" ? "DIST" : ib.structure === "Trending" ? "TREND" : "CHOP"}
-                    </span>
-                  </div>
-
-                  {/* Entry / SL / TP levels */}
-                  <div className="mt-2 grid grid-cols-4 gap-1 text-center text-[10px]">
-                    <div className="rounded bg-surface-2 p-1">
-                      <div className="text-[8px] text-muted">Entry</div>
-                      <div className="font-bold tabular-nums text-foreground">{ib.entryZone ? `${npr(ib.entryZone[0])}` : "—"}</div>
-                      {ib.entryZone && <div className="text-[7px] text-muted">to {npr(ib.entryZone[1])}</div>}
-                    </div>
-                    <div className="rounded bg-down-bg/50 p-1">
-                      <div className="text-[8px] text-muted">SL</div>
-                      <div className="font-bold tabular-nums text-down">{ib.stopLoss ? npr(ib.stopLoss) : "—"}</div>
-                    </div>
-                    <div className="rounded bg-up-bg/50 p-1">
-                      <div className="text-[8px] text-muted">TP1</div>
-                      <div className="font-bold tabular-nums text-up">{ib.tp1 ? npr(ib.tp1) : "—"}</div>
-                    </div>
-                    <div className="rounded bg-up-bg/30 p-1">
-                      <div className="text-[8px] text-muted">TP2</div>
-                      <div className="font-bold tabular-nums text-up">{ib.tp2 ? npr(ib.tp2) : "—"}</div>
-                    </div>
-                  </div>
-
-                  {/* R:R + Score breakdown bar */}
-                  <div className="mt-2 flex items-center gap-2">
-                    <div className="text-[10px] font-bold">
-                      R:R <span className={`tabular-nums ${ib.rr && ib.rr >= 3 ? "text-up" : ib.rr && ib.rr >= 2.5 ? "text-amber-500" : "text-down"}`}>1:{ib.rr ? ib.rr.toFixed(1) : "—"}</span>
-                    </div>
-                    {/* Mini score bars */}
-                    <div className="flex flex-1 items-center gap-0.5">
-                      {[
-                        { label: "S", val: ib.scores.compression, max: 20 },
-                        { label: "L", val: ib.scores.liquidity, max: 20 },
-                        { label: "V", val: ib.scores.volume, max: 20 },
-                        { label: "M", val: ib.scores.momentum, max: 15 },
-                        { label: "H", val: ib.scores.htf, max: 15 },
-                        { label: "R", val: ib.scores.rrQuality, max: 10 },
-                      ].map((item) => {
-                        const pctFill = (item.val / item.max) * 100;
-                        const barColor = pctFill >= 75 ? "bg-up" : pctFill >= 50 ? "bg-amber-500" : "bg-border";
-                        return (
-                          <div key={item.label} className="flex flex-1 flex-col items-center gap-0.5" title={`${item.label}: ${item.val}/${item.max}`}>
-                            <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
-                              <div className={`h-full rounded-full ${barColor}`} style={{ width: `${pctFill}%` }} />
-                            </div>
-                            <span className="text-[7px] text-muted">{item.label}{item.val}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* SMC Flags + Reason */}
-                  <div className="mt-2 flex items-center gap-1.5">
-                    {ib.hasSweep && <span title="Liquidity Sweep" className="rounded bg-blue-500/10 px-1.5 py-0.5 text-[10px]">💧 Sweep</span>}
-                    {ib.hasTrap && <span title="False Trap" className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px]">🪤 Trap</span>}
-                    {ib.isWick && <span title="Wick Breakout" className="rounded bg-purple-500/10 px-1.5 py-0.5 text-[10px]">🕯 Wick</span>}
-                    {ib.breakoutType && <span className={`text-[9px] font-semibold ${ib.breakoutType === "Clean Breakout" ? "text-up" : ib.breakoutType === "Breakout + Retest" ? "text-blue-400" : "text-amber-500"}`}>{ib.breakoutType}</span>}
-                  </div>
-                  {ib.reason && <div className="mt-1 truncate text-[9px] text-muted" title={ib.reason}>{ib.reason}</div>}
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="px-4 py-8 text-center">
-            <div className="text-lg">⏳</div>
-            <div className="text-xs text-muted">No institutional breakouts detected</div>
-            <div className="text-[10px] text-muted">Market may be consolidating — waiting for score ≥ 90</div>
-          </div>
+            </div>
+          </section>
         )}
 
-        {/* Score legend */}
-        <div className="border-t border-border px-4 py-2">
-          <div className="flex flex-wrap items-center gap-3 text-[9px] text-muted">
-            <span className="font-bold">Score:</span>
-            <span>S=Structure /20</span>
-            <span>L=Liquidity /20</span>
-            <span>V=Volume /20</span>
-            <span>M=Momentum /15</span>
-            <span>H=HTF /15</span>
-            <span>R=R:R /10</span>
-            <span className="ml-2">💧=Sweep</span>
-            <span>🪤=Trap</span>
-            <span>🕯=Wick</span>
+        {/* Breakout Signals */}
+        <section className="rounded-lg border border-primary/30 bg-surface shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-1.5 border-b border-border px-3 py-1.5">
+            <div className="flex items-center gap-1.5">
+              <h2 className="text-xs font-bold">⚡ Breakout</h2>
+              <span className="animate-pulse rounded bg-primary/10 px-1 py-0.5 text-[7px] font-bold text-primary">SMC</span>
+              <span className="rounded bg-up-bg px-1 py-0.5 text-[7px] font-bold text-up">{breakouts.filter(b => b.instBreakout?.status === "VALID BREAKOUT").length}V</span>
+              <span className="rounded bg-down-bg px-1 py-0.5 text-[7px] font-bold text-down">{breakouts.filter(b => b.instBreakout?.status === "FAKE BREAKOUT (AVOID)").length}F</span>
+            </div>
+          </div>
+          {signals.loading && !signals.data ? (
+            <div className="px-3 py-4 text-center text-xs text-muted">Scanning…</div>
+          ) : breakouts.length > 0 ? (
+            <div className="grid gap-1 p-1.5 sm:grid-cols-2">
+              {breakouts.slice(0, 6).map((s) => {
+                const ib = s.instBreakout!;
+                const isValid = ib.status === "VALID BREAKOUT";
+                const confPct = Math.min(ib.score, 100);
+                const confColor = confPct >= 90 ? "#22c55e" : confPct >= 70 ? "#f59e0b" : "#6b7280";
+                return (
+                  <Link key={s.symbol} href={`/stock/${s.symbol}`} className={`rounded border p-1.5 transition hover:shadow ${isValid ? "border-up/40 bg-up-bg/20" : "border-down/20 bg-down-bg/10 opacity-70"}`}>
+                    <div className="flex items-center justify-between">
+                      <div className="min-w-0">
+                        <div className="truncate text-[11px] font-black text-primary">{s.symbol}</div>
+                        <div className="text-[9px] text-muted">{npr(s.ltp)} <span className={`font-bold ${s.change >= 0 ? "text-up" : "text-down"}`}>{s.change >= 0 ? "+" : ""}{pct(s.change)}</span></div>
+                      </div>
+                      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full" style={{ background: `${confColor}15`, border: `1.5px solid ${confColor}` }}>
+                        <span className="text-[8px] font-black" style={{ color: confColor }}>{confPct}</span>
+                      </div>
+                    </div>
+                    <div className="mt-0.5 flex items-center gap-1">
+                      {ib.direction === "LONG" ? (
+                        <span className="rounded bg-up px-1 py-0.5 text-[7px] font-bold text-white">LONG</span>
+                      ) : ib.direction === "SHORT" ? (
+                        <span className="rounded bg-down px-1 py-0.5 text-[7px] font-bold text-white">SHORT</span>
+                      ) : (
+                        <span className="rounded bg-surface-2 px-1 py-0.5 text-[7px] font-bold text-muted">—</span>
+                      )}
+                      <span className={`rounded px-0.5 py-0.5 text-[7px] font-bold ${isValid ? "bg-up-bg text-up" : "bg-down-bg text-down"}`}>
+                        {isValid ? "✅" : "❌"}
+                      </span>
+                      <span className="text-[7px] text-muted">R:R {ib.rr ? ib.rr.toFixed(1) : "—"}</span>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="px-3 py-4 text-center">
+              <div className="text-[10px] text-muted">No breakouts detected</div>
+            </div>
+          )}
+        </section>
+      </div>
+
+      {/* Market Scanner - bottom */}
+      <section className="rounded-lg border border-border bg-surface shadow-sm">
+        <div className="flex items-center justify-between border-b border-border px-3 py-1.5">
+          <div className="flex items-center gap-2">
+            <h2 className="text-xs font-bold">🔍 Market Scanner</h2>
+            <span className="animate-pulse rounded bg-primary/10 px-1.5 py-0.5 text-[7px] font-bold text-primary">LIVE</span>
+          </div>
+          <span className="text-[9px] text-muted">Auto-scanning {live.data ? ((live.data as any).data?.length ?? 0) : 0} stocks</span>
+        </div>
+        <div className="grid gap-2 p-2 sm:grid-cols-2 lg:grid-cols-4">
+          {/* High Volume */}
+          <div className="rounded border border-border bg-surface-2 p-2">
+            <div className="mb-1.5 flex items-center gap-1">
+              <span className="text-[10px] font-bold text-blue-400">📊 High Volume</span>
+            </div>
+            <div className="space-y-1">
+              {(live.data as any)?.data
+                ?.filter((r: LiveMarketData) => classifySymbol(r.symbol, r.securityName) !== "DB" && !/\d/.test(r.symbol))
+                ?.sort((a: LiveMarketData, b: LiveMarketData) => b.totalTradeValue - a.totalTradeValue)
+                ?.slice(0, 4)
+                .map((r: LiveMarketData) => (
+                  <Link key={r.symbol} href={`/stock/${r.symbol}`} className="flex items-center justify-between text-[10px] hover:text-primary">
+                    <span className="font-bold">{r.symbol}</span>
+                    <span className="text-muted">{compact(r.totalTradeValue)}</span>
+                  </Link>
+                )) ?? <div className="text-[9px] text-muted">Loading...</div>}
+            </div>
+          </div>
+          {/* Active Stocks */}
+          <div className="rounded border border-primary/30 bg-primary/5 p-2">
+            <div className="mb-1.5 flex items-center gap-1">
+              <span className="text-[10px] font-bold text-primary">⚡ Most Active</span>
+            </div>
+            <div className="space-y-1">
+              {(live.data as any)?.data
+                ?.filter((r: LiveMarketData) => classifySymbol(r.symbol, r.securityName) !== "DB" && !/\d/.test(r.symbol))
+                ?.sort((a: LiveMarketData, b: LiveMarketData) => b.totalTradeQuantity - a.totalTradeQuantity)
+                ?.slice(0, 4)
+                .map((r: LiveMarketData) => (
+                  <Link key={r.symbol} href={`/stock/${r.symbol}`} className="flex items-center justify-between text-[10px] hover:text-primary">
+                    <span className="font-bold">{r.symbol}</span>
+                    <span className="text-muted">{num(r.totalTradeQuantity)}</span>
+                  </Link>
+                )) ?? <div className="text-[9px] text-muted">Loading...</div>}
+            </div>
           </div>
         </div>
       </section>
+
+      {/* Buy/Sell Pressure */}
+      <div className="grid gap-3 lg:grid-cols-2">
+        {/* Buy Pressure */}
+        <section className="rounded-lg border border-up/30 bg-up-bg/10 shadow-sm">
+          <div className="flex items-center gap-2 border-b border-up/20 px-3 py-1.5">
+            <span className="text-xs font-bold text-up">🟢 Buy Pressure</span>
+            <span className="text-[8px] text-muted">Top Stocks</span>
+          </div>
+          <div className="space-y-1 p-2">
+            {(live.data as any)?.data
+              ?.filter((r: LiveMarketData) => classifySymbol(r.symbol, r.securityName) !== "DB" && !/\d/.test(r.symbol) && r.percentageChange > 0 && r.totalTradeValue > 0)
+              ?.sort((a: LiveMarketData, b: LiveMarketData) => (b.percentageChange * b.totalTradeValue) - (a.percentageChange * a.totalTradeValue))
+              ?.slice(0, 6)
+              .map((r: LiveMarketData) => (
+                <Link key={r.symbol} href={`/stock/${r.symbol}`} className="flex items-center justify-between rounded px-2 py-1 text-[10px] hover:bg-up-bg/30">
+                  <span className="font-bold text-foreground">{r.symbol}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted">{compact(r.totalTradeValue)}</span>
+                    <span className="font-bold text-up">+{r.percentageChange.toFixed(2)}%</span>
+                  </div>
+                </Link>
+              )) ?? <div className="text-[9px] text-muted">Loading...</div>}
+          </div>
+        </section>
+
+        {/* Sell Pressure */}
+        <section className="rounded-lg border border-down/30 bg-down-bg/10 shadow-sm">
+          <div className="flex items-center gap-2 border-b border-down/20 px-3 py-1.5">
+            <span className="text-xs font-bold text-down">🔴 Sell Pressure</span>
+            <span className="text-[8px] text-muted">Top Stocks</span>
+          </div>
+          <div className="space-y-1 p-2">
+            {(live.data as any)?.data
+              ?.filter((r: LiveMarketData) => classifySymbol(r.symbol, r.securityName) !== "DB" && !/\d/.test(r.symbol) && r.percentageChange < 0 && r.totalTradeValue > 0)
+              ?.sort((a: LiveMarketData, b: LiveMarketData) => (Math.abs(b.percentageChange) * b.totalTradeValue) - (Math.abs(a.percentageChange) * a.totalTradeValue))
+              ?.slice(0, 6)
+              .map((r: LiveMarketData) => (
+                <Link key={r.symbol} href={`/stock/${r.symbol}`} className="flex items-center justify-between rounded px-2 py-1 text-[10px] hover:bg-down-bg/30">
+                  <span className="font-bold text-foreground">{r.symbol}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted">{compact(r.totalTradeValue)}</span>
+                    <span className="font-bold text-down">{r.percentageChange.toFixed(2)}%</span>
+                  </div>
+                </Link>
+              )) ?? <div className="text-[9px] text-muted">Loading...</div>}
+          </div>
+        </section>
+      </div>
 
       {/* Demo Trading section removed - now in sidebar above */}
     </div>
@@ -643,161 +591,118 @@ function SectorCard({ name, value, change, perChange, highlight }: { name: strin
 
 /* NewsSection removed — available at /news */
 
-/* ─── NEPSE Index Chart (TradingView lightweight-charts + real NEPSE data) ─── */
-const r2 = (n: number) => Math.round(n * 100) / 100;
-type CBar = CandlestickData<Time>;
-type CVol = HistogramData<Time>;
+function MarketPanel({ liveData }: { liveData: LiveMarketData[] | undefined }) {
+  const [expanded, setExpanded] = useState(false);
+  const [sortKey, setSortKey] = useState<"percentageChange" | "symbol" | "lastTradedPrice" | "totalTradeQuantity">("symbol");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [filter, setFilter] = useState<"ALL" | "EQ" | "MF">("ALL");
+  const [search, setSearch] = useState("");
 
-function aggregateToOHLC(points: [number, number][], intervalMin = 5): { bars: CBar[]; vols: CVol[] } {
-  const intervalSec = intervalMin * 60;
-  const buckets = new Map<number, { o: number; h: number; l: number; c: number; v: number }>();
-  for (const [t, v] of points) {
-    if (t <= 0 || v <= 0) continue;
-    const b = Math.floor(t / intervalSec) * intervalSec;
-    const cur = buckets.get(b);
-    if (!cur) buckets.set(b, { o: v, h: v, l: v, c: v, v: 1 });
-    else { cur.h = Math.max(cur.h, v); cur.l = Math.min(cur.l, v); cur.c = v; cur.v++; }
-  }
-  const sorted = [...buckets.entries()].sort((a, b) => a[0] - b[0]);
-  const bars: CBar[] = sorted.map(([t, d]) => ({ time: t as Time, open: r2(d.o), high: r2(d.h), low: r2(d.l), close: r2(d.c) }));
-  const vols: CVol[] = sorted.map(([t, d]) => ({ time: t as Time, value: d.v, color: d.c >= d.o ? "#26a69a44" : "#ef535044" }));
-  return { bars, vols };
-}
+  const setSorting = (k: typeof sortKey) => {
+    if (k === sortKey) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortKey(k); setSortDir(k === "symbol" ? "asc" : "desc"); }
+  };
 
-function smaCalc(bars: CBar[], period: number): LineData<Time>[] {
-  const out: LineData<Time>[] = [];
-  let sum = 0;
-  for (let i = 0; i < bars.length; i++) {
-    sum += bars[i].close;
-    if (i >= period) sum -= bars[i - period].close;
-    if (i >= period - 1) out.push({ time: bars[i].time, value: r2(sum / period) });
-  }
-  return out;
-}
-
-function NepseIndexChart() {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<IChartApi | null>(null);
-  const candleRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
-  const legendRef = useRef<HTMLDivElement>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [headerInfo, setHeaderInfo] = useState<{ value: number; change: number; pct: number } | null>(null);
-  const [isSimulated, setIsSimulated] = useState(false);
-
-  useEffect(() => {
-    if (!containerRef.current) return;
-
-    const chart = createChart(containerRef.current, {
-      layout: { background: { type: ColorType.Solid, color: "transparent" }, textColor: "#666", fontSize: 11 },
-      grid: { vertLines: { color: "rgba(0,0,0,0.04)" }, horzLines: { color: "rgba(0,0,0,0.04)" } },
-      crosshair: { mode: CrosshairMode.Normal },
-      rightPriceScale: { borderColor: "rgba(0,0,0,0.08)" },
-      timeScale: { borderColor: "rgba(0,0,0,0.08)", timeVisible: true, secondsVisible: false, rightOffset: 4 },
-      autoSize: true,
+  const rows = useMemo(() => {
+    if (!liveData) return [];
+    const list = liveData.filter((r) => {
+      if (/\d/.test(r.symbol)) return false;
+      const sType = classifySymbol(r.symbol, r.securityName);
+      if (filter !== "ALL" && sType !== filter) return false;
+      if (search) {
+        const q = search.toLowerCase();
+        if (!r.symbol.toLowerCase().includes(q) && !(r.securityName ?? "").toLowerCase().includes(q)) return false;
+      }
+      return true;
     });
-    chartRef.current = chart;
-
-    const candles = chart.addSeries(CandlestickSeries, {
-      upColor: "#26a69a", downColor: "#ef5350",
-      borderUpColor: "#26a69a", borderDownColor: "#ef5350",
-      wickUpColor: "#26a69a", wickDownColor: "#ef5350",
+    return [...list].sort((a, b) => {
+      const av = a[sortKey]; const bv = b[sortKey];
+      if (typeof av === "string" || typeof bv === "string") return sortDir === "asc" ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
+      return sortDir === "asc" ? (av as number) - (bv as number) : (bv as number) - (av as number);
     });
-    candleRef.current = candles;
+  }, [liveData, sortKey, sortDir, filter, search]);
 
-    const vol = chart.addSeries(HistogramSeries, { priceScaleId: "vol", priceFormat: { type: "volume" } });
-    vol.priceScale().applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
+  const displayed = expanded ? rows : rows.slice(0, 10);
 
-    // MA20 overlay
-    const maSeries = chart.addSeries(LineSeries, { color: "#2962ff", lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
-
-    // OHLC legend
-    const updateLegend = (bar?: CBar) => {
-      const el = legendRef.current;
-      if (!el) return;
-      const b = bar ?? (chartRef.current as any)?._lastBar;
-      if (!b) { el.innerHTML = ""; return; }
-      const up = b.close >= b.open;
-      const col = up ? "#26a69a" : "#ef5350";
-      el.innerHTML = `O <b style="color:${col}">${b.open}</b> H <b style="color:${col}">${b.high}</b> L <b style="color:${col}">${b.low}</b> C <b style="color:${col}">${b.close}</b>`;
-    };
-    chart.subscribeCrosshairMove((p) => updateLegend(p.seriesData.get(candles) as CBar | undefined));
-
-    const fetchData = async () => {
-      try {
-        const res = await fetch("/api/index-graph", { cache: "no-store" });
-        const json = await res.json();
-        const points = json.points;
-        const src = json.source;
-        if (!Array.isArray(points) || points.length < 2) {
-          setError("No NEPSE data — market may be closed");
-          setLoading(false);
-          return;
-        }
-        setIsSimulated(src === "synthetic");
-        const valid = points.filter((p: any) => Array.isArray(p) && p.length >= 2 && p[0] > 0 && p[1] > 0);
-        if (valid.length < 2) { setError("Insufficient data"); setLoading(false); return; }
-
-        const { bars, vols } = aggregateToOHLC(valid as [number, number][], 5);
-        if (!bars.length) { setError("No candles built"); setLoading(false); return; }
-
-        candles.setData(bars);
-        vol.setData(vols);
-        maSeries.setData(smaCalc(bars, 20));
-        chart.timeScale().fitContent();
-        setError(null);
-        (chartRef.current as any)._lastBar = bars[bars.length - 1];
-        updateLegend(bars[bars.length - 1]);
-
-        const last = bars[bars.length - 1];
-        const first = bars[0];
-        const ch = last.close - first.open;
-        setHeaderInfo({ value: last.close, change: ch, pct: first.open > 0 ? (ch / first.open) * 100 : 0 });
-        setLoading(false);
-      } catch (e) { setError((e as Error).message); setLoading(false); }
-    };
-
-    fetchData();
-    const iv = setInterval(fetchData, 30_000);
-    return () => { clearInterval(iv); chart.remove(); chartRef.current = null; candleRef.current = null; };
-  }, []);
+  const arrow = (k: typeof sortKey) => sortKey === k ? (sortDir === "asc" ? " ▲" : " ▼") : "";
 
   return (
     <section className="rounded-xl border border-border bg-surface shadow-sm overflow-hidden">
-      <div className="flex items-center justify-between border-b border-border px-4 py-2">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5">
         <div className="flex items-center gap-3">
-          <span className="text-sm font-bold text-foreground">📊 NEPSE Index</span>
-          {headerInfo && (
-            <>
-              <span className="text-sm font-extrabold tabular-nums text-foreground">{r2(headerInfo.value)}</span>
-              <span className={`text-xs font-bold tabular-nums ${headerInfo.change >= 0 ? "text-up" : "text-down"}`}>
-                {headerInfo.change >= 0 ? "+" : ""}{r2(headerInfo.change)} ({pct(headerInfo.pct)})
-              </span>
-            </>
-          )}
-          <span ref={legendRef} className="hidden sm:inline text-[10px] tabular-nums text-muted" />
+          <h2 className="text-sm font-bold text-foreground">📊 Live Market</h2>
+          <span className="text-[10px] text-muted">{rows.length} stocks</span>
         </div>
         <div className="flex items-center gap-2">
-          {isSimulated && <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-bold text-amber-600">SIMULATED</span>}
-          {loading && <span className="text-[10px] text-muted animate-pulse">Loading...</span>}
-          <Link href="/chart" className="text-[10px] font-semibold text-primary hover:underline">Full Chart →</Link>
+          <div className="hidden items-center gap-0.5 rounded-lg bg-surface-2 p-0.5 text-[10px] font-semibold sm:flex">
+            {(["ALL", "EQ", "MF"] as const).map((t) => (
+              <button key={t} onClick={() => setFilter(t)} className={`rounded px-2 py-0.5 transition ${filter === t ? "bg-primary text-white" : "text-muted hover:text-foreground"}`}>{t}</button>
+            ))}
+          </div>
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search..." className="w-28 rounded border border-border bg-surface px-2 py-1 text-[10px] outline-none focus:border-primary sm:w-40" />
+          <button onClick={() => setExpanded(!expanded)} className="rounded-lg bg-surface-2 px-3 py-1 text-[10px] font-bold text-primary hover:bg-surface-2/80">
+            {expanded ? "Show Less" : `Show All (${rows.length})`}
+          </button>
         </div>
       </div>
-      <div className="relative" style={{ height: 320 }}>
-        {error && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-surface/80">
-            <div className="text-center">
-              <div className="text-lg">📈</div>
-              <div className="text-xs text-muted">{error}</div>
-              <div className="text-[10px] text-muted mt-1">Real NEPSE data — available during market hours</div>
-            </div>
-          </div>
-        )}
-        <div ref={containerRef} className="h-full w-full" />
+
+      {/* Table */}
+      <div className="overflow-x-auto" style={{ maxHeight: "500px", overflowY: "auto" }}>
+        <table className="w-full text-xs">
+          <thead className="sticky top-0 z-10 bg-surface-2 text-[10px] uppercase tracking-wide text-muted">
+            <tr>
+              <th onClick={() => setSorting("symbol")} className="cursor-pointer px-2 py-1.5 text-left font-semibold hover:text-primary">Symbol{arrow("symbol")}</th>
+              <th className="px-2 py-1.5 text-left font-semibold">Type</th>
+              <th className="px-2 py-1.5 text-left font-semibold">Company</th>
+              <th onClick={() => setSorting("lastTradedPrice")} className="cursor-pointer px-2 py-1.5 text-right font-semibold hover:text-primary">LTP{arrow("lastTradedPrice")}</th>
+              <th onClick={() => setSorting("percentageChange")} className="cursor-pointer px-2 py-1.5 text-right font-semibold hover:text-primary">% Chg{arrow("percentageChange")}</th>
+              <th className="px-2 py-1.5 text-right font-semibold">Open</th>
+              <th className="px-2 py-1.5 text-right font-semibold">High</th>
+              <th className="px-2 py-1.5 text-right font-semibold">Low</th>
+              <th className="px-2 py-1.5 text-right font-semibold">Vol</th>
+              <th className="px-2 py-1.5 text-right font-semibold">Turnover</th>
+            </tr>
+          </thead>
+          <tbody>
+            {!liveData && (
+              <tr><td colSpan={10} className="px-2 py-6 text-center text-muted">Loading market data...</td></tr>
+            )}
+            {displayed.map((r) => {
+              const chg = r.percentageChange;
+              const bg = chg > 0 ? "bg-green-500" : chg < 0 ? "bg-red-500" : "bg-blue-500";
+              const sType = classifySymbol(r.symbol, r.securityName);
+              return (
+                <tr key={r.symbol} className={`border-t border-border/50 ${bg} transition hover:opacity-90`}>
+                  <td className="px-2 py-1.5">
+                    <Link href={`/stock/${r.symbol}`} className="font-bold text-black hover:underline">
+                      {r.symbol}
+                    </Link>
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <span className={`rounded px-1 py-0.5 text-[9px] font-bold uppercase ${TYPE_BADGE[sType]}`}>{sType}</span>
+                  </td>
+                  <td className="max-w-[180px] truncate px-2 py-1.5 text-black">{r.securityName}</td>
+                  <td className="px-2 py-1.5 text-right font-semibold tabular-nums text-black">{npr(r.lastTradedPrice)}</td>
+                  <td className="px-2 py-1.5 text-right font-bold tabular-nums text-black">{pct(chg)}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-black/70">{npr(r.openPrice)}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-black/70">{npr(r.highPrice)}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-black/70">{npr(r.lowPrice)}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-black/70">{num(r.totalTradeQuantity)}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-black/70">{compact(r.totalTradeValue)}</td>
+                </tr>
+              );
+            })}
+            {liveData && displayed.length === 0 && (
+              <tr><td colSpan={10} className="px-2 py-6 text-center text-muted">No data found</td></tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </section>
   );
 }
+
 
 function MoverCard({ title, tone, rows }: { title: string; tone: "up" | "down"; rows: TopTenItem[] }) {
   const chgClass = tone === "up" ? "text-up" : "text-down";
@@ -844,7 +749,6 @@ function MoverCard({ title, tone, rows }: { title: string; tone: "up" | "down"; 
 function StockSearch({ liveData }: { liveData: { data: LiveMarketData[]; count: number } | undefined }) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
-  const [popup, setPopup] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -881,9 +785,10 @@ function StockSearch({ liveData }: { liveData: { data: LiveMarketData[]; count: 
           {results.map((r) => {
             const sType = classifySymbol(r.symbol, r.securityName);
             return (
-              <button
+              <Link
                 key={r.symbol}
-                onClick={() => { setOpen(false); setQ(""); setPopup(r.symbol); }}
+                href={`/stock/${r.symbol}`}
+                onClick={() => { setOpen(false); setQ(""); }}
                 className="flex w-full items-center justify-between gap-2 px-2.5 py-1.5 text-xs hover:bg-surface-2 text-left"
               >
                 <span className="flex items-center gap-1.5 min-w-0">
@@ -896,7 +801,7 @@ function StockSearch({ liveData }: { liveData: { data: LiveMarketData[]; count: 
                     {r.percentageChange >= 0 ? "+" : ""}{pct(r.percentageChange)}
                   </span>
                 </span>
-              </button>
+              </Link>
             );
           })}
           <Link
@@ -908,424 +813,6 @@ function StockSearch({ liveData }: { liveData: { data: LiveMarketData[]; count: 
           </Link>
         </div>
       )}
-      {popup && <StockPopup symbol={popup} onClose={() => setPopup(null)} />}
-    </div>
-  );
-}
-
-type FundData = {
-  symbol: string; name: string; sector: string; eps: number; pe: number;
-  bookValue: number; pbv: number; marketCap: string; weekRange: string;
-  sharesOutstanding: string; netWorth: number; totalDebt: number;
-  netProfit: number; revenue: number; roe: number; debtEquity: number;
-  dividends: { fiscalYear: string; value: number }[];
-  marketPrice: number; change: number; yearYield: string; avg120: string;
-};
-type SecData = {
-  details: { securityDailyTradeDto?: { openPrice: number; highPrice: number; lowPrice: number; previousClose: number; lastTradedPrice: number; fiftyTwoWeekHigh: number; fiftyTwoWeekLow: number; totalTradeQuantity: number; marketCap: number }; securityPriceVolumeDto?: { paidUpValue: number; totalPaidupCapital: string } } | null;
-  history: { content: { businessDate: string; closePrice: number; highPrice: number; lowPrice: number; totalTradedQuantity: number }[] } | null;
-};
-type BrokerFlow = { buyerId: string; buyerNet: number; sellerId: string; sellerNet: number; bias: "accumulate" | "distribute" | "neutral" } | null;
-
-const parseNumber = (s: string): number => { const n = Number(s.replace(/[^0-9.\-]/g, "")); return isNaN(n) ? 0 : n; };
-
-function StockPopup({ symbol, onClose }: { symbol: string; onClose: () => void }) {
-  const [fund, setFund] = useState<FundData | null>(null);
-  const [sec, setSec] = useState<SecData | null>(null);
-  const [signalRow, setSignalRow] = useState<SignalRow | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    setLoading(true);
-    Promise.all([
-      fetch(`/api/fundamental-external/${encodeURIComponent(symbol)}`).then(r => r.ok ? r.json() : null).catch(() => null),
-      fetch(`/api/security/${encodeURIComponent(symbol)}`).then(r => r.ok ? r.json() : null).catch(() => null),
-      fetch(`/api/signals`).then(r => r.ok ? r.json() : null).catch(() => null),
-    ]).then(([f, s, sig]) => {
-      setFund(f);
-      setSec(s);
-      const found = sig?.signals?.find((x: { symbol: string }) => x.symbol === symbol) ?? null;
-      setSignalRow(found);
-      setLoading(false);
-    });
-  }, [symbol]);
-
-  // Compute full AI signal from history using signal engine - works even when market is closed
-  const fullSignal = useMemo<Signal | null>(() => {
-    const candles = [...(sec?.history?.content ?? [])].sort((a, b) => a.businessDate.localeCompare(b.businessDate));
-    if (candles.length < 20) return null;
-    const ltp = fund?.marketPrice ?? sec?.details?.securityDailyTradeDto?.lastTradedPrice ?? candles.at(-1)?.closePrice ?? 0;
-    if (!ltp) return null;
-    const mapped = candles.map(c => ({ open: c.closePrice, high: c.highPrice, low: c.lowPrice, close: c.closePrice, volume: c.totalTradedQuantity }));
-    return generateSignal(mapped, ltp);
-  }, [sec, fund]);
-
-  // Simple signal for price/change display
-  const localSignal = useMemo(() => {
-    const candles = [...(sec?.history?.content ?? [])].sort((a, b) => a.businessDate.localeCompare(b.businessDate));
-    if (candles.length < 3) return null;
-    const ltp = fund?.marketPrice ?? sec?.details?.securityDailyTradeDto?.lastTradedPrice ?? candles.at(-1)?.closePrice ?? 0;
-    const prev = sec?.details?.securityDailyTradeDto?.previousClose ?? candles.at(-2)?.closePrice ?? ltp;
-    const change = ltp - prev;
-    const changePct = prev ? (change / prev) * 100 : 0;
-    return { ltp, change, changePct };
-  }, [sec, fund]);
-
-  const breakoutInfo = useMemo(() => {
-    const candles = [...(sec?.history?.content ?? [])].sort((a, b) => a.businessDate.localeCompare(b.businessDate)).slice(-60);
-    if (candles.length < 5) {
-      // Fallback to signal row
-      if (signalRow?.breakout) {
-        return { signal: signalRow.breakout.signal, prevHigh: signalRow.breakout.entry, prevLow: signalRow.breakout.sl ?? 0, confidence: signalRow.breakout.confidence };
-      }
-      return null;
-    }
-    const ltp = fund?.marketPrice ?? sec?.details?.securityDailyTradeDto?.lastTradedPrice ?? candles.at(-1)?.closePrice ?? 0;
-    const highs = candles.slice(0, -1).map(c => c.highPrice);
-    const lows = candles.slice(0, -1).map(c => c.lowPrice);
-    const prevHigh = Math.max(...highs);
-    const prevLow = Math.min(...lows);
-    const above = ltp > prevHigh;
-    const below = ltp < prevLow;
-    return { signal: above ? "BUY" : below ? "SELL" : "WAIT", prevHigh, prevLow, confidence: above || below ? 75 : 20 };
-  }, [sec, fund, signalRow]);
-
-  const daily = sec?.details?.securityDailyTradeDto;
-  const lastCandle = sec?.history?.content?.length ? [...sec.history.content].sort((a,b) => a.businessDate.localeCompare(b.businessDate)).at(-1) : null;
-
-  // Best price: MeroLagani fund > NEPSE daily > signal row > history
-  const ltp = fund?.marketPrice ?? signalRow?.ltp ?? daily?.lastTradedPrice ?? lastCandle?.closePrice ?? 0;
-  const chg = fund?.change ?? signalRow?.change ?? localSignal?.change ?? 0;
-  const chgPct = localSignal?.changePct ?? (ltp && chg ? (chg / ltp) * 100 : 0);
-  const open = daily?.openPrice ?? lastCandle?.closePrice; // Use last close as proxy for open
-  const vol = daily?.totalTradeQuantity ?? lastCandle?.totalTradedQuantity;
-  const prevClose = daily?.previousClose;
-  const high52 = daily?.fiftyTwoWeekHigh;
-  const low52 = daily?.fiftyTwoWeekLow;
-
-  // Parse 52W range from fund if not in daily
-  const fundWeekParts = fund?.weekRange?.split("-")?.map(s => parseNumber(s.trim())) ?? [];
-  const from52 = high52 ?? fundWeekParts[1] ?? 0;
-  const to52 = low52 ?? fundWeekParts[0] ?? 0;
-
-  // AI Summary text — always build from available data
-  const summaryLines: string[] = [];
-  if (fullSignal || signalRow) {
-    const rec = fullSignal?.recommendation ?? signalRow?.recommendation ?? "No Data";
-    const conf = fullSignal?.confidence ?? signalRow?.confidence ?? 0;
-    if (rec === "Strong Buy" || rec === "Buy") {
-      summaryLines.push(`🟢 Strong BUY signal with ${conf}% confidence`);
-    } else if (rec === "Strong Sell" || rec === "Sell") {
-      summaryLines.push(`🔴 SELL signal with ${conf}% confidence`);
-    } else if (rec === "No Data") {
-      summaryLines.push(`⏳ Computing signals from historical data...`);
-    } else {
-      summaryLines.push(`🟡 Neutral — recommends HOLD (${conf}% confidence)`);
-    }
-    if (breakoutInfo) {
-      if (breakoutInfo.signal === "BUY") summaryLines.push(`⚡ Breakout above resistance at ${npr(breakoutInfo.prevHigh)} — bullish`);
-      else if (breakoutInfo.signal === "SELL") summaryLines.push(`⚡ Breakdown below support at ${npr(breakoutInfo.prevLow)} — bearish`);
-      else summaryLines.push(`⚡ No breakout — trading within ${npr(breakoutInfo.prevLow)}–${npr(breakoutInfo.prevHigh)} range`);
-    }
-  }
-  // Always add fundamental-driven summary
-  if (fund) {
-    if (fund.pe > 0 && fund.pe < 15) summaryLines.push(`📊 Undervalued (PE ${fund.pe.toFixed(1)}) — below market average`);
-    else if (fund.pe > 30) summaryLines.push(`📊 Overvalued (PE ${fund.pe.toFixed(1)}) — above market average`);
-    else if (fund.pe > 0) summaryLines.push(`📊 Fairly valued (PE ${fund.pe.toFixed(1)})`);
-    if (fund.eps > 0) summaryLines.push(`💰 EPS ${fund.eps.toFixed(1)} — ${fund.eps > 20 ? "strong" : "moderate"} earnings`);
-    if (fund.bookValue > 0 && ltp > 0) {
-      const ratio = ltp / fund.bookValue;
-      if (ratio < 1) summaryLines.push(`💎 Trading below book value — potential bargain (P/BV ${fund.pbv.toFixed(2)})`);
-      else if (ratio > 3) summaryLines.push(`⚠️ Trading at ${ratio.toFixed(1)}x book value — premium valuation`);
-    }
-    if (fund.dividends.length > 0) {
-      const avgDiv = fund.dividends.slice(0, 3).reduce((s, d) => s + d.value, 0) / Math.min(3, fund.dividends.length);
-      if (avgDiv > 5) summaryLines.push(`💵 Strong dividend history averaging ${avgDiv.toFixed(1)}%`);
-      else if (avgDiv > 0) summaryLines.push(`💵 Dividend yield averaging ${avgDiv.toFixed(1)}%`);
-    }
-    if (fund.marketCap && fund.marketCap !== "0") {
-      summaryLines.push(`🏢 Market Cap: ${fund.marketCap}`);
-    }
-  }
-  if (!summaryLines.length) summaryLines.push("📊 Data loading — check back during market hours for full analysis");
-
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div className="relative mx-4 w-full max-w-md rounded-xl border border-border bg-surface shadow-2xl" onClick={e => e.stopPropagation()}>
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
-          <div className="flex items-center gap-2">
-            <span className="text-lg font-black text-foreground">{symbol}</span>
-            {fund?.sector && <span className="rounded bg-surface-2 px-1.5 py-0.5 text-[9px] font-semibold capitalize text-muted">{fund.sector}</span>}
-          </div>
-          <button onClick={onClose} className="rounded-md p-1 text-muted hover:bg-surface-2 hover:text-foreground">
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M6 18 18 6M6 6l12 12"/></svg>
-          </button>
-        </div>
-
-        <div className="max-h-[70vh] overflow-y-auto px-4 py-3">
-          {loading ? (
-            <div className="py-8 text-center text-sm text-muted">Loading...</div>
-          ) : (
-            <div className="space-y-3">
-              {/* Price Row */}
-              {ltp > 0 && (
-                <div className="flex items-baseline gap-3">
-                  <span className="text-2xl font-black tabular-nums">{npr(ltp)}</span>
-                  <span className={`text-sm font-bold ${chg >= 0 ? "text-up" : "text-down"}`}>
-                    {chg >= 0 ? "+" : ""}{npr(chg)} ({pct(chgPct)})
-                  </span>
-                </div>
-              )}
-
-              {/* 🤖 Agent — Best Analysis Summary */}
-              <div className="rounded-lg border border-primary/30 bg-primary/5 p-2.5">
-                <div className="mb-1.5 flex items-center gap-1.5">
-                  <span className="text-sm">🤖</span>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-primary">Agent — Best Analysis</span>
-                </div>
-                <ul className="space-y-1">
-                  {summaryLines.map((line, i) => (
-                    <li key={i} className="text-[11px] leading-tight text-foreground">{line}</li>
-                  ))}
-                </ul>
-              </div>
-
-              {/* ⚡ Breakout Signals */}
-              <div className="rounded-lg border border-border p-2.5">
-                <div className="mb-1.5 flex items-center gap-1.5">
-                  <span className="text-sm">⚡</span>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted">Breakout Signals</span>
-                </div>
-                {breakoutInfo ? (
-                  <div className="space-y-1.5 text-xs">
-                    <div className="flex items-center gap-2">
-                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                        breakoutInfo.signal === "BUY" ? "bg-up-bg text-up" : 
-                        breakoutInfo.signal === "SELL" ? "bg-down-bg text-down" : 
-                        "bg-surface-2 text-muted"
-                      }`}>
-                        {breakoutInfo.signal === "BUY" ? "🟢 LONG" : breakoutInfo.signal === "SELL" ? "🔴 SHORT" : "⏸ WAIT"}
-                      </span>
-                      <span className="text-muted">{breakoutInfo.confidence}% confidence</span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="rounded bg-surface-2 p-1.5 text-center">
-                        <span className="text-[9px] text-muted">Entry / Resistance</span>
-                        <div className="font-bold tabular-nums">{npr(breakoutInfo.prevHigh)}</div>
-                      </div>
-                      <div className="rounded bg-surface-2 p-1.5 text-center">
-                        <span className="text-[9px] text-muted">Support / SL</span>
-                        <div className="font-bold tabular-nums">{npr(breakoutInfo.prevLow)}</div>
-                      </div>
-                    </div>
-                    {signalRow?.breakout?.tp1 && (
-                      <div className="rounded bg-surface-2 p-1.5 text-center text-xs">
-                        <span className="text-[9px] text-muted">🎯 Target 1</span>
-                        <div className="font-bold tabular-nums text-up">{npr(signalRow.breakout.tp1)}</div>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="py-2 text-center text-[10px] text-muted">⏳ Insufficient historical data for breakout analysis</div>
-                )}
-              </div>
-
-              {/* 🎯 Top Signals - Full 13 Indicator Analysis */}
-              <div className="rounded-lg border border-border p-2.5">
-                <div className="mb-1.5 flex items-center gap-1.5">
-                  <span className="text-sm">🎯</span>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted">Top AI Signals</span>
-                  <span className="text-[8px] text-muted">(13 Indicators)</span>
-                </div>
-                {(fullSignal || signalRow) ? (() => {
-                  const sig = fullSignal;
-                  const rec = sig?.recommendation ?? signalRow?.recommendation ?? "No Data";
-                  const conf = sig?.confidence ?? signalRow?.confidence ?? 0;
-                  const bullFactors = sig?.factors.filter(f => f.verdict === "Bullish").length ?? 0;
-                  const bearFactors = sig?.factors.filter(f => f.verdict === "Bearish").length ?? 0;
-                  return (
-                    <>
-                      {/* Main Recommendation */}
-                      <div className="mb-2 flex items-center gap-2">
-                        <div className={`flex-1 rounded-lg p-2 text-center ${rec === "Strong Buy" || rec === "Buy" ? "bg-up-bg" : rec === "Strong Sell" || rec === "Sell" ? "bg-down-bg" : "bg-surface-2"}`}>
-                          <div className="text-[9px] text-muted">AI Recommendation</div>
-                          <div className={`text-sm font-bold ${rec === "Strong Buy" || rec === "Buy" ? "text-up" : rec === "Strong Sell" || rec === "Sell" ? "text-down" : "text-foreground"}`}>{rec}</div>
-                          <div className="text-[9px] text-muted">{conf}% confidence</div>
-                        </div>
-                        <div className="flex-1 rounded-lg bg-surface-2 p-2 text-center">
-                          <div className="text-[9px] text-muted">Factors</div>
-                          <div className="flex items-center justify-center gap-1">
-                            <span className="text-xs font-bold text-up">▲{bullFactors}</span>
-                            <span className="text-[9px] text-muted">/</span>
-                            <span className="text-xs font-bold text-down">▼{bearFactors}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Key Indicators Grid */}
-                      <div className="grid grid-cols-4 gap-1.5 text-xs">
-                        {sig?.rsi !== null && sig?.rsi !== undefined && (
-                          <div className="rounded bg-surface-2 p-1.5 text-center">
-                            <div className="text-[8px] text-muted">RSI</div>
-                            <div className={`text-[10px] font-bold ${sig.rsi > 70 ? "text-down" : sig.rsi < 30 ? "text-up" : "text-foreground"}`}>{sig.rsi.toFixed(0)}</div>
-                          </div>
-                        )}
-                        {sig?.macd && (
-                          <div className="rounded bg-surface-2 p-1.5 text-center">
-                            <div className="text-[8px] text-muted">MACD</div>
-                            <div className={`text-[10px] font-bold ${sig.macd.hist > 0 ? "text-up" : "text-down"}`}>{sig.macd.hist > 0 ? "+" : ""}{sig.macd.hist.toFixed(1)}</div>
-                          </div>
-                        )}
-                        {sig?.sar && (
-                          <div className="rounded bg-surface-2 p-1.5 text-center">
-                            <div className="text-[8px] text-muted">SAR</div>
-                            <div className={`text-[10px] font-bold ${sig.sar.bullish ? "text-up" : "text-down"}`}>{sig.sar.bullish ? "▲" : "▼"}</div>
-                          </div>
-                        )}
-                        {sig?.trend && (
-                          <div className="rounded bg-surface-2 p-1.5 text-center">
-                            <div className="text-[8px] text-muted">Trend</div>
-                            <div className={`text-[10px] font-bold ${sig.trend === "Up" ? "text-up" : sig.trend === "Down" ? "text-down" : "text-foreground"}`}>{sig.trend}</div>
-                          </div>
-                        )}
-                        {sig?.vwap !== null && sig?.vwap !== undefined && (
-                          <div className="rounded bg-surface-2 p-1.5 text-center">
-                            <div className="text-[8px] text-muted">VWAP</div>
-                            <div className={`text-[10px] font-bold ${ltp > sig.vwap ? "text-up" : "text-down"}`}>{npr(sig.vwap)}</div>
-                          </div>
-                        )}
-                        {sig?.atr !== null && sig?.atr !== undefined && (
-                          <div className="rounded bg-surface-2 p-1.5 text-center">
-                            <div className="text-[8px] text-muted">ATR</div>
-                            <div className="text-[10px] font-bold">{sig.atr.toFixed(1)}</div>
-                          </div>
-                        )}
-                        {sig?.tmaDmaCross && (
-                          <div className="rounded bg-surface-2 p-1.5 text-center">
-                            <div className="text-[8px] text-muted">TMA/DMA</div>
-                            <div className={`text-[10px] font-bold ${sig.tmaDmaCross === "golden" || sig.tmaDmaCross === "bullish" ? "text-up" : "text-down"}`}>
-                              {sig.tmaDmaCross === "golden" ? "⭐" : sig.tmaDmaCross === "death" ? "💀" : sig.tmaDmaCross === "bullish" ? "▲" : "▼"}
-                            </div>
-                          </div>
-                        )}
-                        {sig?.week52Position !== null && sig?.week52Position !== undefined && (
-                          <div className="rounded bg-surface-2 p-1.5 text-center">
-                            <div className="text-[8px] text-muted">52W Pos</div>
-                            <div className="text-[10px] font-bold">{sig.week52Position}%</div>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Price Levels */}
-                      <div className="mt-2 grid grid-cols-3 gap-1.5 text-[10px]">
-                        {sig?.buyZone && (
-                          <div className="rounded bg-up-bg p-1.5 text-center">
-                            <div className="text-[8px] text-muted">Buy Zone</div>
-                            <div className="font-bold text-up">{npr(sig.buyZone[0])}–{npr(sig.buyZone[1])}</div>
-                          </div>
-                        )}
-                        {sig?.stopLoss && (
-                          <div className="rounded bg-down-bg p-1.5 text-center">
-                            <div className="text-[8px] text-muted">Stop Loss</div>
-                            <div className="font-bold text-down">{npr(sig.stopLoss)}</div>
-                          </div>
-                        )}
-                        {sig?.target1 && (
-                          <div className="rounded bg-surface-2 p-1.5 text-center">
-                            <div className="text-[8px] text-muted">Target</div>
-                            <div className="font-bold text-up">{npr(sig.target1)}</div>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Risk/Reward */}
-                      {sig?.riskReward && (
-                        <div className="mt-1.5 text-center text-[9px] text-muted">
-                          Risk:Reward = <span className="font-bold text-foreground">1:{sig.riskReward.toFixed(1)}</span>
-                        </div>
-                      )}
-                    </>
-                  );
-                })() : (
-                  <div className="py-2 text-center text-[10px] text-muted">⏳ Need 20+ candles for full signal analysis</div>
-                )}
-              </div>
-
-              {/* 📊 Fundamental Analysis */}
-              {fund && (
-                <div className="rounded-lg border border-border p-2.5">
-                  <div className="mb-1.5 flex items-center gap-1.5">
-                    <span className="text-sm">📊</span>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted">Fundamental Analysis</span>
-                    {fund.name && <span className="truncate text-[9px] text-muted">{fund.name}</span>}
-                  </div>
-                  <div className="grid grid-cols-4 gap-1.5 text-xs">
-                    <div className="rounded bg-surface-2 p-1.5 text-center">
-                      <span className="text-[9px] text-muted">EPS</span>
-                      <div className="font-bold">{fund.eps > 0 ? fund.eps.toFixed(1) : "—"}</div>
-                    </div>
-                    <div className="rounded bg-surface-2 p-1.5 text-center">
-                      <span className="text-[9px] text-muted">PE</span>
-                      <div className="font-bold">{fund.pe > 0 ? fund.pe.toFixed(1) : "—"}</div>
-                    </div>
-                    <div className="rounded bg-surface-2 p-1.5 text-center">
-                      <span className="text-[9px] text-muted">BV</span>
-                      <div className="font-bold">{fund.bookValue > 0 ? fund.bookValue.toFixed(1) : "—"}</div>
-                    </div>
-                    <div className="rounded bg-surface-2 p-1.5 text-center">
-                      <span className="text-[9px] text-muted">PBV</span>
-                      <div className="font-bold">{fund.pbv > 0 ? fund.pbv.toFixed(2) : "—"}</div>
-                    </div>
-                    <div className="rounded bg-surface-2 p-1.5 text-center">
-                      <span className="text-[9px] text-muted">ROE</span>
-                      <div className="font-bold">{fund.roe > 0 ? `${fund.roe.toFixed(1)}%` : "—"}</div>
-                    </div>
-                    <div className="rounded bg-surface-2 p-1.5 text-center">
-                      <span className="text-[9px] text-muted">D/E</span>
-                      <div className="font-bold">{fund.debtEquity > 0 ? fund.debtEquity.toFixed(2) : "—"}</div>
-                    </div>
-                    <div className="rounded bg-surface-2 p-1.5 text-center">
-                      <span className="text-[9px] text-muted">Open</span>
-                      <div className="font-bold tabular-nums">{open ? npr(open) : prevClose ? npr(prevClose) : "—"}</div>
-                    </div>
-                    <div className="rounded bg-surface-2 p-1.5 text-center">
-                      <span className="text-[9px] text-muted">Volume</span>
-                      <div className="font-bold tabular-nums">{vol ? num(vol) : "—"}</div>
-                    </div>
-                  </div>
-                  <div className="mt-1.5 grid grid-cols-3 gap-1.5 text-[10px]">
-                    {(from52 || to52) && (
-                      <div className="rounded bg-surface-2 p-1 text-center">
-                        <span className="text-muted">52W Range</span>
-                        <div className="font-bold tabular-nums">{from52 ? npr(from52) : "—"}–{to52 ? npr(to52) : "—"}</div>
-                      </div>
-                    )}
-                    {fund.marketCap && (
-                      <div className="rounded bg-surface-2 p-1 text-center">
-                        <span className="text-muted">Market Cap</span>
-                        <div className="font-bold truncate">{fund.marketCap}</div>
-                      </div>
-                    )}
-                    {fund.dividends.length > 0 && (
-                      <div className="rounded bg-surface-2 p-1 text-center">
-                        <span className="text-muted">Dividend</span>
-                        <div className="font-bold">{fund.dividends[0].value}% (FY {fund.dividends[0].fiscalYear})</div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Full analysis link */}
-              <Link href={`/stock/${encodeURIComponent(symbol)}`} onClick={onClose} className="block w-full rounded-lg bg-primary py-2 text-center text-xs font-semibold text-white hover:bg-primary-700">
-                Full Analysis →
-              </Link>
-            </div>
-          )}
-        </div>
-      </div>
     </div>
   );
 }
