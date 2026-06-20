@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { fetchMeroLaganiSummary, calcMeroPercent } from "@/lib/merolagani";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,17 +36,16 @@ type Summary = {
 
 async function fetchLive(): Promise<LiveStock[]> {
   try {
-    // Try Vercel production URL first, then localhost for dev
-    const baseUrl = process.env.VERCEL_URL 
-      ? `https://${process.env.VERCEL_URL}`
-      : process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+    // Fetch directly from MeroLagani (same as /api/live)
+    const mero = await fetchMeroLaganiSummary();
+    if (!mero?.stock?.detail?.length) return [];
     
-    const res = await fetch(`${baseUrl}/api/live`, {
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!res.ok) return [];
-    const json = await res.json();
-    return json?.data || [];
+    return mero.stock.detail.map((s) => ({
+      symbol: s.s,
+      percentageChange: calcMeroPercent(s),
+      totalTradeValue: s.lp * s.q,
+      totalTradeQuantity: s.q,
+    }));
   } catch {
     return [];
   }
