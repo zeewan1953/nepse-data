@@ -51,7 +51,7 @@ async function fetchLive(): Promise<LiveStock[]> {
   }
 }
 
-function analyze(stocks: LiveStock[]): Summary {
+async function analyze(stocks: LiveStock[]): Promise<Summary> {
   if (!stocks.length) {
     return {
       generatedAt: Date.now(),
@@ -76,9 +76,29 @@ function analyze(stocks: LiveStock[]): Summary {
   const avgChange = stocks.reduce((s, x) => s + x.percentageChange, 0) / stocks.length;
   const totalValue = stocks.reduce((s, x) => s + x.totalTradeValue, 0);
 
-  const baseIndex = 2700;
-  const nepseIndex = Math.round(baseIndex * (1 + avgChange / 100));
-  const change = Math.round((nepseIndex - baseIndex) * 100) / 100;
+  // Fetch actual NEPSE Index value from /api/indices
+  let nepseIndex = 0;
+  let change = 0;
+  try {
+    const baseUrl = process.env.VERCEL_URL 
+      ? `https://${process.env.VERCEL_URL}`
+      : process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+    const res = await fetch(`${baseUrl}/api/indices`, { signal: AbortSignal.timeout(8000) });
+    if (res.ok) {
+      const data = await res.json();
+      const nepseIdx = data.index?.find((i: { index: string }) => i.index === "NEPSE Index");
+      if (nepseIdx) {
+        nepseIndex = nepseIdx.currentValue || nepseIdx.close || 0;
+        change = nepseIdx.change || 0;
+      }
+    }
+  } catch { /* fallback */ }
+  
+  // Fallback if indices API failed
+  if (!nepseIndex) {
+    nepseIndex = Math.round(2700 * (1 + avgChange / 100));
+    change = Math.round(avgChange * 27);
+  }
 
   const upRatio = up.length / stocks.length;
   const downRatio = down.length / stocks.length;
@@ -169,7 +189,7 @@ function analyze(stocks: LiveStock[]): Summary {
 export async function GET() {
   try {
     const stocks = await fetchLive();
-    const summary = analyze(stocks);
+    const summary = await analyze(stocks);
     return NextResponse.json(summary);
   } catch (err) {
     console.error("NEPSE Summary Error:", err);
