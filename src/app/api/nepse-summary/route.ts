@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { fetchMeroLaganiSummary, calcMeroPercent } from "@/lib/merolagani";
+import { getNepse, safeNepseCall } from "@/lib/nepse";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -76,25 +77,19 @@ async function analyze(stocks: LiveStock[]): Promise<Summary> {
   const avgChange = stocks.reduce((s, x) => s + x.percentageChange, 0) / stocks.length;
   const totalValue = stocks.reduce((s, x) => s + x.totalTradeValue, 0);
 
-  // Fetch actual NEPSE Index value from /api/indices
+  // Fetch actual NEPSE Index value directly from NEPSE API
   let nepseIndex = 0;
   let change = 0;
   try {
-    const baseUrl = process.env.VERCEL_URL 
-      ? `https://${process.env.VERCEL_URL}`
-      : process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
-    const res = await fetch(`${baseUrl}/api/indices`, { signal: AbortSignal.timeout(8000) });
-    if (res.ok) {
-      const data = await res.json();
-      const nepseIdx = data.index?.find((i: { index: string }) => i.index === "NEPSE Index");
-      if (nepseIdx) {
-        nepseIndex = nepseIdx.currentValue || nepseIdx.close || 0;
-        change = nepseIdx.change || 0;
-      }
+    const nepse = getNepse();
+    const indexData = await safeNepseCall(() => nepse.getNepseIndex(), "NEPSE Index") as Array<{ currentValue?: number; close?: number; change?: number }>;
+    if (Array.isArray(indexData) && indexData.length > 0) {
+      nepseIndex = indexData[0].currentValue || indexData[0].close || 0;
+      change = indexData[0].change || 0;
     }
   } catch { /* fallback */ }
   
-  // Fallback if indices API failed
+  // Fallback if NEPSE API failed
   if (!nepseIndex) {
     nepseIndex = Math.round(2700 * (1 + avgChange / 100));
     change = Math.round(avgChange * 27);
