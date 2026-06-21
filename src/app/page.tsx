@@ -152,175 +152,149 @@ function ltpOf(g: TopTenItem): number {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   NEPSE Summary Hero Panel — Advanced Dashboard Component
+   NEPSE Summary Hero Panel — Light Theme
    ═══════════════════════════════════════════════════════════════ */
 function NepseSummaryHero({ summary }: { summary: NepsSummary }) {
   const isBuy = summary.recommendation.includes("BUY");
   const isSell = summary.recommendation.includes("SELL");
-  const isLean = summary.recommendation.includes("LEAN");
   const changePositive = summary.change >= 0;
-  
-  // Recommendation badge styling
-  const recBadge = isBuy 
-    ? "bg-gradient-to-r from-emerald-500 to-green-600 text-white shadow-green-500/30"
-    : isSell 
-    ? "bg-gradient-to-r from-red-500 to-rose-600 text-white shadow-red-500/30"
-    : isLean
-    ? "bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-amber-500/30"
-    : "bg-gradient-to-r from-slate-400 to-gray-500 text-white shadow-gray-500/20";
+
+  const recBadge = isBuy
+    ? "bg-emerald-500 text-white"
+    : isSell
+    ? "bg-red-500 text-white"
+    : "bg-amber-500 text-white";
 
   return (
-    <section className="relative overflow-hidden rounded-xl border border-primary/20 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 shadow-xl">
-      {/* Background Pattern */}
-      <div className="absolute inset-0 opacity-5">
-        <div className="absolute inset-0" style={{ backgroundImage: "radial-gradient(circle at 2px 2px, white 1px, transparent 0)", backgroundSize: "32px 32px" }} />
-      </div>
-      
-      <div className="relative p-4">
-        {/* Header Row */}
-        <div className="flex flex-wrap items-start justify-between gap-4 mb-4">
-          {/* Left: Title + Index */}
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-lg">📊</span>
-              <h2 className="text-base font-black text-white tracking-tight">NEPSE Summary</h2>
-              <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold shadow-lg ${recBadge}`}>
-                {summary.recommendation}
-              </span>
-            </div>
-            <div className="flex items-baseline gap-3">
-              <span className="text-3xl font-black text-white tabular-nums">{summary.nepseIndex}</span>
-              <span className={`text-sm font-bold tabular-nums ${changePositive ? "text-emerald-400" : "text-rose-400"}`}>
-                {changePositive ? "▲" : "▼"} {Math.abs(summary.change)} ({summary.changePct.toFixed(2)}%)
-              </span>
+    <section className="rounded-xl border border-border bg-surface shadow-sm">
+      <div className="p-4">
+        {/* Header: Index + Recommendation + Alignment */}
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3 pb-3 border-b border-border">
+          <div className="flex items-center gap-3">
+            <span className="text-lg">📊</span>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-base font-black text-foreground">NEPSE Summary</span>
+                <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${recBadge}`}>
+                  {summary.recommendation}
+                </span>
+              </div>
+              <div className="flex items-baseline gap-2 mt-0.5">
+                <span className="text-2xl font-black text-foreground tabular-nums">{summary.nepseIndex}</span>
+                <span className={`text-xs font-bold tabular-nums ${changePositive ? "text-up" : "text-down"}`}>
+                  {changePositive ? "▲" : "▼"} {Math.abs(summary.change)} ({summary.changePct.toFixed(2)}%)
+                </span>
+              </div>
             </div>
           </div>
-          
-          {/* Right: Alignment + Sentiment */}
-          <div className="flex flex-col items-end gap-1">
-            <div className="rounded-lg bg-white/10 backdrop-blur px-3 py-1 border border-white/10">
-              <span className="text-[10px] text-white/60 font-medium">Alignment</span>
-              <div className="text-xs font-bold text-white">{summary.multiTimeframeAlignment}</div>
-            </div>
-            <div className="text-[10px] text-white/50">
-              Sentiment: <span className="font-semibold text-white/80">{summary.sentiment}</span>
-            </div>
+          <div className="flex items-center gap-2 text-[10px]">
+            <span className="rounded-lg bg-surface-2 px-2.5 py-1 border border-border">
+              <span className="text-muted">Alignment: </span>
+              <span className="font-bold text-foreground">{summary.multiTimeframeAlignment}</span>
+            </span>
+            <span className="rounded-lg bg-surface-2 px-2.5 py-1 border border-border">
+              <span className="text-muted">Sentiment: </span>
+              <span className="font-bold text-foreground">{summary.sentiment}</span>
+            </span>
           </div>
         </div>
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
-          {/* Market Breadth */}
-          <div className="rounded-lg bg-white/5 backdrop-blur border border-white/10 p-2.5">
-            <div className="text-[9px] text-white/50 uppercase tracking-wide mb-1">Market Breadth</div>
+        {/* Stats Row */}
+        <div className="grid grid-cols-3 gap-2 mb-3">
+          <div className="rounded-lg bg-surface-2 border border-border p-2.5">
+            <div className="text-[9px] text-muted uppercase tracking-wide mb-1">Market Breadth</div>
             <div className="flex items-center gap-2 text-xs">
-              <span className="text-emerald-400 font-bold">{summary.upCount}▲</span>
-              <span className="text-white/30">|</span>
-              <span className="text-rose-400 font-bold">{summary.downCount}▼</span>
-              <span className="text-white/30">|</span>
-              <span className="text-white/60 font-bold">{summary.flatCount}—</span>
+              <span className="text-up font-bold">{summary.upCount}▲</span>
+              <span className="text-border">|</span>
+              <span className="text-down font-bold">{summary.downCount}▼</span>
+              <span className="text-border">|</span>
+              <span className="text-muted font-bold">{summary.flatCount}—</span>
             </div>
           </div>
-          
-          {/* RSI */}
-          <div className="rounded-lg bg-white/5 backdrop-blur border border-white/10 p-2.5">
-            <div className="text-[9px] text-white/50 uppercase tracking-wide mb-1">RSI (Daily)</div>
+          <div className="rounded-lg bg-surface-2 border border-border p-2.5">
+            <div className="text-[9px] text-muted uppercase tracking-wide mb-1">RSI (Daily)</div>
             <div className="flex items-center gap-2">
-              <span className={`text-lg font-black ${summary.daily.rsi > 70 ? "text-rose-400" : summary.daily.rsi < 30 ? "text-emerald-400" : "text-amber-400"}`}>
+              <span className={`text-lg font-black ${summary.daily.rsi > 70 ? "text-down" : summary.daily.rsi < 30 ? "text-up" : "text-amber-500"}`}>
                 {summary.daily.rsi}
               </span>
-              <span className="text-[9px] text-white/40">
+              <span className="text-[9px] text-muted">
                 {summary.daily.rsi > 70 ? "Overbought" : summary.daily.rsi < 30 ? "Oversold" : "Neutral"}
               </span>
             </div>
           </div>
-          
-          {/* Volume */}
-          <div className="rounded-lg bg-white/5 backdrop-blur border border-white/10 p-2.5">
-            <div className="text-[9px] text-white/50 uppercase tracking-wide mb-1">Turnover</div>
-            <div className="text-sm font-bold text-white">{compact(summary.totalValue)}</div>
-            <div className="text-[9px] text-white/40">Vol: {compact(summary.totalVolume)} shares</div>
-          </div>
-          
-          {/* Risk/Reward */}
-          <div className="rounded-lg bg-white/5 backdrop-blur border border-white/10 p-2.5">
-            <div className="text-[9px] text-white/50 uppercase tracking-wide mb-1">Risk:Reward</div>
-            <div className="text-sm font-bold text-cyan-400">1:{summary.riskReward.ratio}</div>
-            <div className="text-[9px] text-white/40">Entry: {summary.riskReward.entry}</div>
+          <div className="rounded-lg bg-surface-2 border border-border p-2.5">
+            <div className="text-[9px] text-muted uppercase tracking-wide mb-1">Turnover</div>
+            <div className="text-sm font-bold text-foreground">{compact(summary.totalValue)}</div>
+            <div className="text-[9px] text-muted">Vol: {compact(summary.totalVolume)} shares</div>
           </div>
         </div>
 
-        {/* Support/Resistance + Signals Row */}
-        <div className="grid md:grid-cols-3 gap-3">
-          {/* Daily Levels */}
-          <div className="rounded-lg bg-white/5 backdrop-blur border border-white/10 p-2.5">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[10px] font-bold text-cyan-400">📅 Daily Levels</span>
+        {/* Support/Resistance + Signals */}
+        <div className="grid md:grid-cols-3 gap-2">
+          <div className="rounded-lg bg-surface-2 border border-border p-2.5">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[10px] font-bold text-primary">📅 Daily</span>
               <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
-                summary.daily.trend === "Bullish" ? "bg-emerald-500/20 text-emerald-400" :
-                summary.daily.trend === "Bearish" ? "bg-rose-500/20 text-rose-400" :
-                "bg-white/10 text-white/60"
+                summary.daily.trend === "Bullish" ? "bg-up-bg text-up" :
+                summary.daily.trend === "Bearish" ? "bg-down-bg text-down" :
+                "bg-surface text-muted"
               }`}>
                 {summary.daily.trend === "Bullish" ? "▲ Bull" : summary.daily.trend === "Bearish" ? "▼ Bear" : "→ Neutral"}
               </span>
             </div>
-            <div className="space-y-1 text-[10px]">
+            <div className="space-y-0.5 text-[10px]">
               <div className="flex justify-between">
-                <span className="text-emerald-400/80">S1: {summary.daily.support.s1}</span>
-                <span className="text-rose-400/80">R1: {summary.daily.resistance.r1}</span>
+                <span className="text-up font-medium">S1: {summary.daily.support.s1}</span>
+                <span className="text-down font-medium">R1: {summary.daily.resistance.r1}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-emerald-400/80">S2: {summary.daily.support.s2}</span>
-                <span className="text-rose-400/80">R2: {summary.daily.resistance.r2}</span>
+                <span className="text-up font-medium">S2: {summary.daily.support.s2}</span>
+                <span className="text-down font-medium">R2: {summary.daily.resistance.r2}</span>
               </div>
             </div>
           </div>
-          
-          {/* Weekly Levels */}
-          <div className="rounded-lg bg-white/5 backdrop-blur border border-white/10 p-2.5">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[10px] font-bold text-purple-400">📆 Weekly Levels</span>
+          <div className="rounded-lg bg-surface-2 border border-border p-2.5">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[10px] font-bold text-purple-600">📆 Weekly</span>
               <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
-                summary.weekly.trend === "Bullish" ? "bg-emerald-500/20 text-emerald-400" :
-                summary.weekly.trend === "Bearish" ? "bg-rose-500/20 text-rose-400" :
-                "bg-white/10 text-white/60"
+                summary.weekly.trend === "Bullish" ? "bg-up-bg text-up" :
+                summary.weekly.trend === "Bearish" ? "bg-down-bg text-down" :
+                "bg-surface text-muted"
               }`}>
                 {summary.weekly.trend === "Bullish" ? "▲ Bull" : summary.weekly.trend === "Bearish" ? "▼ Bear" : "→ Neutral"}
               </span>
             </div>
-            <div className="space-y-1 text-[10px]">
+            <div className="space-y-0.5 text-[10px]">
               <div className="flex justify-between">
-                <span className="text-emerald-400/80">S1: {summary.weekly.support.s1}</span>
-                <span className="text-rose-400/80">R1: {summary.weekly.resistance.r1}</span>
+                <span className="text-up font-medium">S1: {summary.weekly.support.s1}</span>
+                <span className="text-down font-medium">R1: {summary.weekly.resistance.r1}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-emerald-400/80">S2: {summary.weekly.support.s2}</span>
-                <span className="text-rose-400/80">R2: {summary.weekly.resistance.r2}</span>
+                <span className="text-up font-medium">S2: {summary.weekly.support.s2}</span>
+                <span className="text-down font-medium">R2: {summary.weekly.resistance.r2}</span>
               </div>
             </div>
           </div>
-          
-          {/* Key Signals */}
-          <div className="rounded-lg bg-white/5 backdrop-blur border border-white/10 p-2.5">
-            <div className="text-[10px] font-bold text-amber-400 mb-2">🔑 Key Signals</div>
-            <div className="space-y-1.5 text-[9px]">
+          <div className="rounded-lg bg-surface-2 border border-border p-2.5">
+            <div className="text-[10px] font-bold text-amber-600 mb-1.5">🔑 Key Signals</div>
+            <div className="space-y-1 text-[9px]">
               {summary.accumulation.length > 0 && (
-                <div className="flex items-start gap-1 text-emerald-400">
+                <div className="flex items-start gap-1 text-up">
                   <span className="shrink-0">📈</span>
                   <span className="truncate">Acc: {summary.accumulation.slice(0, 3).join(", ")}</span>
                 </div>
               )}
               {summary.distribution.length > 0 && (
-                <div className="flex items-start gap-1 text-rose-400">
+                <div className="flex items-start gap-1 text-down">
                   <span className="shrink-0">📉</span>
                   <span className="truncate">Dist: {summary.distribution.slice(0, 3).join(", ")}</span>
                 </div>
               )}
               {summary.accumulation.length === 0 && summary.distribution.length === 0 && (
-                <div className="text-white/40">No strong signals</div>
+                <div className="text-muted">No strong signals</div>
               )}
-              <div className="text-white/50 pt-1 border-t border-white/10">
-                MACD: <span className={summary.daily.macd.histogram > 0 ? "text-emerald-400" : "text-rose-400"}>
+              <div className="text-muted pt-1 border-t border-border">
+                MACD: <span className={summary.daily.macd.histogram > 0 ? "text-up" : "text-down"}>
                   {summary.daily.macd.histogram > 0 ? "Bullish" : "Bearish"}
                 </span>
               </div>
@@ -614,6 +588,12 @@ export default function Dashboard() {
             </div>
           )}
         </section>
+      </div>
+
+      {/* Top Gainers / Top Losers */}
+      <div className="grid gap-3 lg:grid-cols-2">
+        <MoverCard title="🟢 Top Gainers" tone="up" rows={movers.data?.gainers ?? []} />
+        <MoverCard title="🔴 Top Losers" tone="down" rows={movers.data?.losers ?? []} />
       </div>
 
       {/* Buy/Sell Pressure */}
