@@ -1,7 +1,8 @@
-import { cached } from "@/lib/nepse";
-import { execute } from "@/lib/db";
-import { detectAnomalies } from "@/lib/analysis/anomaly";
-import { findCrossStockPatterns } from "@/lib/analysis/crossStock";
+import { runOverview } from "@/lib/broker_flow_engine";
+import { runRealOverview } from "@/lib/broker_flow_real_engine";
+import { hasRealData } from "@/lib/broker_flow_real_data";
+import { DATA_VERSION } from "@/lib/broker_flow_sample_fixtures";
+import { getBrokerFlowCache, saveBrokerFlowCache } from "@/lib/db";
 import type { NextRequest } from "next/server";
 
 export const runtime = "nodejs";
@@ -11,39 +12,31 @@ function todayStr(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kathmandu" });
 }
 
-// Market-wide summary: total broker activity stats, top anomaly flags, cross-stock patterns
 export async function GET(req: NextRequest) {
   const date = req.nextUrl.searchParams.get("date") || todayStr();
-
   try {
-    const data = await cached(`bf-ov:${date}`, 3_000, async () => {
-      // Get totals from broker_daily_agg
-      const totals = await execute(
-        `SELECT COUNT(DISTINCT brokerId) as brokers, COUNT(DISTINCT stockSymbol) as stocks,
-                SUM(buyAmt) as totalBuyAmt, SUM(sellAmt) as totalSellAmt
-         FROM broker_daily_agg WHERE tradeDate = ?`,
-        [date],
-      );
-      const t = totals.rows[0];
+    const real = await hasRealData(date);
+    const section = `overview:${real ? "real" : "sample"}:${DATA_VERSION}`;
+    const cached = await getBrokerFlowCache(date, section);
+    if (cached) return Response.json(cached);
 
-      const [anomalies, patterns] = await Promise.all([
-        detectAnomalies(date),
-        findCrossStockPatterns(date, 5, 3, 100000),
-      ]);
-
-      return {
-        date,
-        totals: {
-          brokers: Number(t?.brokers ?? 0),
-          stocks: Number(t?.stocks ?? 0),
-          totalBuyAmt: Number(t?.totalBuyAmt ?? 0),
-          totalSellAmt: Number(t?.totalSellAmt ?? 0),
-        },
-        topAnomalies: anomalies.slice(0, 10),
-        crossStockPatterns: patterns.slice(0, 10),
-      };
-    });
-
+    let result;
+    let source: string;
+    if (real) {
+      const realResult = await runRealOverview(date);
+      if (realResult) {
+        result = realResult;
+        source = "real";
+      } else {
+        result = runOverview(date);
+        source = "sample";
+      }
+    } else {
+      result = runOverview(date);
+      source = "sample";
+    }
+    const data = { date, ...result, source, generatedAt: Date.now() };
+    await saveBrokerFlowCache(date, section, data);
     return Response.json(data);
   } catch (e) {
     return Response.json({ error: (e as Error)?.message ?? "Overview failed" }, { status: 502 });

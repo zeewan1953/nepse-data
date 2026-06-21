@@ -160,6 +160,17 @@ async function migrateSchema(): Promise<void> {
     await db.execute("CREATE INDEX IF NOT EXISTS idx_intraday_symbol_ts ON intraday_candles(symbol, ts)");
   } catch { /* indexes may already exist */ }
 
+  // Broker flow analytics cache — stores computed JSON per date+section
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS broker_flow_cache (
+      date TEXT NOT NULL,
+      section TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      savedAt INTEGER NOT NULL,
+      PRIMARY KEY (date, section)
+    )
+  `);
+
   // Add createdAt column if missing
   try {
     await db.execute("ALTER TABLE otps ADD COLUMN createdAt INTEGER DEFAULT 0");
@@ -515,4 +526,28 @@ export async function getIntradayCandles(symbol: string, from?: number, to?: num
     close: Number(row.close),
     volume: Number(row.volume),
   }));
+}
+
+// ─── Broker flow analytics cache ────────────────────────────────────────────
+export async function getBrokerFlowCache(date: string, section: string): Promise<unknown | null> {
+  const r = await db.execute({
+    sql: "SELECT payload FROM broker_flow_cache WHERE date = ? AND section = ?",
+    args: [date, section],
+  });
+  if (r.rows.length === 0) return null;
+  try {
+    return JSON.parse(String(r.rows[0].payload));
+  } catch {
+    return null;
+  }
+}
+
+export async function saveBrokerFlowCache(date: string, section: string, data: unknown): Promise<void> {
+  const payload = JSON.stringify(data);
+  await db.execute({
+    sql: `INSERT INTO broker_flow_cache(date, section, payload, savedAt)
+          VALUES (?, ?, ?, ?)
+          ON CONFLICT(date, section) DO UPDATE SET payload=excluded.payload, savedAt=excluded.savedAt`,
+    args: [date, section, payload, Date.now()],
+  });
 }

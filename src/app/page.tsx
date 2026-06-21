@@ -118,9 +118,9 @@ type NepsSummary = {
   change: number;
   changePct: number;
   marketStatus: string;
-  support: { s1: number; s2: number; s3: number };
-  resistance: { r1: number; r2: number; r3: number };
-  pivot: number;
+  hourly: { trend: string; support: { s1: number; s2: number; s3: number }; resistance: { r1: number; r2: number; r3: number }; pivot: number; rsi: number; macd: { macd: number; signal: number; histogram: number }; volume: string };
+  daily: { trend: string; support: { s1: number; s2: number; s3: number }; resistance: { r1: number; r2: number; r3: number }; pivot: number; rsi: number; macd: { macd: number; signal: number; histogram: number }; volume: string };
+  weekly: { trend: string; support: { s1: number; s2: number; s3: number }; resistance: { r1: number; r2: number; r3: number }; pivot: number; rsi: number; macd: { macd: number; signal: number; histogram: number }; volume: string };
   confidence: number;
   points: string[];
   accumulation: string[];
@@ -133,6 +133,9 @@ type NepsSummary = {
   flatCount: number;
   totalVolume: number;
   totalValue: number;
+  multiTimeframeAlignment: string;
+  fibonacciLevels: { level: string; price: number }[];
+  riskReward: { entry: number; stopLoss: number; takeProfit: number; ratio: string };
 };
 
 function chgOf(g: TopTenItem): number {
@@ -146,6 +149,187 @@ function ltpOf(g: TopTenItem): number {
   // Upstream returns `ltp` but fall back to `cp` (closing price) if absent.
   const x = g as TopTenItem & { lastTradedPrice?: number };
   return x.ltp ?? x.lastTradedPrice ?? x.cp ?? 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   NEPSE Summary Hero Panel — Advanced Dashboard Component
+   ═══════════════════════════════════════════════════════════════ */
+function NepseSummaryHero({ summary }: { summary: NepsSummary }) {
+  const isBuy = summary.recommendation.includes("BUY");
+  const isSell = summary.recommendation.includes("SELL");
+  const isLean = summary.recommendation.includes("LEAN");
+  const changePositive = summary.change >= 0;
+  
+  // Recommendation badge styling
+  const recBadge = isBuy 
+    ? "bg-gradient-to-r from-emerald-500 to-green-600 text-white shadow-green-500/30"
+    : isSell 
+    ? "bg-gradient-to-r from-red-500 to-rose-600 text-white shadow-red-500/30"
+    : isLean
+    ? "bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-amber-500/30"
+    : "bg-gradient-to-r from-slate-400 to-gray-500 text-white shadow-gray-500/20";
+
+  return (
+    <section className="relative overflow-hidden rounded-xl border border-primary/20 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 shadow-xl">
+      {/* Background Pattern */}
+      <div className="absolute inset-0 opacity-5">
+        <div className="absolute inset-0" style={{ backgroundImage: "radial-gradient(circle at 2px 2px, white 1px, transparent 0)", backgroundSize: "32px 32px" }} />
+      </div>
+      
+      <div className="relative p-4">
+        {/* Header Row */}
+        <div className="flex flex-wrap items-start justify-between gap-4 mb-4">
+          {/* Left: Title + Index */}
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-lg">📊</span>
+              <h2 className="text-base font-black text-white tracking-tight">NEPSE Summary</h2>
+              <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold shadow-lg ${recBadge}`}>
+                {summary.recommendation}
+              </span>
+            </div>
+            <div className="flex items-baseline gap-3">
+              <span className="text-3xl font-black text-white tabular-nums">{summary.nepseIndex}</span>
+              <span className={`text-sm font-bold tabular-nums ${changePositive ? "text-emerald-400" : "text-rose-400"}`}>
+                {changePositive ? "▲" : "▼"} {Math.abs(summary.change)} ({summary.changePct.toFixed(2)}%)
+              </span>
+            </div>
+          </div>
+          
+          {/* Right: Alignment + Sentiment */}
+          <div className="flex flex-col items-end gap-1">
+            <div className="rounded-lg bg-white/10 backdrop-blur px-3 py-1 border border-white/10">
+              <span className="text-[10px] text-white/60 font-medium">Alignment</span>
+              <div className="text-xs font-bold text-white">{summary.multiTimeframeAlignment}</div>
+            </div>
+            <div className="text-[10px] text-white/50">
+              Sentiment: <span className="font-semibold text-white/80">{summary.sentiment}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Stats Grid */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
+          {/* Market Breadth */}
+          <div className="rounded-lg bg-white/5 backdrop-blur border border-white/10 p-2.5">
+            <div className="text-[9px] text-white/50 uppercase tracking-wide mb-1">Market Breadth</div>
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-emerald-400 font-bold">{summary.upCount}▲</span>
+              <span className="text-white/30">|</span>
+              <span className="text-rose-400 font-bold">{summary.downCount}▼</span>
+              <span className="text-white/30">|</span>
+              <span className="text-white/60 font-bold">{summary.flatCount}—</span>
+            </div>
+          </div>
+          
+          {/* RSI */}
+          <div className="rounded-lg bg-white/5 backdrop-blur border border-white/10 p-2.5">
+            <div className="text-[9px] text-white/50 uppercase tracking-wide mb-1">RSI (Daily)</div>
+            <div className="flex items-center gap-2">
+              <span className={`text-lg font-black ${summary.daily.rsi > 70 ? "text-rose-400" : summary.daily.rsi < 30 ? "text-emerald-400" : "text-amber-400"}`}>
+                {summary.daily.rsi}
+              </span>
+              <span className="text-[9px] text-white/40">
+                {summary.daily.rsi > 70 ? "Overbought" : summary.daily.rsi < 30 ? "Oversold" : "Neutral"}
+              </span>
+            </div>
+          </div>
+          
+          {/* Volume */}
+          <div className="rounded-lg bg-white/5 backdrop-blur border border-white/10 p-2.5">
+            <div className="text-[9px] text-white/50 uppercase tracking-wide mb-1">Turnover</div>
+            <div className="text-sm font-bold text-white">{compact(summary.totalValue)}</div>
+            <div className="text-[9px] text-white/40">Vol: {compact(summary.totalVolume)} shares</div>
+          </div>
+          
+          {/* Risk/Reward */}
+          <div className="rounded-lg bg-white/5 backdrop-blur border border-white/10 p-2.5">
+            <div className="text-[9px] text-white/50 uppercase tracking-wide mb-1">Risk:Reward</div>
+            <div className="text-sm font-bold text-cyan-400">1:{summary.riskReward.ratio}</div>
+            <div className="text-[9px] text-white/40">Entry: {summary.riskReward.entry}</div>
+          </div>
+        </div>
+
+        {/* Support/Resistance + Signals Row */}
+        <div className="grid md:grid-cols-3 gap-3">
+          {/* Daily Levels */}
+          <div className="rounded-lg bg-white/5 backdrop-blur border border-white/10 p-2.5">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[10px] font-bold text-cyan-400">📅 Daily Levels</span>
+              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                summary.daily.trend === "Bullish" ? "bg-emerald-500/20 text-emerald-400" :
+                summary.daily.trend === "Bearish" ? "bg-rose-500/20 text-rose-400" :
+                "bg-white/10 text-white/60"
+              }`}>
+                {summary.daily.trend === "Bullish" ? "▲ Bull" : summary.daily.trend === "Bearish" ? "▼ Bear" : "→ Neutral"}
+              </span>
+            </div>
+            <div className="space-y-1 text-[10px]">
+              <div className="flex justify-between">
+                <span className="text-emerald-400/80">S1: {summary.daily.support.s1}</span>
+                <span className="text-rose-400/80">R1: {summary.daily.resistance.r1}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-emerald-400/80">S2: {summary.daily.support.s2}</span>
+                <span className="text-rose-400/80">R2: {summary.daily.resistance.r2}</span>
+              </div>
+            </div>
+          </div>
+          
+          {/* Weekly Levels */}
+          <div className="rounded-lg bg-white/5 backdrop-blur border border-white/10 p-2.5">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[10px] font-bold text-purple-400">📆 Weekly Levels</span>
+              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                summary.weekly.trend === "Bullish" ? "bg-emerald-500/20 text-emerald-400" :
+                summary.weekly.trend === "Bearish" ? "bg-rose-500/20 text-rose-400" :
+                "bg-white/10 text-white/60"
+              }`}>
+                {summary.weekly.trend === "Bullish" ? "▲ Bull" : summary.weekly.trend === "Bearish" ? "▼ Bear" : "→ Neutral"}
+              </span>
+            </div>
+            <div className="space-y-1 text-[10px]">
+              <div className="flex justify-between">
+                <span className="text-emerald-400/80">S1: {summary.weekly.support.s1}</span>
+                <span className="text-rose-400/80">R1: {summary.weekly.resistance.r1}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-emerald-400/80">S2: {summary.weekly.support.s2}</span>
+                <span className="text-rose-400/80">R2: {summary.weekly.resistance.r2}</span>
+              </div>
+            </div>
+          </div>
+          
+          {/* Key Signals */}
+          <div className="rounded-lg bg-white/5 backdrop-blur border border-white/10 p-2.5">
+            <div className="text-[10px] font-bold text-amber-400 mb-2">🔑 Key Signals</div>
+            <div className="space-y-1.5 text-[9px]">
+              {summary.accumulation.length > 0 && (
+                <div className="flex items-start gap-1 text-emerald-400">
+                  <span className="shrink-0">📈</span>
+                  <span className="truncate">Acc: {summary.accumulation.slice(0, 3).join(", ")}</span>
+                </div>
+              )}
+              {summary.distribution.length > 0 && (
+                <div className="flex items-start gap-1 text-rose-400">
+                  <span className="shrink-0">📉</span>
+                  <span className="truncate">Dist: {summary.distribution.slice(0, 3).join(", ")}</span>
+                </div>
+              )}
+              {summary.accumulation.length === 0 && summary.distribution.length === 0 && (
+                <div className="text-white/40">No strong signals</div>
+              )}
+              <div className="text-white/50 pt-1 border-t border-white/10">
+                MACD: <span className={summary.daily.macd.histogram > 0 ? "text-emerald-400" : "text-rose-400"}>
+                  {summary.daily.macd.histogram > 0 ? "Bullish" : "Bearish"}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 function UserGreeting() {
@@ -165,6 +349,9 @@ function UserGreeting() {
 }
 
 export default function Dashboard() {
+  const [mounted, setMounted] = useState(false);
+  const [nepaliTime, setNepaliTime] = useState("");
+  const [stableNepseSummary, setStableNepseSummary] = useState<NepsSummary | null>(null);
   const status = usePoll<MarketStatus>("/api/market-status", 2_000);
   const open = status.data?.isOpen?.toUpperCase() === "OPEN";
   const interval = 2_000;
@@ -174,6 +361,35 @@ export default function Dashboard() {
   const live = usePersistentPoll<{ data: LiveMarketData[]; count: number }>("/api/live", 30_000);
   const deepResearch = usePoll<DeepResearchResp>("/api/deep-research", open ? 30_000 : 120_000);
   const nepseSummary = usePoll<NepsSummary>("/api/nepse-summary", open ? 60_000 : 300_000);
+
+  // Stabilize NEPSE Summary - only update if data is valid
+  useEffect(() => {
+    if (nepseSummary.data && nepseSummary.data.nepseIndex > 0) {
+      setStableNepseSummary(nepseSummary.data);
+    }
+  }, [nepseSummary.data]);
+
+  useEffect(() => {
+    setMounted(true);
+    
+    // Update Nepali time every second
+    const updateNepaliTime = () => {
+      const now = new Date();
+      const nepaliTimeStr = now.toLocaleTimeString('en-US', {
+        timeZone: 'Asia/Kathmandu',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+      });
+      setNepaliTime(nepaliTimeStr);
+    };
+    
+    updateNepaliTime();
+    const timeInterval = setInterval(updateNepaliTime, 1000);
+    
+    return () => clearInterval(timeInterval);
+  }, []);
 
   const nepse =
     indices.data?.index?.find((i) => i.index === "NEPSE Index") ?? indices.data?.index?.[0];
@@ -192,45 +408,36 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      {/* User greeting bar */}
-      <UserGreeting />
-
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h1 className="text-3xl font-black text-foreground">DARI SIR</h1>
-          <p className="text-sm text-muted">Nepal Stock Exchange — live dashboard</p>
-        </div>
+      {/* Header: Nepal Time + DARI SIR Title */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-border/50">
+        {/* Nepal Time */}
+        {mounted && (
+          <div className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-primary/8 to-surface px-3 py-2 border border-primary/20">
+            <span className="text-base">🇳🇵</span>
+            <div>
+              <div className="text-[9px] font-semibold text-muted uppercase tracking-wider">Nepal Time</div>
+              <div className="text-xs font-bold text-primary tabular-nums">{nepaliTime}</div>
+            </div>
+          </div>
+        )}
+        
+        {/* User Greeting */}
+        <UserGreeting />
       </div>
 
-      {/* NEPSE AI Summary - Compact */}
-      {nepseSummary.data && nepseSummary.data.nepseIndex > 0 && (
-        <section className="rounded-lg border border-primary/30 bg-gradient-to-r from-primary/5 to-surface px-3 py-2 shadow-sm">
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-            <span className="text-sm font-black text-primary">📊 NEPSE विश्लेषण</span>
-            <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold ${
-              nepseSummary.data.recommendation === "BUY" ? "bg-up-bg text-up" :
-              nepseSummary.data.recommendation === "SELL" ? "bg-down-bg text-down" :
-              "bg-warning-bg text-warning"
-            }`}>{nepseSummary.data.recommendation}</span>
-            <span className="text-muted">Index: <span className="font-bold">{nepseSummary.data.nepseIndex}</span></span>
-            <span className="text-up">S: {nepseSummary.data.support.s1}/{nepseSummary.data.support.s2}</span>
-            <span className="text-down">R: {nepseSummary.data.resistance.r1}/{nepseSummary.data.resistance.r2}</span>
-            <span className="text-muted">Pivot: <span className="font-bold">{nepseSummary.data.pivot}</span></span>
-            <span className="text-up">▲{nepseSummary.data.upCount}</span>
-            <span className="text-down">▼{nepseSummary.data.downCount}</span>
-            <span className="text-muted">{nepseSummary.data.sentiment}</span>
-          </div>
-          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px]">
-            <span className="text-muted">{nepseSummary.data.points.slice(0, 2).join(" • ")}</span>
-            {nepseSummary.data.accumulation.length > 0 && (
-              <span className="text-up">📈 {nepseSummary.data.accumulation.join(", ")}</span>
-            )}
-            {nepseSummary.data.distribution.length > 0 && (
-              <span className="text-down">📉 {nepseSummary.data.distribution.join(", ")}</span>
-            )}
-          </div>
-        </section>
+      {/* Main Title */}
+      <div className="text-center">
+        <h1 className="text-4xl font-black text-foreground tracking-tight">DARI SIR</h1>
+        <p className="text-sm text-muted mt-1 font-medium">Nepal Stock Exchange — live dashboard</p>
+      </div>
+
+      {/* 📊 Top Row: NEPSE Summary (Hero Panel) */}
+      {stableNepseSummary && stableNepseSummary.nepseIndex > 0 && (
+        <NepseSummaryHero summary={stableNepseSummary} />
       )}
+
+      {/* Live Market - Full Width */}
+      <MarketPanel liveData={live.data ? (live.data as { data: LiveMarketData[] }).data : undefined} noOuterBorder mounted={mounted} />
 
       {/* AI Recommendations - Deep Research Engine (TOP) */}
       {deepResearch.data?.success && deepResearch.data.recommendations && (
@@ -312,58 +519,7 @@ export default function Dashboard() {
         </section>
       )}
 
-      {/* Live Market Data Panel */}
-      <MarketPanel liveData={live.data ? (live.data as { data: LiveMarketData[] }).data : undefined} />
-
-      {/* Two-column: Sector Indices + Paper Trading */}
-      <div className="grid gap-3 lg:grid-cols-[1fr_220px]">
-        {/* Left: Sector indices organized grid */}
-        <div className="rounded-lg border border-border bg-surface shadow-sm overflow-hidden">
-          <div className="border-b border-border px-3 py-1.5">
-            <h2 className="text-xs font-bold text-foreground">Sector Indices</h2>
-          </div>
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6">
-            {nepse && (
-              <SectorCard name="NEPSE" value={(nepse as any).currentValue ?? (nepse as any).close} change={(nepse as any).change ?? 0} perChange={(nepse as any).perChange ?? 0} highlight />
-            )}
-            {(indices.data?.subIndices ?? []).slice(0, 11).map((s) => {
-              const value = (s as any).currentValue ?? (s as any).close ?? 0;
-              const change = (s as any).change ?? (s as any).points ?? 0;
-              const perChange = (s as any).perChange ?? (s as any).percentage ?? 0;
-              return <SectorCard key={s.index} name={s.index.replace(" Index", "").replace("SubIndex", "").trim()} value={value} change={change} perChange={perChange} />;
-            })}
-            {!indices.data && Array.from({ length: 12 }).map((_, i) => <div key={i} className="animate-pulse border-r border-t border-border p-2"><div className="h-2 w-12 rounded bg-surface-2" /><div className="mt-1 h-3 w-10 rounded bg-surface-2" /></div>)}
-          </div>
-        </div>
-
-        {/* Right: Paper Trading section */}
-        <div className="rounded-lg border border-border bg-surface shadow-sm overflow-hidden">
-          <div className="border-b border-border px-3 py-1.5">
-            <h2 className="text-xs font-bold text-foreground">Paper Trading</h2>
-          </div>
-          <div className="flex flex-col items-center px-3 py-3 text-center">
-            <div className="mb-2 grid h-10 w-10 place-items-center rounded-xl" style={{ background: "rgba(15,110,86,0.1)" }}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0F6E56" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
-              </svg>
-            </div>
-            <h3 className="mb-0.5 text-sm font-bold text-foreground">Demo Trading</h3>
-            <p className="mb-2 text-[10px] text-muted">Virtual NPR 10,00,000 — real prices</p>
-            <Link
-              href="/demo"
-              className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-bold text-white shadow-sm transition hover:opacity-90"
-              style={{ background: "#0F6E56" }}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M5 3l14 9-14 9V3z" />
-              </svg>
-              Open Demo
-            </Link>
-          </div>
-        </div>
-      </div>
-
-      {/* AI Signals + Breakout Signals - side by side */}
+      {/* AI Recommendations - Deep Research Engine (TOP) */}
       <div className="grid gap-3 lg:grid-cols-2">
         {/* Top AI Signals */}
         {allSignals.length > 0 && (
@@ -460,55 +616,6 @@ export default function Dashboard() {
         </section>
       </div>
 
-      {/* Market Scanner - bottom */}
-      <section className="rounded-lg border border-border bg-surface shadow-sm">
-        <div className="flex items-center justify-between border-b border-border px-3 py-1.5">
-          <div className="flex items-center gap-2">
-            <h2 className="text-xs font-bold">🔍 Market Scanner</h2>
-            <span className="animate-pulse rounded bg-primary/10 px-1.5 py-0.5 text-[7px] font-bold text-primary">LIVE</span>
-          </div>
-          <span className="text-[9px] text-muted">Auto-scanning {live.data ? ((live.data as any).data?.length ?? 0) : 0} stocks</span>
-        </div>
-        <div className="grid gap-2 p-2 sm:grid-cols-2 lg:grid-cols-4">
-          {/* High Volume */}
-          <div className="rounded border border-border bg-surface-2 p-2">
-            <div className="mb-1.5 flex items-center gap-1">
-              <span className="text-[10px] font-bold text-blue-400">📊 High Volume</span>
-            </div>
-            <div className="space-y-1">
-              {(live.data as any)?.data
-                ?.filter((r: LiveMarketData) => classifySymbol(r.symbol, r.securityName) !== "DB" && !/\d/.test(r.symbol))
-                ?.sort((a: LiveMarketData, b: LiveMarketData) => b.totalTradeValue - a.totalTradeValue)
-                ?.slice(0, 4)
-                .map((r: LiveMarketData) => (
-                  <Link key={r.symbol} href={`/stock/${r.symbol}`} className="flex items-center justify-between text-[10px] hover:text-primary">
-                    <span className="font-bold">{r.symbol}</span>
-                    <span className="text-muted">{compact(r.totalTradeValue)}</span>
-                  </Link>
-                )) ?? <div className="text-[9px] text-muted">Loading...</div>}
-            </div>
-          </div>
-          {/* Active Stocks */}
-          <div className="rounded border border-primary/30 bg-primary/5 p-2">
-            <div className="mb-1.5 flex items-center gap-1">
-              <span className="text-[10px] font-bold text-primary">⚡ Most Active</span>
-            </div>
-            <div className="space-y-1">
-              {(live.data as any)?.data
-                ?.filter((r: LiveMarketData) => classifySymbol(r.symbol, r.securityName) !== "DB" && !/\d/.test(r.symbol))
-                ?.sort((a: LiveMarketData, b: LiveMarketData) => b.totalTradeQuantity - a.totalTradeQuantity)
-                ?.slice(0, 4)
-                .map((r: LiveMarketData) => (
-                  <Link key={r.symbol} href={`/stock/${r.symbol}`} className="flex items-center justify-between text-[10px] hover:text-primary">
-                    <span className="font-bold">{r.symbol}</span>
-                    <span className="text-muted">{num(r.totalTradeQuantity)}</span>
-                  </Link>
-                )) ?? <div className="text-[9px] text-muted">Loading...</div>}
-            </div>
-          </div>
-        </div>
-      </section>
-
       {/* Buy/Sell Pressure */}
       <div className="grid gap-3 lg:grid-cols-2">
         {/* Buy Pressure */}
@@ -591,7 +698,7 @@ function SectorCard({ name, value, change, perChange, highlight }: { name: strin
 
 /* NewsSection removed — available at /news */
 
-function MarketPanel({ liveData }: { liveData: LiveMarketData[] | undefined }) {
+function MarketPanel({ liveData, noOuterBorder, mounted }: { liveData: LiveMarketData[] | undefined; noOuterBorder?: boolean; mounted?: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const [sortKey, setSortKey] = useState<"percentageChange" | "symbol" | "lastTradedPrice" | "totalTradeQuantity">("symbol");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -627,12 +734,12 @@ function MarketPanel({ liveData }: { liveData: LiveMarketData[] | undefined }) {
   const arrow = (k: typeof sortKey) => sortKey === k ? (sortDir === "asc" ? " ▲" : " ▼") : "";
 
   return (
-    <section className="rounded-xl border border-border bg-surface shadow-sm overflow-hidden">
+    <section className={noOuterBorder ? "" : "rounded-xl border border-border bg-surface shadow-sm overflow-hidden"}>
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5">
         <div className="flex items-center gap-3">
           <h2 className="text-sm font-bold text-foreground">📊 Live Market</h2>
-          <span className="text-[10px] text-muted">{rows.length} stocks</span>
+          <span className="text-[10px] text-muted">{mounted ? rows.length : "..."} stocks</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="hidden items-center gap-0.5 rounded-lg bg-surface-2 p-0.5 text-[10px] font-semibold sm:flex">
@@ -642,13 +749,13 @@ function MarketPanel({ liveData }: { liveData: LiveMarketData[] | undefined }) {
           </div>
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search..." className="w-28 rounded border border-border bg-surface px-2 py-1 text-[10px] outline-none focus:border-primary sm:w-40" />
           <button onClick={() => setExpanded(!expanded)} className="rounded-lg bg-surface-2 px-3 py-1 text-[10px] font-bold text-primary hover:bg-surface-2/80">
-            {expanded ? "Show Less" : `Show All (${rows.length})`}
+            {expanded ? "Show Less" : (mounted ? `Show All (${rows.length})` : "Show All (...)")}
           </button>
         </div>
       </div>
 
-      {/* Table */}
-      <div className="overflow-x-auto" style={{ maxHeight: "500px", overflowY: "auto" }}>
+      {/* Table - Fixed height to match NEPSE Summary panel */}
+      <div className="overflow-x-auto" style={{ maxHeight: noOuterBorder ? "340px" : "500px", overflowY: "auto" }}>
         <table className="w-full text-xs">
           <thead className="sticky top-0 z-10 bg-surface-2 text-[10px] uppercase tracking-wide text-muted">
             <tr>

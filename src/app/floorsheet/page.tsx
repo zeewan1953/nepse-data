@@ -10,6 +10,7 @@ import "./broker-dashboard.css";
 type BrokerAnalysis = {
   generatedAt: number;
   source?: string;
+  error?: string;
   floorCount?: number;
   totals: { trades: number; qty: number; amount: number; brokers: number; stocks: number };
   aggressiveBuy: Array<{ broker: string; stock: string; volume: number; percent: number }>;
@@ -18,6 +19,7 @@ type BrokerAnalysis = {
   zeroSum: Array<{ stock: string; buyer: string; seller: string; net: string }>;
   aiSignals: Array<{ type: string; stock: string; reason: string; confidence: number; level: string }>;
   liveCount: number;
+  liveData?: { advances: number; declines: number; unchanged: number } | null;
 };
 
 /* ─── Market Clock ─── */
@@ -85,6 +87,7 @@ export default function FloorsheetDashboard() {
   const zeroSum = ba.data?.zeroSum || [];
   const aiSignals = ba.data?.aiSignals || [];
   const totals = ba.data?.totals;
+  const apiError = ba.data?.error;
 
   // Global search filter
   const q = globalSearch.trim().toLowerCase();
@@ -179,31 +182,67 @@ export default function FloorsheetDashboard() {
       {/* ── STATS ── */}
       <div className="ba-stats" style={{ marginBottom: 12 }}>
         <div className="ba-stat">
-          <div className="ba-stat-label"><i className="fas fa-exchange-alt" /> Floorsheet Trades</div>
+          <div className="ba-stat-label"><i className="fas fa-exchange-alt" /> {ba.data?.floorCount ? "Floorsheet Trades" : "Live Stocks"}</div>
           <div className="ba-stat-value gold">{totals ? num(totals.trades) : ba.loading ? "..." : "-"}</div>
           <div className="ba-stat-sub">{totals ? `${totals.brokers} brokers, ${totals.stocks} stocks` : "Loading..."}</div>
         </div>
         <div className="ba-stat">
           <div className="ba-stat-label"><i className="fas fa-coins" /> Total Amount</div>
           <div className="ba-stat-value gold">Rs {totals ? compact(totals.amount) : "-"}</div>
-          <div className="ba-stat-sub">{totals ? `${num(totals.qty)} shares traded` : "from floorsheet"}</div>
+          <div className="ba-stat-sub">{totals?.qty ? `${num(totals.qty)} shares traded` : "from live market"}</div>
         </div>
         <div className="ba-stat">
           <div className="ba-stat-label"><i className="fas fa-arrow-up" /> Advances</div>
-          <div className="ba-stat-value green">{num(liveStats?.up ?? 0)}</div>
+          <div className="ba-stat-value green">{num(liveStats?.up ?? ba.data?.liveData?.advances ?? 0)}</div>
           <div className="ba-stat-sub">{liveStats ? `${((liveStats.up / liveStats.stocks) * 100).toFixed(0)}% of ${liveStats.stocks}` : "from live market"}</div>
         </div>
         <div className="ba-stat">
           <div className="ba-stat-label"><i className="fas fa-arrow-down" /> Declines</div>
-          <div className="ba-stat-value red">{num(liveStats?.down ?? 0)}</div>
+          <div className="ba-stat-value red">{num(liveStats?.down ?? ba.data?.liveData?.declines ?? 0)}</div>
           <div className="ba-stat-sub">{liveStats ? `${((liveStats.down / liveStats.stocks) * 100).toFixed(0)}% of ${liveStats.stocks}` : "from live market"}</div>
         </div>
         <div className="ba-stat">
           <div className="ba-stat-label"><i className="fas fa-chart-line" /> Turnover</div>
-          <div className="ba-stat-value blue">Rs {compact(liveStats?.totalAmt ?? 0)}</div>
+          <div className="ba-stat-value blue">Rs {compact(liveStats?.totalAmt ?? totals?.amount ?? 0)}</div>
           <div className="ba-stat-sub">{liveStats ? `${num(liveStats.totalVol)} total volume` : "live market"}</div>
         </div>
       </div>
+
+      {/* ── INFO/ERROR BANNER ── */}
+      {apiError && !ba.loading && (
+        <div style={{
+          background: ba.data?.source?.includes("sample") ? "rgba(75, 140, 250, 0.1)" : (ba.data?.liveCount ?? 0) > 0 ? "rgba(245, 184, 66, 0.1)" : "rgba(245, 101, 101, 0.1)",
+          border: `1px solid ${ba.data?.source?.includes("sample") ? "rgba(75, 140, 250, 0.3)" : (ba.data?.liveCount ?? 0) > 0 ? "rgba(245, 184, 66, 0.3)" : "rgba(245, 101, 101, 0.3)"}`,
+          borderRadius: 12,
+          padding: "12px 16px",
+          marginBottom: 16,
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          flexWrap: "wrap",
+        }}>
+          <i className={`fas ${ba.data?.source?.includes("sample") ? "fa-flask" : (ba.data?.liveCount ?? 0) > 0 ? "fa-info-circle" : "fa-exclamation-triangle"}`}
+             style={{ color: ba.data?.source?.includes("sample") ? "var(--ba-blue)" : (ba.data?.liveCount ?? 0) > 0 ? "var(--ba-gold)" : "var(--ba-red)", fontSize: 18 }} />
+          <span style={{ flex: 1, color: ba.data?.source?.includes("sample") ? "var(--ba-blue)" : (ba.data?.liveCount ?? 0) > 0 ? "var(--ba-gold)" : "var(--ba-red)", fontSize: 13, fontWeight: 500 }}>
+            {apiError}
+          </span>
+          <button
+            onClick={() => { ba.refresh?.(); }}
+            style={{
+              background: ba.data?.source?.includes("sample") ? "var(--ba-blue)" : (ba.data?.liveCount ?? 0) > 0 ? "var(--ba-gold)" : "var(--ba-red)",
+              color: "#fff",
+              border: "none",
+              borderRadius: 8,
+              padding: "6px 14px",
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            <i className="fas fa-sync-alt" style={{ marginRight: 6 }} /> Retry
+          </button>
+        </div>
+      )}
 
       {/* ── OVERVIEW TAB ── */}
       {activeTab === "overview" && (

@@ -1,23 +1,53 @@
 import { getNepse, cached, getPriceHistory, getDailyTradeStats, safeNepseCall } from "@/lib/nepse";
 import type { FloorSheet, FloorSheetItem, LiveMarketData } from "@rumess/nepse-api";
+import { db } from "@/lib/db";
+import { fetchMeroLaganiSummary, calcMeroPercent } from "@/lib/merolagani";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const SURAJ_BASE = "https://nepseapi.surajrimal.dev";
-const PAGE_SIZE = 500;
+
+// Fetch live market from MeroLagani (same as /api/live)
+async function fetchMeroLive(): Promise<LiveMarketData[]> {
+  const mero = await fetchMeroLaganiSummary();
+  if (!mero?.stock?.detail?.length) return [];
+  const rows: LiveMarketData[] = mero.stock.detail.map((s) => {
+    const pc = calcMeroPercent(s);
+    const prevClose = s.lp - s.c;
+    return {
+      securityId: 0,
+      securityName: s.s,
+      symbol: s.s,
+      indexId: 0,
+      openPrice: 0,
+      highPrice: 0,
+      lowPrice: 0,
+      totalTradeQuantity: s.q,
+      totalTradeValue: s.lp * s.q,
+      lastTradedPrice: s.lp,
+      percentageChange: pc,
+      lastUpdatedDateTime: mero.overall?.d ?? "",
+      lastTradedVolume: s.q,
+      previousClose: prevClose,
+      averageTradedPrice: 0,
+    };
+  });
+  return rows.length > 50 ? rows : [];
+}
 
 // Fetch from suraj API (https://nepseapi.surajrimal.dev)
 async function fetchSuraj<T>(path: string): Promise<T | null> {
   try {
     const r = await fetch(`${SURAJ_BASE}${path}`, {
       headers: { "Accept": "application/json" },
-      signal: AbortSignal.timeout(5000), // 5s timeout instead of 12s
+      signal: AbortSignal.timeout(8000), // 8s timeout
       next: { revalidate: 60 },
     });
     if (!r.ok) return null;
     return await r.json() as T;
-  } catch {
+  } catch (e) {
+    console.log(`[broker-analysis] Suraj ${path} error:`, (e as Error)?.message);
     return null;
   }
 }
@@ -28,16 +58,53 @@ async function fetchSurajLive(): Promise<LiveMarketData[]> {
   return data || [];
 }
 
-// Fetch floorsheet - tries suraj API first, then NEPSE direct (same as floorsheet/analysis)
+// Check DB for floorsheet data first
+async function getDBFloorsheet(date: string): Promise<FloorSheetItem[]> {
+  try {
+    const r = await db.execute({
+      sql: `SELECT stockSymbol, buyerMemberId, sellerMemberId,
+            contractQuantity, contractAmount
+            FROM floorsheet_trades
+            WHERE tradeDate = ?
+            ORDER BY tradeOrder ASC`,
+      args: [date],
+    });
+    if (r.rows.length > 0) {
+      console.log(`[broker-analysis] DB floorsheet: ${r.rows.length} items for ${date}`);
+      return r.rows.map((row) => ({
+        stockSymbol: String(row.stockSymbol),
+        buyerMemberId: String(row.buyerMemberId),
+        sellerMemberId: String(row.sellerMemberId),
+        contractQuantity: Number(row.contractQuantity),
+        contractAmount: Number(row.contractAmount),
+      } as FloorSheetItem));
+    }
+  } catch (e) {
+    console.log("[broker-analysis] DB floorsheet error:", (e as Error)?.message);
+  }
+  return [];
+}
+
+function todayStr(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kathmandu" });
+}
+
+// Fetch floorsheet - tries DB first, then suraj API, then NEPSE direct
 async function fetchFloorsheet(): Promise<FloorSheetItem[]> {
-  // 1. Try suraj API first (faster)
+  const today = todayStr();
+
+  // 1. Try DB first (fastest, most reliable)
+  const dbData = await getDBFloorsheet(today);
+  if (dbData.length > 0) return dbData;
+
+  // 2. Try suraj API (faster than NEPSE direct)
   const surajData = await fetchSuraj<{ floorsheet?: FloorSheetItem[] }>("/Floorsheet");
   if (surajData?.floorsheet?.length) {
     console.log(`[broker-analysis] Suraj floorsheet: ${surajData.floorsheet.length} items`);
     return surajData.floorsheet;
   }
 
-  // 2. NEPSE direct (same approach as /api/floorsheet/analysis which works)
+  // 3. NEPSE direct (same approach as /api/floorsheet/analysis)
   try {
     const nepse = getNepse();
     const PAGE = 500;
@@ -285,28 +352,95 @@ async function calcAISignals(liveData: LiveMarketData[]) {
   return signals.slice(0, 4);
 }
 
+// Generate sample broker analysis from live market data when NEPSE floorsheet is unavailable
+function generateSampleBrokerAnalysis(live: LiveMarketData[]) {
+  if (live.length === 0) return null;
+
+  // Sort by turnover to get most active stocks
+  const activeStocks = [...live]
+    .filter((s) => s.totalTradeValue > 100000)
+    .sort((a, b) => b.totalTradeValue - a.totalTradeValue)
+    .slice(0, 40);
+
+  // Generate sample floorsheet items
+  const sampleItems: FloorSheetItem[] = [];
+  const brokerPool = Array.from({ length: 50 }, (_, i) => String(i + 1)); // 50 brokers
+
+  for (const stock of activeStocks) {
+    // Generate 20-50 trades per stock
+    const tradeCount = 20 + Math.floor(Math.random() * 30);
+    const avgPrice = stock.lastTradedPrice;
+    const totalQty = stock.totalTradeQuantity;
+
+    for (let i = 0; i < tradeCount; i++) {
+      const qty = Math.round((totalQty / tradeCount) * (0.5 + Math.random()));
+      const price = avgPrice * (0.98 + Math.random() * 0.04); // ±2% variation
+      const buyer = brokerPool[Math.floor(Math.random() * brokerPool.length)];
+      let seller = brokerPool[Math.floor(Math.random() * brokerPool.length)];
+      while (seller === buyer) seller = brokerPool[Math.floor(Math.random() * brokerPool.length)];
+
+      sampleItems.push({
+        stockSymbol: stock.symbol,
+        buyerMemberId: buyer,
+        sellerMemberId: seller,
+        contractQuantity: qty,
+        contractAmount: qty * price,
+      } as FloorSheetItem);
+    }
+  }
+
+  // Calculate analysis from sample data
+  const { aggressiveBuy, aggressiveSell } = calcAggressiveTrades(sampleItems);
+  const brokerFavorites = calcBrokerFavorites(sampleItems);
+  const zeroSum = calcZeroSum(sampleItems);
+
+  const totalQty = sampleItems.reduce((s, t) => s + t.contractQuantity, 0);
+  const totalAmt = sampleItems.reduce((s, t) => s + t.contractAmount, 0);
+  const uniqueBrokers = new Set([...sampleItems.map((t) => t.buyerMemberId), ...sampleItems.map((t) => t.sellerMemberId)]);
+  const uniqueStocks = new Set(sampleItems.map((t) => t.stockSymbol));
+
+  return {
+    totals: {
+      trades: sampleItems.length,
+      qty: totalQty,
+      amount: totalAmt,
+      brokers: uniqueBrokers.size,
+      stocks: uniqueStocks.size,
+    },
+    aggressiveBuy,
+    aggressiveSell,
+    brokerFavorites,
+    zeroSum,
+    floorCount: sampleItems.length,
+  };
+}
+
 export async function GET() {
   try {
-    // Overall timeout: 35 seconds max (floorsheet can take time)
+    // Overall timeout: 30 seconds max
     const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("API timeout after 35s")), 35000)
+      setTimeout(() => reject(new Error("API timeout after 30s")), 30000)
     );
 
     const data = await Promise.race([
       cached("broker-analysis-full", 10_000, async () => {
         // Fetch all data in parallel from multiple sources
-        const [floorsheet, surajLive, nepseLive, dailyStats] = await Promise.all([
+        const [floorsheet, meroLive, surajLive, nepseLive, dailyStats] = await Promise.all([
           fetchFloorsheet(),
+          fetchMeroLive(),
           fetchSurajLive(),
           safeNepseCall(() => getNepse().getLiveMarket(), "Live").catch(() => [] as LiveMarketData[]),
           getDailyTradeStats().catch(() => []),
         ]);
 
-      // Use best live data source: suraj > nepse > daily stats
+      // Use best live data source: merolagani > suraj > nepse > daily stats
       let live: LiveMarketData[] = [];
       let source = "none";
 
-      if (surajLive.length > 50) {
+      if (meroLive.length > 50) {
+        live = meroLive;
+        source = "merolagani";
+      } else if (surajLive.length > 50) {
         live = surajLive;
         source = "suraj";
       } else if (Array.isArray(nepseLive) && nepseLive.length > 50) {
@@ -333,32 +467,62 @@ export async function GET() {
         source = "stats";
       }
 
-      // Calculate all derived data from floorsheet
-      const { aggressiveBuy, aggressiveSell } = calcAggressiveTrades(floorsheet);
-      const brokerFavorites = calcBrokerFavorites(floorsheet);
-      const zeroSum = calcZeroSum(floorsheet);
+      // Calculate all derived data from floorsheet OR use sample data if floorsheet unavailable
+      let aggressiveBuy: Array<{ broker: string; stock: string; volume: number; percent: number }> = [];
+      let aggressiveSell: Array<{ broker: string; stock: string; volume: number; percent: number }> = [];
+      let brokerFavorites: Array<{ broker: string; favorites: string[] }> = [];
+      let zeroSum: Array<{ stock: string; buyer: string; seller: string; net: string }> = [];
+      let totalTrades = floorsheet.length;
+      let totalQty = floorsheet.reduce((s, t) => s + t.contractQuantity, 0);
+      let totalAmt = floorsheet.reduce((s, t) => s + t.contractAmount, 0);
+      const uniqueBrokers = new Set([...floorsheet.map((t) => t.buyerMemberId), ...floorsheet.map((t) => t.sellerMemberId)]);
+      const uniqueStocks = new Set(floorsheet.map((t) => t.stockSymbol));
+      let isSampleData = false;
+
+      if (floorsheet.length > 0) {
+        // Real floorsheet data available
+        const result = calcAggressiveTrades(floorsheet);
+        aggressiveBuy = result.aggressiveBuy;
+        aggressiveSell = result.aggressiveSell;
+        brokerFavorites = calcBrokerFavorites(floorsheet);
+        zeroSum = calcZeroSum(floorsheet);
+      } else if (live.length > 0) {
+        // No floorsheet — generate sample broker analysis from live data
+        const sample = generateSampleBrokerAnalysis(live);
+        if (sample) {
+          aggressiveBuy = sample.aggressiveBuy;
+          aggressiveSell = sample.aggressiveSell;
+          brokerFavorites = sample.brokerFavorites;
+          zeroSum = sample.zeroSum;
+          totalTrades = sample.totals.trades;
+          totalQty = sample.totals.qty;
+          totalAmt = sample.totals.amount;
+          isSampleData = true;
+        }
+      }
 
       // AI signals from live data + price history
       const aiSignals = live.length > 0
         ? await calcAISignals(live).catch(() => [])
         : [];
 
-      // Totals from floorsheet
-      const totalTrades = floorsheet.length;
-      const totalQty = floorsheet.reduce((s, t) => s + t.contractQuantity, 0);
-      const totalAmt = floorsheet.reduce((s, t) => s + t.contractAmount, 0);
-      const uniqueBrokers = new Set([...floorsheet.map((t) => t.buyerMemberId), ...floorsheet.map((t) => t.sellerMemberId)]);
-      const uniqueStocks = new Set(floorsheet.map((t) => t.stockSymbol));
+      // Determine error message if no data
+      let error: string | undefined;
+      if (floorsheet.length === 0 && live.length === 0) {
+        error = "No data available. NEPSE API may be unreachable and DB has no synced data. Please sync floorsheet data first.";
+      } else if (floorsheet.length === 0 && isSampleData) {
+        error = "NEPSE floorsheet unavailable — showing simulated broker analysis based on live market data.";
+      }
 
         return {
           generatedAt: Date.now(),
-          source,
+          source: isSampleData ? `${source}+sample` : source,
           totals: {
             trades: totalTrades,
             qty: totalQty,
             amount: totalAmt,
-            brokers: uniqueBrokers.size,
-            stocks: uniqueStocks.size,
+            brokers: uniqueBrokers.size || (live.length > 0 ? Math.round(live.length * 0.3) : 0),
+            stocks: uniqueStocks.size || live.length,
           },
           aggressiveBuy,
           aggressiveSell,
@@ -367,6 +531,12 @@ export async function GET() {
           aiSignals,
           liveCount: live.length,
           floorCount: floorsheet.length,
+          liveData: live.length > 0 ? {
+            advances: live.filter((r) => r.percentageChange > 0).length,
+            declines: live.filter((r) => r.percentageChange < 0).length,
+            unchanged: live.filter((r) => r.percentageChange === 0).length,
+          } : null,
+          error,
         };
       }),
       timeoutPromise,
@@ -387,6 +557,7 @@ export async function GET() {
       aiSignals: [],
       liveCount: 0,
       floorCount: 0,
+      error: "API timeout or error. NEPSE API may be unreachable.",
     });
   }
 }

@@ -1,6 +1,8 @@
-import { cached } from "@/lib/nepse";
-import { getAnomalyLeaderboard } from "@/lib/analysis/anomaly";
-import { findCrossStockPatterns } from "@/lib/analysis/crossStock";
+import { runLeaderboard, detectCrossStockPatterns } from "@/lib/broker_flow_engine";
+import { runRealLeaderboard, detectRealCrossStockPatterns } from "@/lib/broker_flow_real_engine";
+import { hasRealData } from "@/lib/broker_flow_real_data";
+import { DATA_VERSION } from "@/lib/broker_flow_sample_fixtures";
+import { getBrokerFlowCache, saveBrokerFlowCache } from "@/lib/db";
 import type { NextRequest } from "next/server";
 
 export const runtime = "nodejs";
@@ -10,18 +12,35 @@ function todayStr(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kathmandu" });
 }
 
-// Market-wide daily leaderboard: accumulation/distribution + cross-stock patterns
 export async function GET(req: NextRequest) {
   const date = req.nextUrl.searchParams.get("date") || todayStr();
-
   try {
-    const data = await cached(`bf-lb:${date}`, 3_000, async () => {
-      const [leaderboard, patterns] = await Promise.all([
-        getAnomalyLeaderboard(date, 20),
-        findCrossStockPatterns(date, 5, 3, 100000),
-      ]);
-      return { date, ...leaderboard, crossStockPatterns: patterns };
-    });
+    const real = await hasRealData(date);
+    const section = `leaderboard:${real ? "real" : "sample"}:${DATA_VERSION}`;
+    const cached = await getBrokerFlowCache(date, section);
+    if (cached) return Response.json(cached);
+
+    let result;
+    let crossStockPatterns;
+    let source: string;
+    if (real) {
+      const realResult = await runRealLeaderboard(date);
+      if (realResult) {
+        result = realResult;
+        crossStockPatterns = await detectRealCrossStockPatterns(date);
+        source = "real";
+      } else {
+        result = runLeaderboard(date);
+        crossStockPatterns = detectCrossStockPatterns(date);
+        source = "sample";
+      }
+    } else {
+      result = runLeaderboard(date);
+      crossStockPatterns = detectCrossStockPatterns(date);
+      source = "sample";
+    }
+    const data = { date, ...result, crossStockPatterns, source, generatedAt: Date.now() };
+    await saveBrokerFlowCache(date, section, data);
     return Response.json(data);
   } catch (e) {
     return Response.json({ error: (e as Error)?.message ?? "Leaderboard failed" }, { status: 502 });

@@ -1,5 +1,8 @@
-import { cached } from "@/lib/nepse";
-import { scanNextMove } from "@/lib/analysis/scanner";
+import { runScanner } from "@/lib/broker_flow_engine";
+import { runRealScanner } from "@/lib/broker_flow_real_engine";
+import { hasRealData } from "@/lib/broker_flow_real_data";
+import { DATA_VERSION } from "@/lib/broker_flow_sample_fixtures";
+import { getBrokerFlowCache, saveBrokerFlowCache } from "@/lib/db";
 import type { NextRequest } from "next/server";
 
 export const runtime = "nodejs";
@@ -9,15 +12,25 @@ function todayStr(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kathmandu" });
 }
 
-// Best 5 LONG + Best 5 SHORT scanner
 export async function GET(req: NextRequest) {
   const date = req.nextUrl.searchParams.get("date") || todayStr();
-
   try {
-    const data = await cached(`bf-scan:${date}`, 3_000, async () => {
-      const { longPicks, shortPicks } = await scanNextMove(date, 5);
-      return { date, longPicks, shortPicks, generatedAt: Date.now() };
-    });
+    const real = await hasRealData(date);
+    const section = `scanner:${real ? "real" : "sample"}:${DATA_VERSION}`;
+    const cached = await getBrokerFlowCache(date, section);
+    if (cached) return Response.json(cached);
+
+    let result;
+    let source: string;
+    if (real) {
+      result = await runRealScanner(date);
+      source = "real";
+    } else {
+      result = runScanner(date);
+      source = "sample";
+    }
+    const data = { date, ...result, source, generatedAt: Date.now() };
+    await saveBrokerFlowCache(date, section, data);
     return Response.json(data);
   } catch (e) {
     return Response.json({ error: (e as Error)?.message ?? "Scanner failed" }, { status: 502 });

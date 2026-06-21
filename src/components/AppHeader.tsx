@@ -328,26 +328,51 @@ export default function AppHeader() {
                 <div className="absolute right-0 top-full mt-2 w-80 overflow-hidden rounded-xl border border-border bg-surface shadow-xl z-50">
                   <div className="flex items-center justify-between border-b border-border px-3 py-2">
                     <span className="text-sm font-bold text-foreground">Notifications</span>
-                    {notif.unread > 0 && (
+                    {notif.toasts.length > 0 && (
                       <button onClick={notif.clear} className="text-[10px] font-semibold text-primary hover:underline">
                         Clear all
                       </button>
                     )}
                   </div>
-                  <div className="max-h-64 overflow-y-auto">
+                  <div className="max-h-80 overflow-y-auto">
                     {notif.toasts.length === 0 && <div className="px-3 py-6 text-center text-xs text-muted">No notifications yet</div>}
-                    {notif.toasts.map((t) => (
-                      <div key={t.id} className="flex items-start gap-2 border-b border-border px-3 py-2 last:border-0">
-                        <span className="mt-0.5 h-2 w-2 shrink-0 rounded-full" style={{ background: t.type === "news" ? "#0F6E56" : t.type === "broker" ? "#e67e22" : "#3498db" }} />
-                        <div className="min-w-0 flex-1">
-                          <div className="text-xs font-semibold text-foreground">{t.title}</div>
-                          <div className="text-[10px] text-muted line-clamp-2">{t.message}</div>
+                    {notif.toasts.map((t) => {
+                      const typeColors = {
+                        news: "#0F6E56",
+                        broker: "#e67e22",
+                        signal: "#9b59b6",
+                        price: "#3498db",
+                        info: "#95a5a6",
+                      };
+                      const typeLabels = {
+                        news: "📰 News",
+                        broker: "📊 Broker",
+                        signal: "🎯 Signal",
+                        price: "💰 Price",
+                        info: "ℹ️ Info",
+                      };
+                      const timeAgo = Math.floor((Date.now() - t.time) / 60000);
+                      const timeStr = timeAgo < 1 ? "Just now" : timeAgo < 60 ? `${timeAgo}m ago` : `${Math.floor(timeAgo / 60)}h ago`;
+
+                      return (
+                        <div key={t.id} className="flex items-start gap-2 border-b border-border px-3 py-2 last:border-0 hover:bg-surface-2 transition">
+                          <span className="mt-0.5 h-2 w-2 shrink-0 rounded-full" style={{ background: typeColors[t.type] }} />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-start justify-between gap-1">
+                              <div className="text-xs font-semibold text-foreground">{t.title}</div>
+                              <span className="text-[9px] text-muted whitespace-nowrap">{timeStr}</span>
+                            </div>
+                            <div className="text-[10px] text-muted line-clamp-2 mt-0.5">{t.message}</div>
+                            <div className="text-[9px] font-semibold mt-1" style={{ color: typeColors[t.type] }}>
+                              {typeLabels[t.type]}
+                            </div>
+                          </div>
+                          <button onClick={() => notif.dismiss(t.id)} className="text-muted hover:text-foreground shrink-0">
+                            <Icon d={icons.x} size={12} />
+                          </button>
                         </div>
-                        <button onClick={() => notif.dismiss(t.id)} className="text-muted hover:text-foreground">
-                          <Icon d={icons.x} size={12} />
-                        </button>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -357,41 +382,163 @@ export default function AppHeader() {
             <div ref={settingsRef} className="relative hidden sm:block">
               <IconBtn d={icons.settings} active={settingsOpen} onClick={() => toggleOnly("settings")} />
               {settingsOpen && (
-                <div className="absolute right-0 top-full mt-2 w-64 rounded-xl border border-border bg-surface p-3 shadow-xl z-50">
-                  <div className="mb-2 text-xs font-bold text-foreground">Settings</div>
-                  {/* Theme toggle */}
-                  <div className="flex items-center justify-between rounded-lg px-2 py-2 hover:bg-surface-2">
-                    <div className="flex items-center gap-2 text-xs text-foreground">
-                      <Icon d={theme.dark ? icons.moon : icons.sun} size={14} />
-                      <span>{theme.dark ? "Dark Mode" : "Light Mode"}</span>
+                <div className="absolute right-0 top-full mt-2 w-72 max-h-[80vh] overflow-y-auto rounded-xl border border-border bg-surface shadow-xl z-50">
+                  <div className="sticky top-0 border-b border-border bg-surface px-3 py-2">
+                    <span className="text-sm font-bold text-foreground">Settings</span>
+                  </div>
+                  <div className="p-3 space-y-3">
+                    {/* Theme toggle */}
+                    <div className="flex items-center justify-between rounded-lg px-2 py-2 hover:bg-surface-2">
+                      <div className="flex items-center gap-2 text-xs text-foreground">
+                        <Icon d={theme.dark ? icons.moon : icons.sun} size={14} />
+                        <span>{theme.dark ? "Dark Mode" : "Light Mode"}</span>
+                      </div>
+                      <button
+                        onClick={theme.toggle}
+                        className="relative h-5 w-9 rounded-full transition"
+                        style={{ background: theme.dark ? "#0F6E56" : "#ccc" }}
+                      >
+                        <span className="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all" style={{ left: theme.dark ? 18 : 2 }} />
+                      </button>
                     </div>
-                    <button
-                      onClick={theme.toggle}
-                      className="relative h-5 w-9 rounded-full transition"
-                      style={{ background: theme.dark ? "#0F6E56" : "#ccc" }}
-                    >
-                      <span className="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all" style={{ left: theme.dark ? 18 : 2 }} />
-                    </button>
+
+                    <hr className="border-border" />
+
+                    {/* Notifications Section */}
+                    <div>
+                      <div className="text-[10px] font-bold text-muted uppercase tracking-wider mb-2 px-2">Notifications</div>
+                      
+                      {/* Master Toggle */}
+                      <div className="flex items-center justify-between rounded-lg px-2 py-2 hover:bg-surface-2 mb-1">
+                        <div className="flex items-center gap-2 text-xs text-foreground">
+                          <Icon d={icons.bell} size={14} />
+                          <span>All Notifications</span>
+                        </div>
+                        <button
+                          onClick={() => notif.updateSettings({ enabled: !notif.settings.enabled })}
+                          className="relative h-5 w-9 rounded-full transition"
+                          style={{ background: notif.settings.enabled ? "#0F6E56" : "#ccc" }}
+                        >
+                          <span className="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all" style={{ left: notif.settings.enabled ? 18 : 2 }} />
+                        </button>
+                      </div>
+
+                      {/* Notification Types */}
+                      {notif.settings.enabled && (
+                        <div className="space-y-1 ml-2 border-l-2 border-border pl-3">
+                          {/* News */}
+                          <div className="flex items-center justify-between rounded-lg px-2 py-1.5 hover:bg-surface-2">
+                            <div className="flex items-center gap-2">
+                              <span className="h-2 w-2 rounded-full" style={{ background: "#0F6E56" }} />
+                              <span className="text-[11px] text-foreground">News</span>
+                            </div>
+                            <button
+                              onClick={() => notif.toggleType("news")}
+                              className="relative h-4 w-7 rounded-full transition"
+                              style={{ background: notif.settings.news ? "#0F6E56" : "#ccc" }}
+                            >
+                              <span className="absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-all" style={{ left: notif.settings.news ? 14 : 2 }} />
+                            </button>
+                          </div>
+
+                          {/* Broker */}
+                          <div className="flex items-center justify-between rounded-lg px-2 py-1.5 hover:bg-surface-2">
+                            <div className="flex items-center gap-2">
+                              <span className="h-2 w-2 rounded-full" style={{ background: "#e67e22" }} />
+                              <span className="text-[11px] text-foreground">Broker Flow</span>
+                            </div>
+                            <button
+                              onClick={() => notif.toggleType("broker")}
+                              className="relative h-4 w-7 rounded-full transition"
+                              style={{ background: notif.settings.broker ? "#0F6E56" : "#ccc" }}
+                            >
+                              <span className="absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-all" style={{ left: notif.settings.broker ? 14 : 2 }} />
+                            </button>
+                          </div>
+
+                          {/* Signals */}
+                          <div className="flex items-center justify-between rounded-lg px-2 py-1.5 hover:bg-surface-2">
+                            <div className="flex items-center gap-2">
+                              <span className="h-2 w-2 rounded-full" style={{ background: "#9b59b6" }} />
+                              <span className="text-[11px] text-foreground">Trading Signals</span>
+                            </div>
+                            <button
+                              onClick={() => notif.toggleType("signal")}
+                              className="relative h-4 w-7 rounded-full transition"
+                              style={{ background: notif.settings.signal ? "#0F6E56" : "#ccc" }}
+                            >
+                              <span className="absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-all" style={{ left: notif.settings.signal ? 14 : 2 }} />
+                            </button>
+                          </div>
+
+                          {/* Price Alerts */}
+                          <div className="flex items-center justify-between rounded-lg px-2 py-1.5 hover:bg-surface-2">
+                            <div className="flex items-center gap-2">
+                              <span className="h-2 w-2 rounded-full" style={{ background: "#3498db" }} />
+                              <span className="text-[11px] text-foreground">Price Alerts</span>
+                            </div>
+                            <button
+                              onClick={() => notif.toggleType("price")}
+                              className="relative h-4 w-7 rounded-full transition"
+                              style={{ background: notif.settings.price ? "#0F6E56" : "#ccc" }}
+                            >
+                              <span className="absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-all" style={{ left: notif.settings.price ? 14 : 2 }} />
+                            </button>
+                          </div>
+
+                          {/* Info */}
+                          <div className="flex items-center justify-between rounded-lg px-2 py-1.5 hover:bg-surface-2">
+                            <div className="flex items-center gap-2">
+                              <span className="h-2 w-2 rounded-full" style={{ background: "#95a5a6" }} />
+                              <span className="text-[11px] text-foreground">System Info</span>
+                            </div>
+                            <button
+                              onClick={() => notif.toggleType("info")}
+                              className="relative h-4 w-7 rounded-full transition"
+                              style={{ background: notif.settings.info ? "#0F6E56" : "#ccc" }}
+                            >
+                              <span className="absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-all" style={{ left: notif.settings.info ? 14 : 2 }} />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <hr className="border-border" />
+
+                    {/* Sound & Desktop */}
+                    <div>
+                      <div className="text-[10px] font-bold text-muted uppercase tracking-wider mb-2 px-2">Preferences</div>
+                      
+                      {/* Sound */}
+                      <div className="flex items-center justify-between rounded-lg px-2 py-2 hover:bg-surface-2">
+                        <span className="text-xs text-foreground">🔔 Sound</span>
+                        <button
+                          onClick={() => notif.toggleType("sound")}
+                          className="relative h-5 w-9 rounded-full transition"
+                          style={{ background: notif.settings.sound ? "#0F6E56" : "#ccc" }}
+                        >
+                          <span className="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all" style={{ left: notif.settings.sound ? 18 : 2 }} />
+                        </button>
+                      </div>
+
+                      {/* Desktop Notifications */}
+                      <div className="flex items-center justify-between rounded-lg px-2 py-2 hover:bg-surface-2">
+                        <span className="text-xs text-foreground">💻 Desktop</span>
+                        <button
+                          onClick={() => notif.toggleType("desktop")}
+                          className="relative h-5 w-9 rounded-full transition"
+                          style={{ background: notif.settings.desktop ? "#0F6E56" : "#ccc" }}
+                        >
+                          <span className="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all" style={{ left: notif.settings.desktop ? 18 : 2 }} />
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  {/* Notification sound */}
-                  <div className="flex items-center justify-between rounded-lg px-2 py-2 hover:bg-surface-2">
-                    <span className="text-xs text-foreground">Notification Sound</span>
-                    <button
-                      onClick={() => {
-                        const on = localStorage.getItem("notif-sound") !== "off";
-                        localStorage.setItem("notif-sound", on ? "off" : "on");
-                      }}
-                      className="relative h-5 w-9 rounded-full transition"
-                      style={{ background: localStorage.getItem("notif-sound") !== "off" ? "#0F6E56" : "#ccc" }}
-                    >
-                      <span
-                        className="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all"
-                        style={{ left: localStorage.getItem("notif-sound") !== "off" ? 18 : 2 }}
-                      />
-                    </button>
+
+                  <div className="sticky bottom-0 border-t border-border bg-surface px-3 py-2 text-[10px] text-muted text-center">
+                    DARI SIR v2.0 — NEPSE Analytics
                   </div>
-                  <hr className="my-2 border-border" />
-                  <div className="text-[10px] text-muted text-center">DARI SIR v2.0 — NEPSE Analytics</div>
                 </div>
               )}
             </div>
