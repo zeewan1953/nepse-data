@@ -164,9 +164,16 @@ async function loadAll(): Promise<{ rows: LiveMarketData[]; source: string; debu
 
 export async function GET() {
   try {
+    // Test MeroLagani directly first
+    let testMero: any = {};
+    try {
+      const mero = await fetchMeroLaganiSummary();
+      testMero = { got: !!mero, stockCount: mero?.stock?.detail?.length, turnoverCount: mero?.turnover?.detail?.length, firstSample: mero?.turnover?.detail?.[0] ?? null };
+    } catch (e: any) { testMero = { error: e.message }; }
+
     const result = await cached("live", 3_000, loadAll);
     const { rows, source, debugOHLC } = result;
-    return Response.json({ data: rows, count: rows.length, source, debugOHLC });
+    return Response.json({ data: rows, count: rows.length, source, debugOHLC, testMero });
   } catch (e) {
     return Response.json(
       { error: (e as Error)?.message ?? "Failed to load live market" },
