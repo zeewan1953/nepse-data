@@ -473,29 +473,33 @@ export default function BrokerAnalysisPage() {
                 <div className="ba-holding-chart">
                   <div className="chart-title">Net Position by Broker</div>
                   <div className="diverging-bar-chart">
-                    {holdingData.data.brokers.slice(0, 10).map((b) => {
-                      const maxAbs = Math.max(...holdingData.data.brokers.slice(0, 10).map((x) => Math.abs(x.netAmt)), 1);
-                      const pct = (Math.abs(b.netAmt) / maxAbs) * 100;
-                      return (
-                        <div key={b.brokerId} className="diverging-bar-row">
-                          <div className="bar-label">#{b.brokerId}</div>
-                          <div className="bar-track">
-                            {b.netAmt >= 0 ? (
-                              <>
-                                <div className="bar-fill positive" style={{ width: `${pct}%` }} />
-                                <div className="bar-spacer" />
-                              </>
-                            ) : (
-                              <>
-                                <div className="bar-spacer" />
-                                <div className="bar-fill negative" style={{ width: `${pct}%` }} />
-                              </>
-                            )}
+                    {(() => {
+                      const d = holdingData.data!;
+                      const top10 = d.brokers.slice(0, 10);
+                      const maxAbs = Math.max(...top10.map((x) => Math.abs(x.netAmt)), 1);
+                      return top10.map((b) => {
+                        const pct = (Math.abs(b.netAmt) / maxAbs) * 100;
+                        return (
+                          <div key={b.brokerId} className="diverging-bar-row">
+                            <div className="bar-label">#{b.brokerId}</div>
+                            <div className="bar-track">
+                              {b.netAmt >= 0 ? (
+                                <>
+                                  <div className="bar-fill positive" style={{ width: `${pct}%` }} />
+                                  <div className="bar-spacer" />
+                                </>
+                              ) : (
+                                <>
+                                  <div className="bar-spacer" />
+                                  <div className="bar-fill negative" style={{ width: `${pct}%` }} />
+                                </>
+                              )}
+                            </div>
+                            <div className="bar-value">{formatCr(b.netAmt)}</div>
                           </div>
-                          <div className="bar-value">{formatCr(b.netAmt)}</div>
-                        </div>
-                      );
-                    })}
+                        );
+                      });
+                    })()}
                   </div>
                 </div>
               </div>
