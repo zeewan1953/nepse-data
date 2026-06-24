@@ -18,48 +18,18 @@ async function fetchFromMeroLagani(): Promise<{ rows: LiveMarketData[]; source: 
   const mero = await fetchMeroLaganiSummary();
   if (!mero?.stock?.detail?.length) return null;
 
-  // Build OHLC map from turnover detail (has open/high/low) with DB and NEPSE fallback
-  const ohlcFromTurnover = new Map<string, Ohlc>();
+  // Build OHLC map from turnover detail (has open/high/low)
+  const ohlc = new Map<string, { openPrice: number; highPrice: number; lowPrice: number; avgPrice: number }>();
   if (mero.turnover?.detail) {
     for (const t of mero.turnover.detail) {
-      if (t.op || t.h || t.l) {
-        ohlcFromTurnover.set(t.s, { openPrice: t.op, highPrice: t.h, lowPrice: t.l, averageTradedPrice: t.lp });
-      }
+      ohlc.set(t.s, { openPrice: t.op, highPrice: t.h, lowPrice: t.l, avgPrice: t.lp });
     }
-  }
-  // Fallback: fetch OHLC from NEPSE API security list
-  if (ohlcFromTurnover.size === 0) {
-    try {
-      const nepse = getNepse();
-      const securities = await safeNepseCall(() => nepse.getSecurityList(), "Security list OHLC").catch(() => []);
-      if (Array.isArray(securities)) {
-        for (const s of securities) {
-          if (s.activeStatus === "A" && (s as any).openPrice) {
-            ohlcFromTurnover.set(s.symbol, {
-              openPrice: (s as any).openPrice ?? 0,
-              highPrice: (s as any).highPrice ?? 0,
-              lowPrice: (s as any).lowPrice ?? 0,
-              averageTradedPrice: (s as any).averageTradedPrice ?? 0,
-            });
-          }
-        }
-      }
-    } catch { /* nepse ohlc optional */ }
-  }
-  // Last resort: DB OHLC
-  if (ohlcFromTurnover.size === 0) {
-    try {
-      const dbOhlc = await getOhlcMap();
-      for (const [sym, o] of dbOhlc) {
-        if (!ohlcFromTurnover.has(sym)) ohlcFromTurnover.set(sym, o);
-      }
-    } catch { /* db ohlc optional */ }
   }
 
   const rows: LiveMarketData[] = mero.stock.detail.map((s) => {
     const pc = calcMeroPercent(s);
     const prevClose = s.lp - s.c;
-    const o = ohlcFromTurnover.get(s.s);
+    const o = ohlc.get(s.s);
     return {
       securityId: 0,
       securityName: s.s,
@@ -75,7 +45,7 @@ async function fetchFromMeroLagani(): Promise<{ rows: LiveMarketData[]; source: 
       lastUpdatedDateTime: mero.overall?.d ?? "",
       lastTradedVolume: s.q,
       previousClose: prevClose,
-      averageTradedPrice: o?.averageTradedPrice ?? 0,
+      averageTradedPrice: o?.avgPrice ?? 0,
     };
   });
 
