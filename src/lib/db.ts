@@ -5,18 +5,28 @@ import { pathToFileURL } from "node:url";
 import { createClient } from "@libsql/client";
 import type { InArgs } from "@libsql/client";
 
-// ─── Local SQLite database (auth + OHLC market data) ──────────────────────
-let localDbUrl: string;
+// ─── SQLite database (auth + OHLC market data) ────────────────────────────
+const DB_DIR = process.env.VERCEL === "1" ? "/tmp" : path.join(process.cwd(), "data");
 
-if (process.env.VERCEL === "1") {
-  localDbUrl = ":memory:";
-} else {
-  const dataDir = path.join(process.cwd(), "data");
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
+function getDbUrl(): string {
+  if (process.env.VERCEL === "1") {
+    const tmpDb = path.join("/tmp", "darisir.db");
+    // Copy seed DB to /tmp on first cold start
+    if (!fs.existsSync(tmpDb)) {
+      const seedPath = path.join(process.cwd(), "seed", "darisir.db");
+      if (fs.existsSync(seedPath)) {
+        fs.cpSync(seedPath, tmpDb);
+      }
+    }
+    return pathToFileURL(tmpDb).href;
   }
-  localDbUrl = pathToFileURL(path.join(dataDir, "darisir.db")).href;
+  if (!fs.existsSync(DB_DIR)) {
+    fs.mkdirSync(DB_DIR, { recursive: true });
+  }
+  return pathToFileURL(path.join(DB_DIR, "darisir.db")).href;
 }
+
+const localDbUrl = getDbUrl();
 
 export const db = createClient({ url: localDbUrl });
 
