@@ -42,11 +42,13 @@ export function usePoll<T>(url: string, intervalMs: number): State<T> & { refres
 
   useEffect(() => {
     alive.current = true;
+    load();
+    if (intervalMs <= 0) return;
     const tick = async () => {
       await load();
       if (alive.current) timer.current = setTimeout(tick, intervalMs);
     };
-    tick();
+    timer.current = setTimeout(tick, intervalMs);
     return () => {
       alive.current = false;
       if (timer.current) clearTimeout(timer.current);

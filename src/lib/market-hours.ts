@@ -145,6 +145,35 @@ export function isNepseMarketOpen(nptDate?: Date): boolean {
   return session === "pre-open" || session === "open";
 }
 
+/**
+ * Returns the default trade date for the broker analysis page:
+ * - If current NPT time < 3:00 PM → yesterday (floorsheet not yet finalized)
+ * - If current NPT time >= 3:00 PM → today (post-market, data should be available)
+ * Returns YYYY-MM-DD string.
+ */
+export function getDefaultTradeDate(): string {
+  const npt = getNPTNow();
+  const h = npt.getHours();
+  const m = npt.getMinutes();
+  const mins = h * 60 + m;
+
+  // After 3PM NPT → show today
+  if (mins >= 900) return dateToStr(npt);
+
+  // Before 3PM → show yesterday
+  const yesterday = new Date(npt);
+  yesterday.setDate(yesterday.getDate() - 1);
+  return dateToStr(yesterday);
+}
+
+/** Format a Date as YYYY-MM-DD */
+function dateToStr(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 /** Get human-readable market status label */
 export function getMarketStatusLabel(nptDate?: Date): { label: string; color: string } {
   const session = getMarketSession(nptDate);

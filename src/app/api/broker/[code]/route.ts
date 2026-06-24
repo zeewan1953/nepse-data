@@ -33,9 +33,9 @@ async function fetchSide(broker: number, side: "buy" | "sell"): Promise<FloorShe
 
 type Row = { symbol: string; name: string; buyQty: number; buyAmt: number; sellQty: number; sellAmt: number };
 
-export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
-  const { id } = await ctx.params;
-  const broker = Number(id);
+export async function GET(req: Request, ctx: { params: Promise<{ code: string }> }) {
+  const { code } = await ctx.params;
+  const broker = Number(code);
   const url = new URL(req.url);
   const range = url.searchParams.get("range") || "TODAY";
   if (!broker) return Response.json({ error: "Invalid broker number" }, { status: 400 });

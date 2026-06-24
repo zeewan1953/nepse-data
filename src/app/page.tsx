@@ -7,6 +7,7 @@ import type { LiveMarketData, MarketStatus, NepseIndex, NepseSubIndex, TopTenIte
 import { classifySymbol, TYPE_BADGE } from "@/lib/types";
 import { npr, pct, changeClass, num, compact } from "@/lib/format";
 import { useAuth } from "@/lib/useAuth";
+import MarketPanel from "@/components/MarketPanel";
 
 type IndicesResp = { index: NepseIndex[]; subIndices: NepseSubIndex[] };
 type MoversResp = { gainers: TopTenItem[]; losers: TopTenItem[] };
@@ -158,189 +159,9 @@ function ltpOf(g: TopTenItem): number {
 /* ═══════════════════════════════════════════════════════════════
    NEPSE Summary Hero Panel — Light Theme
    ═══════════════════════════════════════════════════════════════ */
-function NepseSummaryHero({ summary, nepaliTime }: { summary: NepsSummary; nepaliTime?: string }) {
-  const isBuy = summary.recommendation.includes("BUY");
-  const isSell = summary.recommendation.includes("SELL");
-  const changePositive = summary.change >= 0;
-
-  const recBadge = isBuy
-    ? "bg-emerald-500 text-white"
-    : isSell
-    ? "bg-red-500 text-white"
-    : "bg-amber-500 text-white";
-
-  return (
-    <section className="rounded-xl border border-border bg-surface shadow-sm">
-      <div className="p-3">
-        {/* Header: Index + Recommendation + Alignment + Nepal Time */}
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-2 pb-2 border-b border-border">
-          <div className="flex items-center gap-2">
-            <span className="text-base">📊</span>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-sm font-black text-foreground">NEPSE Summary</span>
-                {nepaliTime && (
-                  <span className="flex items-center gap-1 rounded-lg bg-primary/10 px-1.5 py-0.5 border border-primary/20">
-                    <span className="text-[10px]">🇳🇵</span>
-                    <span className="text-[8px] font-bold text-primary tabular-nums">{nepaliTime}</span>
-                  </span>
-                )}
-                <span className={`rounded-full px-2 py-0.5 text-[8px] font-bold ${recBadge}`}>
-                  {summary.recommendation}
-                </span>
-              </div>
-              <div className="flex items-baseline gap-1.5 mt-0.5">
-                <span className="text-xl font-black text-foreground tabular-nums">{summary.nepseIndex}</span>
-                <span className={`text-[10px] font-bold tabular-nums ${changePositive ? "text-up" : "text-down"}`}>
-                  {changePositive ? "▲" : "▼"} {Math.abs(summary.change)} ({summary.changePct.toFixed(2)}%)
-                </span>
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-1.5 text-[9px]">
-            <span className="rounded-lg bg-surface-2 px-2 py-0.5 border border-border">
-              <span className="text-muted">Alignment: </span>
-              <span className="font-bold text-foreground">{summary.multiTimeframeAlignment}</span>
-            </span>
-            <span className="rounded-lg bg-surface-2 px-2 py-0.5 border border-border">
-              <span className="text-muted">Sentiment: </span>
-              <span className="font-bold text-foreground">{summary.sentiment}</span>
-            </span>
-          </div>
-        </div>
-
-        {/* Stats Row - Comprehensive Market Data */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5 mb-2">
-          {/* Total Turnover */}
-          <div className="rounded-lg bg-surface-2 border border-border p-2">
-            <div className="text-[8px] text-muted uppercase tracking-wide mb-0.5">Total Turnover</div>
-            <div className="text-xs font-bold text-foreground">{compact(summary.totalValue)}</div>
-          </div>
-
-          {/* Total Traded Shares */}
-          <div className="rounded-lg bg-surface-2 border border-border p-2">
-            <div className="text-[8px] text-muted uppercase tracking-wide mb-0.5">Total Traded Shares</div>
-            <div className="text-xs font-bold text-foreground">{num(summary.totalVolume)}</div>
-          </div>
-
-          {/* Total Transactions */}
-          <div className="rounded-lg bg-surface-2 border border-border p-2">
-            <div className="text-[8px] text-muted uppercase tracking-wide mb-0.5">Total Transactions</div>
-            <div className="text-xs font-bold text-foreground">{num(summary.totalTransactions)}</div>
-          </div>
-
-          {/* Total Scrips Traded */}
-          <div className="rounded-lg bg-surface-2 border border-border p-2">
-            <div className="text-[8px] text-muted uppercase tracking-wide mb-0.5">Total Scrips Traded</div>
-            <div className="text-xs font-bold text-foreground">{summary.totalScripsTraded}</div>
-          </div>
-        </div>
-
-        {/* Market Cap Row */}
-        <div className="grid grid-cols-2 gap-1.5 mb-2">
-          {/* Total Market Cap */}
-          <div className="rounded-lg bg-gradient-to-br from-primary/10 to-surface-2 border border-primary/30 p-2">
-            <div className="text-[8px] text-primary uppercase tracking-wide mb-0.5 font-bold">Total Market Cap</div>
-            <div className="text-sm font-black text-primary">{compact(summary.totalMarketCap)}</div>
-          </div>
-
-          {/* Float Market Cap */}
-          <div className="rounded-lg bg-gradient-to-br from-amber-500/10 to-surface-2 border border-amber-500/30 p-2">
-            <div className="text-[8px] text-amber-500 uppercase tracking-wide mb-0.5 font-bold">Float Market Cap</div>
-            <div className="text-sm font-black text-amber-500">{compact(summary.totalFloatMarketCap)}</div>
-          </div>
-        </div>
-
-        {/* Market Breadth + RSI Row */}
-        <div className="grid grid-cols-2 gap-1.5 mb-2">
-          <div className="rounded-lg bg-surface-2 border border-border p-2">
-            <div className="text-[8px] text-muted uppercase tracking-wide mb-0.5">Market Breadth</div>
-            <div className="flex items-center gap-1.5 text-[10px]">
-              <span className="text-up font-bold">{summary.upCount}▲</span>
-              <span className="text-border">|</span>
-              <span className="text-down font-bold">{summary.downCount}▼</span>
-              <span className="text-border">|</span>
-              <span className="text-muted font-bold">{summary.flatCount}—</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Support/Resistance + Signals */}
-        <div className="grid md:grid-cols-3 gap-1.5">
-          <div className="rounded-lg bg-surface-2 border border-border p-2">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[9px] font-bold text-primary">📅 Daily</span>
-              <span className={`text-[8px] font-bold px-1 py-0.5 rounded ${
-                summary.daily.trend === "Bullish" ? "bg-up-bg text-up" :
-                summary.daily.trend === "Bearish" ? "bg-down-bg text-down" :
-                "bg-surface text-muted"
-              }`}>
-                {summary.daily.trend === "Bullish" ? "▲ Bull" : summary.daily.trend === "Bearish" ? "▼ Bear" : "→ Neutral"}
-              </span>
-            </div>
-            <div className="space-y-0.5 text-[9px]">
-              <div className="flex justify-between">
-                <span className="text-up font-medium">S1: {summary.daily.support.s1}</span>
-                <span className="text-down font-medium">R1: {summary.daily.resistance.r1}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-up font-medium">S2: {summary.daily.support.s2}</span>
-                <span className="text-down font-medium">R2: {summary.daily.resistance.r2}</span>
-              </div>
-            </div>
-          </div>
-          <div className="rounded-lg bg-surface-2 border border-border p-2">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[9px] font-bold text-purple-600">📆 Weekly</span>
-              <span className={`text-[8px] font-bold px-1 py-0.5 rounded ${
-                summary.weekly.trend === "Bullish" ? "bg-up-bg text-up" :
-                summary.weekly.trend === "Bearish" ? "bg-down-bg text-down" :
-                "bg-surface text-muted"
-              }`}>
-                {summary.weekly.trend === "Bullish" ? "▲ Bull" : summary.weekly.trend === "Bearish" ? "▼ Bear" : "→ Neutral"}
-              </span>
-            </div>
-            <div className="space-y-0.5 text-[9px]">
-              <div className="flex justify-between">
-                <span className="text-up font-medium">S1: {summary.weekly.support.s1}</span>
-                <span className="text-down font-medium">R1: {summary.weekly.resistance.r1}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-up font-medium">S2: {summary.weekly.support.s2}</span>
-                <span className="text-down font-medium">R2: {summary.weekly.resistance.r2}</span>
-              </div>
-            </div>
-          </div>
-          <div className="rounded-lg bg-surface-2 border border-border p-2">
-            <div className="text-[9px] font-bold text-amber-600 mb-1">🔑 Key Signals</div>
-            <div className="space-y-0.5 text-[8px]">
-              {summary.accumulation.length > 0 && (
-                <div className="flex items-start gap-1 text-up">
-                  <span className="shrink-0">📈</span>
-                  <span className="truncate">Acc: {summary.accumulation.slice(0, 3).join(", ")}</span>
-                </div>
-              )}
-              {summary.distribution.length > 0 && (
-                <div className="flex items-start gap-1 text-down">
-                  <span className="shrink-0">📉</span>
-                  <span className="truncate">Dist: {summary.distribution.slice(0, 3).join(", ")}</span>
-                </div>
-              )}
-              {summary.accumulation.length === 0 && summary.distribution.length === 0 && (
-                <div className="text-muted">No strong signals</div>
-              )}
-              <div className="text-muted pt-0.5 border-t border-border">
-                MACD: <span className={summary.daily.macd.histogram > 0 ? "text-up" : "text-down"}>
-                  {summary.daily.macd.histogram > 0 ? "Bullish" : "Bearish"}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
+/* ───────────────────────────────────────────────────────────────
+   NEPSE Summary removed — only Live Market remains below
+   ═══════════════════════════════════════════════════════════════ */
 
 function UserGreeting() {
   const { user } = useAuth();
@@ -361,7 +182,6 @@ function UserGreeting() {
 export default function Dashboard() {
   const [mounted, setMounted] = useState(false);
   const [nepaliTime, setNepaliTime] = useState("");
-  const [stableNepseSummary, setStableNepseSummary] = useState<NepsSummary | null>(null);
   const status = usePoll<MarketStatus>("/api/market-status", 2_000);
   const open = status.data?.isOpen?.toUpperCase() === "OPEN";
   const interval = 2_000;
@@ -370,15 +190,7 @@ export default function Dashboard() {
   const signals = usePoll<SignalsResp>("/api/signals", open ? 5 * 60_000 : 10 * 60_000);
   const live = usePersistentPoll<{ data: LiveMarketData[]; count: number }>("/api/live", 30_000);
   const deepResearch = usePoll<DeepResearchResp>("/api/deep-research", open ? 30_000 : 120_000);
-  const nepseSummary = usePoll<NepsSummary>("/api/nepse-summary", open ? 60_000 : 300_000);
   const brokerAnalysis = usePoll<any>("/api/broker-analysis", open ? 60_000 : 300_000);
-
-  // Stabilize NEPSE Summary - only update if data is valid
-  useEffect(() => {
-    if (nepseSummary.data && nepseSummary.data.nepseIndex > 0) {
-      setStableNepseSummary(nepseSummary.data);
-    }
-  }, [nepseSummary.data]);
 
   useEffect(() => {
     setMounted(true);
@@ -432,11 +244,6 @@ export default function Dashboard() {
         {/* User Greeting */}
         <UserGreeting />
       </div>
-
-      {/* 📊 Top Row: NEPSE Summary (Hero Panel) */}
-      {stableNepseSummary && stableNepseSummary.nepseIndex > 0 && (
-        <NepseSummaryHero summary={stableNepseSummary} nepaliTime={nepaliTime} />
-      )}
 
       {/* Live Market - Full Width */}
       <MarketPanel liveData={live.data ? (live.data as { data: LiveMarketData[] }).data : undefined} noOuterBorder mounted={mounted} />
@@ -823,118 +630,9 @@ function SectorCard({ name, value, change, perChange, highlight }: { name: strin
 
 /* NewsSection removed — available at /news */
 
-function MarketPanel({ liveData, noOuterBorder, mounted }: { liveData: LiveMarketData[] | undefined; noOuterBorder?: boolean; mounted?: boolean }) {
-  const [expanded, setExpanded] = useState(false);
-  const [sortKey, setSortKey] = useState<"percentageChange" | "symbol" | "lastTradedPrice" | "totalTradeQuantity">("symbol");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
-  const [filter, setFilter] = useState<"ALL" | "EQ" | "MF">("ALL");
-  const [search, setSearch] = useState("");
-
-  const setSorting = (k: typeof sortKey) => {
-    if (k === sortKey) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    else { setSortKey(k); setSortDir(k === "symbol" ? "asc" : "desc"); }
-  };
-
-  const rows = useMemo(() => {
-    if (!liveData) return [];
-    const list = liveData.filter((r) => {
-      if (/\d/.test(r.symbol)) return false;
-      const sType = classifySymbol(r.symbol, r.securityName);
-      if (filter !== "ALL" && sType !== filter) return false;
-      if (search) {
-        const q = search.toLowerCase();
-        if (!r.symbol.toLowerCase().includes(q) && !(r.securityName ?? "").toLowerCase().includes(q)) return false;
-      }
-      return true;
-    });
-    return [...list].sort((a, b) => {
-      const av = a[sortKey]; const bv = b[sortKey];
-      if (typeof av === "string" || typeof bv === "string") return sortDir === "asc" ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
-      return sortDir === "asc" ? (av as number) - (bv as number) : (bv as number) - (av as number);
-    });
-  }, [liveData, sortKey, sortDir, filter, search]);
-
-  const displayed = expanded ? rows : rows.slice(0, 10);
-
-  const arrow = (k: typeof sortKey) => sortKey === k ? (sortDir === "asc" ? " ▲" : " ▼") : "";
-
-  return (
-    <section className={noOuterBorder ? "" : "rounded-xl border border-border bg-surface shadow-sm overflow-hidden"}>
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5">
-        <div className="flex items-center gap-3">
-          <h2 className="text-sm font-bold text-foreground">📊 Live Market</h2>
-          <span className="text-[10px] text-muted">{mounted ? rows.length : "..."} stocks</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="hidden items-center gap-0.5 rounded-lg bg-surface-2 p-0.5 text-[10px] font-semibold sm:flex">
-            {(["ALL", "EQ", "MF"] as const).map((t) => (
-              <button key={t} onClick={() => setFilter(t)} className={`rounded px-2 py-0.5 transition ${filter === t ? "bg-primary text-white" : "text-muted hover:text-foreground"}`}>{t}</button>
-            ))}
-          </div>
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search..." className="w-28 rounded border border-border bg-surface px-2 py-1 text-[10px] outline-none focus:border-primary sm:w-40" />
-          <button onClick={() => setExpanded(!expanded)} className="rounded-lg bg-surface-2 px-3 py-1 text-[10px] font-bold text-primary hover:bg-surface-2/80">
-            {expanded ? "Show Less" : (mounted ? `Show All (${rows.length})` : "Show All (...)")}
-          </button>
-        </div>
-      </div>
-
-      {/* Table - Fixed height to match NEPSE Summary panel */}
-      <div className="overflow-x-auto" style={{ maxHeight: noOuterBorder ? "340px" : "500px", overflowY: "auto" }}>
-        <table className="w-full text-xs">
-          <thead className="sticky top-0 z-10 bg-surface-2 text-[10px] uppercase tracking-wide text-muted">
-            <tr>
-              <th onClick={() => setSorting("symbol")} className="cursor-pointer px-2 py-1.5 text-left font-semibold hover:text-primary">Symbol{arrow("symbol")}</th>
-              <th className="px-2 py-1.5 text-left font-semibold">Type</th>
-              <th className="px-2 py-1.5 text-left font-semibold">Company</th>
-              <th onClick={() => setSorting("lastTradedPrice")} className="cursor-pointer px-2 py-1.5 text-right font-semibold hover:text-primary">LTP{arrow("lastTradedPrice")}</th>
-              <th onClick={() => setSorting("percentageChange")} className="cursor-pointer px-2 py-1.5 text-right font-semibold hover:text-primary">% Chg{arrow("percentageChange")}</th>
-              <th className="px-2 py-1.5 text-right font-semibold">Open</th>
-              <th className="px-2 py-1.5 text-right font-semibold">High</th>
-              <th className="px-2 py-1.5 text-right font-semibold">Low</th>
-              <th className="px-2 py-1.5 text-right font-semibold">Vol</th>
-              <th className="px-2 py-1.5 text-right font-semibold">Turnover</th>
-            </tr>
-          </thead>
-          <tbody>
-            {!mounted && (
-              <tr><td colSpan={10} className="px-2 py-6 text-center text-muted">Loading market data...</td></tr>
-            )}
-            {mounted && displayed.map((r) => {
-              const chg = r.percentageChange;
-              const bg = chg > 0 ? "bg-green-500" : chg < 0 ? "bg-red-500" : "bg-blue-500";
-              const sType = classifySymbol(r.symbol, r.securityName);
-              return (
-                <tr key={r.symbol} className={`border-t border-border/50 ${bg} transition hover:opacity-90`}>
-                  <td className="px-2 py-1.5">
-                    <Link href={`/stock/${r.symbol}`} className="font-bold text-black hover:underline">
-                      {r.symbol}
-                    </Link>
-                  </td>
-                  <td className="px-2 py-1.5">
-                    <span className={`rounded px-1 py-0.5 text-[9px] font-bold uppercase ${TYPE_BADGE[sType]}`}>{sType}</span>
-                  </td>
-                  <td className="max-w-[180px] truncate px-2 py-1.5 text-black">{r.securityName}</td>
-                  <td className="px-2 py-1.5 text-right font-semibold tabular-nums text-black">{npr(r.lastTradedPrice)}</td>
-                  <td className="px-2 py-1.5 text-right font-bold tabular-nums text-black">{pct(chg)}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums text-black/70">{npr(r.openPrice)}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums text-black/70">{npr(r.highPrice)}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums text-black/70">{npr(r.lowPrice)}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums text-black/70">{num(r.totalTradeQuantity)}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums text-black/70">{compact(r.totalTradeValue)}</td>
-                </tr>
-              );
-            })}
-            {mounted && liveData && displayed.length === 0 && (
-              <tr><td colSpan={10} className="px-2 py-6 text-center text-muted">No data found</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
-}
-
+/* ───────────────────────────────────────────────────────────────
+   MarketPanel extracted → components/MarketPanel.tsx
+   ═══════════════════════════════════════════════════════════════ */
 
 function MoverCard({ title, tone, rows }: { title: string; tone: "up" | "down"; rows: TopTenItem[] }) {
   const chgClass = tone === "up" ? "text-up" : "text-down";
