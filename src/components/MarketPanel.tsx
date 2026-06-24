@@ -5,6 +5,8 @@ import type { LiveMarketData } from "@/lib/types";
 import { classifySymbol, TYPE_BADGE } from "@/lib/types";
 import { npr, pct, compact, num } from "@/lib/format";
 
+const ohlc = (v: number) => v > 0 ? npr(v) : "—";
+
 export default function MarketPanel({ liveData, noOuterBorder, mounted, compact: isCompact }: { liveData: LiveMarketData[] | undefined; noOuterBorder?: boolean; mounted?: boolean; compact?: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const [sortKey, setSortKey] = useState<"percentageChange" | "symbol" | "lastTradedPrice" | "totalTradeQuantity">("symbol");
@@ -99,9 +101,9 @@ export default function MarketPanel({ liveData, noOuterBorder, mounted, compact:
                   <td className="max-w-[180px] truncate px-2 py-1.5 text-foreground">{r.securityName}</td>
                   <td className="px-2 py-1.5 text-right font-semibold tabular-nums text-foreground">{npr(r.lastTradedPrice)}</td>
                   <td className="px-2 py-1.5 text-right font-bold tabular-nums" style={{ color: chg > 0 ? "var(--color-up, #22c55e)" : chg < 0 ? "var(--color-down, #ef4444)" : "var(--color-muted, #888)" }}>{pct(chg)}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums text-muted">{npr(r.openPrice)}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums text-muted">{npr(r.highPrice)}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums text-muted">{npr(r.lowPrice)}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-muted">{ohlc(r.openPrice)}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-muted">{ohlc(r.highPrice)}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-muted">{ohlc(r.lowPrice)}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums text-muted">{num(r.totalTradeQuantity)}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums text-muted">{compact(r.totalTradeValue)}</td>
                 </tr>
