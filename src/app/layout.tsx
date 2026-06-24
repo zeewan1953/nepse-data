@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "DARI SIR — NEPSE Live Market",
+  title: "AXION — NEPSE Analytics",
   description:
     "Live Nepal Stock Exchange market watch, floorsheet, charts and portfolio tracking.",
 };

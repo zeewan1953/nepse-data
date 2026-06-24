@@ -219,7 +219,7 @@ export default function AppHeader() {
               </svg>
             </div>
             <div className="leading-tight">
-              <div className="text-[15px] font-semibold" style={{ color: "#1a1a1a" }}>DARI SIR</div>
+              <div className="text-[15px] font-semibold" style={{ color: "#1a1a1a" }}>AXION</div>
               <div className="text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: "#1D9E75" }}>NEPSE ANALYTICS</div>
             </div>
           </Link>
@@ -547,7 +547,7 @@ export default function AppHeader() {
                   </div>
 
                   <div className="sticky bottom-0 border-t border-border bg-surface px-3 py-2 text-[10px] text-muted text-center">
-                    DARI SIR v2.0 — NEPSE Analytics
+                    AXION v2.0 — NEPSE Analytics
                   </div>
                 </div>
               )}
@@ -807,9 +807,9 @@ function LoginModal({ mode, setMode, onClose }: { mode: "login" | "signup"; setM
 
         <div className="mb-4 flex items-center gap-2">
           <span className="grid h-8 w-8 place-items-center rounded-lg text-sm font-black text-white" style={{ background: "#0F6E56" }}>
-            D
+            A
           </span>
-          <span className="text-lg font-extrabold text-foreground">DARI SIR</span>
+          <span className="text-lg font-extrabold text-foreground">AXION</span>
         </div>
 
         <h2 className="mb-1 text-base font-bold text-foreground">{mode === "login" ? "Welcome back" : "Create account"}</h2>

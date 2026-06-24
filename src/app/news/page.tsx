@@ -319,7 +319,7 @@ export default function NewsPage() {
       {/* Footer */}
       <div className="rounded-xl border border-border bg-surface p-4 text-center">
         <p className="text-xs text-muted">
-          News auto-refreshes every 5 minutes · Powered by DARI SIR
+          News auto-refreshes every 5 minutes · Powered by AXION
         </p>
       </div>
     </div>

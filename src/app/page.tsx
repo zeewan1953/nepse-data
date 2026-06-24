@@ -419,12 +419,12 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-4">
-      {/* Compact Header: DARI SIR + Subtitle */}
+      {/* Compact Header: AXION + Subtitle */}
       <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-border/50">
         <div className="flex items-center gap-3">
-          {/* DARI SIR Title */}
+          {/* AXION Title */}
           <div>
-            <h1 className="text-2xl font-black text-foreground tracking-tight">DARI SIR</h1>
+            <h1 className="text-2xl font-black text-foreground tracking-tight">AXION</h1>
             <p className="text-[10px] text-muted font-medium">Nepal Stock Exchange — live dashboard</p>
           </div>
         </div>
