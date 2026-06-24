@@ -18,12 +18,23 @@ async function fetchFromMeroLagani(): Promise<{ rows: LiveMarketData[]; source: 
   const mero = await fetchMeroLaganiSummary();
   if (!mero?.stock?.detail?.length) return null;
 
-  // Build OHLC map from turnover detail (has open/high/low)
+  // Build OHLC map from turnover detail (has open/high/low) with DB fallback
   const ohlcFromTurnover = new Map<string, Ohlc>();
   if (mero.turnover?.detail) {
     for (const t of mero.turnover.detail) {
-      ohlcFromTurnover.set(t.s, { openPrice: t.op, highPrice: t.h, lowPrice: t.l, averageTradedPrice: t.lp });
+      if (t.op || t.h || t.l) {
+        ohlcFromTurnover.set(t.s, { openPrice: t.op, highPrice: t.h, lowPrice: t.l, averageTradedPrice: t.lp });
+      }
     }
+  }
+  // Fallback to DB OHLC for stocks missing from turnover
+  if (ohlcFromTurnover.size === 0) {
+    try {
+      const dbOhlc = await getOhlcMap();
+      for (const [sym, o] of dbOhlc) {
+        if (!ohlcFromTurnover.has(sym)) ohlcFromTurnover.set(sym, o);
+      }
+    } catch { /* db ohlc optional */ }
   }
 
   const rows: LiveMarketData[] = mero.stock.detail.map((s) => {
