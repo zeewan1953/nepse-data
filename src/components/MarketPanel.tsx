@@ -86,10 +86,10 @@ export default function MarketPanel({ liveData, noOuterBorder, mounted, compact:
             )}
             {mounted && displayed.map((r) => {
               const chg = r.percentageChange;
-              const rowBg = chg > 0 ? "opacity-80 hover:opacity-100" : chg < 0 ? "opacity-90 hover:opacity-100" : "";
+              const rowBg = chg > 0 ? "opacity-80 hover:opacity-100" : chg < 0 ? "opacity-90 hover:opacity-100" : "opacity-80 hover:opacity-100";
               const sType = classifySymbol(r.symbol, r.securityName);
               return (
-                <tr key={r.symbol} className={`border-t border-border/50 ${rowBg} transition`} style={chg > 0 ? { background: "rgba(34,197,94,0.08)" } : chg < 0 ? { background: "rgba(239,68,68,0.08)" } : {}}>
+                <tr key={r.symbol} className={`border-t border-border/50 ${rowBg} transition`} style={chg > 0 ? { background: "rgba(34,197,94,0.08)" } : chg < 0 ? { background: "rgba(239,68,68,0.08)" } : { background: "rgba(14,165,233,0.08)" }}>
                   <td className="px-2 py-1.5">
                     <Link href={`/stock/${r.symbol}`} className="font-bold text-foreground hover:underline">
                       {r.symbol}
@@ -100,7 +100,7 @@ export default function MarketPanel({ liveData, noOuterBorder, mounted, compact:
                   </td>
                   <td className="max-w-[180px] truncate px-2 py-1.5 text-foreground">{r.securityName}</td>
                   <td className="px-2 py-1.5 text-right font-semibold tabular-nums text-foreground">{npr(r.lastTradedPrice)}</td>
-                  <td className="px-2 py-1.5 text-right font-bold tabular-nums" style={{ color: chg > 0 ? "var(--color-up, #22c55e)" : chg < 0 ? "var(--color-down, #ef4444)" : "var(--color-muted, #888)" }}>{pct(chg)}</td>
+                  <td className="px-2 py-1.5 text-right font-bold tabular-nums" style={{ color: chg > 0 ? "#22c55e" : chg < 0 ? "#ef4444" : "#0ea5e9" }}>{pct(chg)}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums text-muted">{ohlc(r.openPrice)}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums text-muted">{ohlc(r.highPrice)}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums text-muted">{ohlc(r.lowPrice)}</td>
