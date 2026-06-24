@@ -43,7 +43,6 @@ const NAV: Array<{ href: string; label: string; icon: string; badge?: boolean }>
   { href: "/orderflow", label: "Order Flow", icon: "📊" },
   { href: "/demo", label: "Demo Trading", icon: "💼" },
   { href: "/floorsheet", label: "Floorsheet", icon: icons.spreadsheet },
-  { href: "/broker-flow", label: "Broker flow", icon: icons.exchange },
   { href: "/news", label: "News", icon: icons.news },
 ];
 
