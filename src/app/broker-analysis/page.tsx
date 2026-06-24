@@ -218,10 +218,6 @@ export default function BrokerAnalysisPage() {
             <div className="value red">{(accDistData.data?.totals as any)?.distributed ?? "—"}</div>
           </div>
           <div className="ba-stat-box">
-            <div className="label">Date</div>
-            <div className="value gold">{selectedDate?.slice(5) || "—"}</div>
-          </div>
-          <div className="ba-stat-box">
             <div className="label">Status</div>
             <div className="value muted">Post-market</div>
           </div>
