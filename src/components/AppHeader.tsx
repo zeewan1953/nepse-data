@@ -196,7 +196,7 @@ function useNPTClock() {
     const tick = () => {
       const now = new Date();
       const npt = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kathmandu" }));
-      setTime(npt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+      setTime(npt.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true }));
     };
     tick();
     const id = setInterval(tick, 1000);

@@ -14,7 +14,7 @@ declare global {
 type Ohlc = { openPrice: number; highPrice: number; lowPrice: number; averageTradedPrice: number };
 
 // Fetch from MeroLagani as PRIMARY source (real NEPSE data)
-async function fetchFromMeroLagani(): Promise<{ rows: LiveMarketData[]; source: string; raw: import("@/lib/merolagani").MeroMarketSummary | null; debugOHLC: any } | null> {
+async function fetchFromMeroLagani(): Promise<{ rows: LiveMarketData[]; source: string; raw: import("@/lib/merolagani").MeroMarketSummary | null } | null> {
   const mero = await fetchMeroLaganiSummary();
   if (!mero?.stock?.detail?.length) return null;
 
@@ -25,9 +25,6 @@ async function fetchFromMeroLagani(): Promise<{ rows: LiveMarketData[]; source: 
       turnoverMap.set(t.s, t);
     }
   }
-
-  // Debug: dump turnover status
-  const debugOHLC = { turnoverCount: mero.turnover?.detail?.length ?? 0, mapSize: turnoverMap.size, sample: mero.turnover?.detail?.[0] ?? null };
 
   const rows: LiveMarketData[] = mero.stock.detail.map((s) => {
     const pc = calcMeroPercent(s);
@@ -53,12 +50,12 @@ async function fetchFromMeroLagani(): Promise<{ rows: LiveMarketData[]; source: 
   });
 
   if (rows.length > 50) {
-    return { rows, source: "merolagani", raw: mero, debugOHLC };
+    return { rows, source: "merolagani", raw: mero };
   }
   return null;
 }
 
-async function loadAll(): Promise<{ rows: LiveMarketData[]; source: string; debugOHLC?: any }> {
+async function loadAll(): Promise<{ rows: LiveMarketData[]; source: string }> {
   // 1. Try MeroLagani first (real NEPSE data via JSON API)
   const meroData = await fetchFromMeroLagani();
   if (meroData) {
@@ -164,16 +161,8 @@ async function loadAll(): Promise<{ rows: LiveMarketData[]; source: string; debu
 
 export async function GET() {
   try {
-    // Test MeroLagani directly first
-    let testMero: any = {};
-    try {
-      const mero = await fetchMeroLaganiSummary();
-      testMero = { got: !!mero, stockCount: mero?.stock?.detail?.length, turnoverCount: mero?.turnover?.detail?.length, firstSample: mero?.turnover?.detail?.[0] ?? null };
-    } catch (e: any) { testMero = { error: e.message }; }
-
-    const result = await cached("live", 3_000, loadAll);
-    const { rows, source, debugOHLC } = result;
-    return Response.json({ data: rows, count: rows.length, source, debugOHLC, testMero });
+    const { rows, source } = await cached("live", 3_000, loadAll);
+    return Response.json({ data: rows, count: rows.length, source });
   } catch (e) {
     return Response.json(
       { error: (e as Error)?.message ?? "Failed to load live market" },

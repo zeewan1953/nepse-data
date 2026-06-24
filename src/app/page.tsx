@@ -181,7 +181,6 @@ function UserGreeting() {
 
 export default function Dashboard() {
   const [mounted, setMounted] = useState(false);
-  const [nepaliTime, setNepaliTime] = useState("");
   const status = usePoll<MarketStatus>("/api/market-status", 2_000);
   const open = status.data?.isOpen?.toUpperCase() === "OPEN";
   const interval = 2_000;
@@ -194,24 +193,6 @@ export default function Dashboard() {
 
   useEffect(() => {
     setMounted(true);
-    
-    // Update Nepali time every second
-    const updateNepaliTime = () => {
-      const now = new Date();
-      const nepaliTimeStr = now.toLocaleTimeString('en-US', {
-        timeZone: 'Asia/Kathmandu',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: true
-      });
-      setNepaliTime(nepaliTimeStr);
-    };
-    
-    updateNepaliTime();
-    const timeInterval = setInterval(updateNepaliTime, 1000);
-    
-    return () => clearInterval(timeInterval);
   }, []);
 
   const nepse =
