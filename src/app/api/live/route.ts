@@ -26,10 +26,15 @@ async function fetchFromMeroLagani(): Promise<{ rows: LiveMarketData[]; source: 
     }
   }
 
-  const rows: LiveMarketData[] = mero.stock.detail.map((s) => {
+  const rows: LiveMarketData[] = mero.stock.detail.map((s, idx) => {
     const pc = calcMeroPercent(s);
     const prevClose = s.lp - s.c;
     const t = turnoverMap.get(s.s);
+    // debug: first 3 stocks
+    if (idx < 3) {
+      const _oh = t?.op ?? 0;
+      console.log(`OHLC DEBUG ${s.s}: turnover_found=${!!t} op=${_oh} h=${t?.h} l=${t?.l}`);
+    }
     return {
       securityId: 0,
       securityName: s.s,
@@ -162,16 +167,7 @@ async function loadAll(): Promise<{ rows: LiveMarketData[]; source: string }> {
 export async function GET() {
   try {
     const { rows, source } = await cached("live", 3_000, loadAll);
-    // Debug: re-fetch MeroLagani to check turnover OHLC
-    let meroSample: Record<string, unknown> = {};
-    try {
-      const mero = await fetchMeroLaganiSummary();
-      if (mero?.turnover?.detail?.length) {
-        const f = mero.turnover.detail[0];
-        meroSample = { s: f.s, op: f.op, h: f.h, l: f.l };
-      }
-    } catch { /* skip */ }
-    return Response.json({ data: rows, count: rows.length, source, _mero: meroSample });
+    return Response.json({ data: rows, count: rows.length, source });
   } catch (e) {
     return Response.json(
       { error: (e as Error)?.message ?? "Failed to load live market" },
