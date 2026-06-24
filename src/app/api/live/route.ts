@@ -14,7 +14,7 @@ declare global {
 type Ohlc = { openPrice: number; highPrice: number; lowPrice: number; averageTradedPrice: number };
 
 // Fetch from MeroLagani as PRIMARY source (real NEPSE data)
-async function fetchFromMeroLagani(): Promise<{ rows: LiveMarketData[]; source: string; raw: import("@/lib/merolagani").MeroMarketSummary | null } | null> {
+async function fetchFromMeroLagani(): Promise<{ rows: LiveMarketData[]; source: string; raw: import("@/lib/merolagani").MeroMarketSummary | null; debugOHLC: any } | null> {
   const mero = await fetchMeroLaganiSummary();
   if (!mero?.stock?.detail?.length) return null;
 
@@ -26,15 +26,13 @@ async function fetchFromMeroLagani(): Promise<{ rows: LiveMarketData[]; source: 
     }
   }
 
-  const rows: LiveMarketData[] = mero.stock.detail.map((s, idx) => {
+  // Debug: dump turnover status
+  const debugOHLC = { turnoverCount: mero.turnover?.detail?.length ?? 0, mapSize: turnoverMap.size, sample: mero.turnover?.detail?.[0] ?? null };
+
+  const rows: LiveMarketData[] = mero.stock.detail.map((s) => {
     const pc = calcMeroPercent(s);
     const prevClose = s.lp - s.c;
     const t = turnoverMap.get(s.s);
-    // debug: first 3 stocks
-    if (idx < 3) {
-      const _oh = t?.op ?? 0;
-      console.log(`OHLC DEBUG ${s.s}: turnover_found=${!!t} op=${_oh} h=${t?.h} l=${t?.l}`);
-    }
     return {
       securityId: 0,
       securityName: s.s,
@@ -55,12 +53,12 @@ async function fetchFromMeroLagani(): Promise<{ rows: LiveMarketData[]; source: 
   });
 
   if (rows.length > 50) {
-    return { rows, source: "merolagani", raw: mero };
+    return { rows, source: "merolagani", raw: mero, debugOHLC };
   }
   return null;
 }
 
-async function loadAll(): Promise<{ rows: LiveMarketData[]; source: string }> {
+async function loadAll(): Promise<{ rows: LiveMarketData[]; source: string; debugOHLC?: any }> {
   // 1. Try MeroLagani first (real NEPSE data via JSON API)
   const meroData = await fetchFromMeroLagani();
   if (meroData) {
@@ -166,8 +164,9 @@ async function loadAll(): Promise<{ rows: LiveMarketData[]; source: string }> {
 
 export async function GET() {
   try {
-    const { rows, source } = await cached("live", 3_000, loadAll);
-    return Response.json({ data: rows, count: rows.length, source });
+    const result = await cached("live", 3_000, loadAll);
+    const { rows, source, debugOHLC } = result;
+    return Response.json({ data: rows, count: rows.length, source, debugOHLC });
   } catch (e) {
     return Response.json(
       { error: (e as Error)?.message ?? "Failed to load live market" },
