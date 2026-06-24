@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 
 export type Lot = {
   id: string;
@@ -36,8 +36,7 @@ function makeId(): string {
 }
 
 function useStore<T extends { id: string }>(key: string) {
-  const [items, setItems] = useState<T[]>([]);
-  useEffect(() => setItems(read<T>(key)), [key]);
+  const [items, setItems] = useState<T[]>(() => read<T>(key));
 
   const persist = useCallback(
     (next: T[]) => {

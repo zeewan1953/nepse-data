@@ -2,7 +2,7 @@
 import { useMemo } from "react";
 import { usePoll } from "@/lib/useLive";
 import type { LiveMarketData, MarketStatus, NepseIndex, NepseSubIndex } from "@/lib/types";
-import { npr, compact, num, pct } from "@/lib/format";
+import { npr, compact, pct } from "@/lib/format";
 
 type LiveResp = { data: LiveMarketData[]; count: number };
 type IndicesResp = { index: NepseIndex[]; subIndices: NepseSubIndex[] };

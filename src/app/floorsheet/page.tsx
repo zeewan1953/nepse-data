@@ -16,7 +16,25 @@ type BrokerAnalysis = {
   aggressiveBuy: Array<{ broker: string; stock: string; volume: number; percent: number }>;
   aggressiveSell: Array<{ broker: string; stock: string; volume: number; percent: number }>;
   brokerFavorites: Array<{ broker: string; favorites: string[] }>;
-  zeroSum: Array<{ stock: string; buyer: string; seller: string; net: string }>;
+  brokerNetHoldings: Array<{
+    broker: string; buyQty: number; sellQty: number; netQty: number;
+    buyAmt: number; sellAmt: number; netAmt: number;
+    stockCount: number; totalVolume: number;
+    topStocks: Array<{ symbol: string; netQty: number; netAmt: number }>;
+  }>;
+  zeroSum: Array<{
+    stock: string; buyer: string; seller: string;
+    netValue: number; netVolume: number;
+    buyValue: number; sellValue: number;
+    buyVolume: number; sellVolume: number;
+    buyerPercent: number; sellerPercent: number;
+    totalTradedValue: number;
+    status: string; statusEmoji: string; confidence: number;
+    brokerBattle: string; winner: string;
+    isInternalRotation: boolean; isContested: boolean;
+    netPercent: number;
+    topBrokers: Array<{ broker: string; buyQty: number; sellQty: number; netQty: number; buyAmt: number; sellAmt: number; netAmt: number }>;
+  }>;
   aiSignals: Array<{ type: string; stock: string; reason: string; confidence: number; level: string }>;
   liveCount: number;
   liveData?: { advances: number; declines: number; unchanged: number } | null;
@@ -57,6 +75,9 @@ export default function FloorsheetDashboard() {
   // UI state
   const [globalSearch, setGlobalSearch] = useState("");
   const [aggSearch, setAggSearch] = useState("");
+  const [stockSearch, setStockSearch] = useState("");
+  const [zeroSumSearch, setZeroSumSearch] = useState("");
+  const [selectedBroker, setSelectedBroker] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"overview" | "broker" | "stock">("overview");
 
   // Live stats
@@ -68,6 +89,13 @@ export default function FloorsheetDashboard() {
     const totalVol = d.reduce((s, r) => s + r.totalTradeQuantity, 0);
     const totalAmt = d.reduce((s, r) => s + r.totalTradeValue, 0);
     return { stocks: d.length, up, down, totalVol, totalAmt };
+  }, [live.data]);
+
+  // All NEPSE stock symbols for search
+  const allStockSymbols = useMemo(() => {
+    const d = (live.data as { data?: LiveMarketData[] })?.data;
+    if (!d?.length) return [];
+    return d.map((r) => r.symbol).sort();
   }, [live.data]);
 
   // Ticker from live data
@@ -124,9 +152,24 @@ export default function FloorsheetDashboard() {
   }, [q, brokerFavorites]);
 
   const filteredZeroSum = useMemo(() => {
-    if (!q) return zeroSum;
-    return zeroSum.filter((z) => z.stock.toLowerCase().includes(q) || z.buyer.includes(q) || z.seller.includes(q));
-  }, [q, zeroSum]);
+    let items = zeroSum;
+    // Zero-sum specific search filter (higher priority)
+    if (zeroSumSearch.trim()) {
+      const sq = zeroSumSearch.trim().toLowerCase();
+      // Find exact match first, then partial matches
+      const exactMatch = items.filter((z) => z.stock.toLowerCase() === sq);
+      if (exactMatch.length > 0) {
+        return exactMatch; // Return exact match immediately
+      }
+      // Otherwise return partial matches
+      items = items.filter((z) => z.stock.toLowerCase().includes(sq));
+    } else if (q) {
+      // Global search filter (only if no specific search)
+      items = items.filter((z) => z.stock.toLowerCase().includes(q) || z.buyer.includes(q) || z.seller.includes(q));
+    }
+    // Limit to top 10 stocks
+    return items.slice(0, 10);
+  }, [q, zeroSumSearch, zeroSum]);
 
   const filteredAiSignals = useMemo(() => {
     if (!q) return aiSignals;
@@ -151,60 +194,61 @@ export default function FloorsheetDashboard() {
 
   return (
     <div className="ba-dashboard">
-      {/* ── HEADER ── */}
-      <div className="ba-header">
-        <div className="ba-logo">
-          <i className="fas fa-brain" /> Broker Analysis
-        </div>
-      </div>
+      {/* ── COMPACT HEADER ── */}
+      <div className="ba-header-compact">
+        <div className="ba-header-row">
+          {/* Logo + Title */}
+          <div className="ba-logo">
+            <i className="fas fa-brain" />
+            <span>Broker Analysis</span>
+          </div>
 
-      {/* ── SEARCH + TABS ROW ── */}
-      <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
-        <div className="ba-search" style={{ flex: 1, minWidth: 200 }}>
-          <i className="fas fa-search" />
-          <input value={globalSearch} onChange={(e) => setGlobalSearch(e.target.value)} placeholder="Search broker, stock, symbol..." />
-        </div>
-        {matchCount >= 0 && (
-          <span className="ba-search-count" style={{ whiteSpace: "nowrap" }}>
-            {matchCount} {matchCount === 1 ? "match" : "matches"}
-          </span>
-        )}
-        <div className="ba-tabs" style={{ margin: 0, border: "none", padding: 0 }}>
-          {(["overview", "broker", "stock"] as const).map((tab) => (
-            <button key={tab} className={`ba-tab ${activeTab === tab ? "active" : ""}`} onClick={() => setActiveTab(tab)}>
-              <i className={`fas ${tab === "overview" ? "fa-th-large" : tab === "broker" ? "fa-building" : "fa-chart-line"}`} />
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
-            </button>
-          ))}
-        </div>
-      </div>
+          {/* Search Bar */}
+          <div className="ba-search-compact">
+            <i className="fas fa-search" />
+            <input value={globalSearch} onChange={(e) => setGlobalSearch(e.target.value)} placeholder="Search broker, stock, symbol..." />
+            {matchCount >= 0 && (
+              <span className="ba-search-count">{matchCount}</span>
+            )}
+          </div>
 
-      {/* ── STATS ── */}
-      <div className="ba-stats" style={{ marginBottom: 12 }}>
-        <div className="ba-stat">
-          <div className="ba-stat-label"><i className="fas fa-exchange-alt" /> {ba.data?.floorCount ? "Floorsheet Trades" : "Live Stocks"}</div>
-          <div className="ba-stat-value gold">{totals ? num(totals.trades) : ba.loading ? "..." : "-"}</div>
-          <div className="ba-stat-sub">{totals ? `${totals.brokers} brokers, ${totals.stocks} stocks` : "Loading..."}</div>
+          {/* Tabs */}
+          <div className="ba-tabs-compact">
+            {(["overview", "broker", "stock"] as const).map((tab) => (
+              <button key={tab} className={`ba-tab-compact ${activeTab === tab ? "active" : ""}`} onClick={() => setActiveTab(tab)}>
+                <i className={`fas ${tab === "overview" ? "fa-th-large" : tab === "broker" ? "fa-building" : "fa-chart-line"}`} />
+                <span>{tab.charAt(0).toUpperCase() + tab.slice(1)}</span>
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="ba-stat">
-          <div className="ba-stat-label"><i className="fas fa-coins" /> Total Amount</div>
-          <div className="ba-stat-value gold">Rs {totals ? compact(totals.amount) : "-"}</div>
-          <div className="ba-stat-sub">{totals?.qty ? `${num(totals.qty)} shares traded` : "from live market"}</div>
-        </div>
-        <div className="ba-stat">
-          <div className="ba-stat-label"><i className="fas fa-arrow-up" /> Advances</div>
-          <div className="ba-stat-value green">{num(liveStats?.up ?? ba.data?.liveData?.advances ?? 0)}</div>
-          <div className="ba-stat-sub">{liveStats ? `${((liveStats.up / liveStats.stocks) * 100).toFixed(0)}% of ${liveStats.stocks}` : "from live market"}</div>
-        </div>
-        <div className="ba-stat">
-          <div className="ba-stat-label"><i className="fas fa-arrow-down" /> Declines</div>
-          <div className="ba-stat-value red">{num(liveStats?.down ?? ba.data?.liveData?.declines ?? 0)}</div>
-          <div className="ba-stat-sub">{liveStats ? `${((liveStats.down / liveStats.stocks) * 100).toFixed(0)}% of ${liveStats.stocks}` : "from live market"}</div>
-        </div>
-        <div className="ba-stat">
-          <div className="ba-stat-label"><i className="fas fa-chart-line" /> Turnover</div>
-          <div className="ba-stat-value blue">Rs {compact(liveStats?.totalAmt ?? totals?.amount ?? 0)}</div>
-          <div className="ba-stat-sub">{liveStats ? `${num(liveStats.totalVol)} total volume` : "live market"}</div>
+
+        {/* Stats Row */}
+        <div className="ba-stats-grid-compact">
+          <div className="ba-stat-card-compact ba-stat-green">
+            <div className="ba-stat-icon"><i className="fas fa-arrow-up" /></div>
+            <div className="ba-stat-content">
+              <div className="ba-stat-label">Advances</div>
+              <div className="ba-stat-value">{num(liveStats?.up ?? ba.data?.liveData?.advances ?? 0)}</div>
+              <div className="ba-stat-sub">{liveStats ? `${((liveStats.up / liveStats.stocks) * 100).toFixed(0)}% of ${liveStats.stocks}` : "from live market"}</div>
+            </div>
+          </div>
+          <div className="ba-stat-card-compact ba-stat-red">
+            <div className="ba-stat-icon"><i className="fas fa-arrow-down" /></div>
+            <div className="ba-stat-content">
+              <div className="ba-stat-label">Declines</div>
+              <div className="ba-stat-value">{num(liveStats?.down ?? ba.data?.liveData?.declines ?? 0)}</div>
+              <div className="ba-stat-sub">{liveStats ? `${((liveStats.down / liveStats.stocks) * 100).toFixed(0)}% of ${liveStats.stocks}` : "from live market"}</div>
+            </div>
+          </div>
+          <div className="ba-stat-card-compact ba-stat-blue">
+            <div className="ba-stat-icon"><i className="fas fa-chart-line" /></div>
+            <div className="ba-stat-content">
+              <div className="ba-stat-label">Turnover</div>
+              <div className="ba-stat-value">Rs {compact(liveStats?.totalAmt ?? totals?.amount ?? 0)}</div>
+              <div className="ba-stat-sub">{liveStats ? `${num(liveStats.totalVol)} total volume` : "live market"}</div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -377,38 +421,502 @@ export default function FloorsheetDashboard() {
             )) : <div className="ba-no-results">{ba.loading ? "Loading floorsheet..." : "No broker data available"}</div>}
           </section>
 
-          {/* Broker Holding Chart */}
-          <div className="ba-section-title">
-            <i className="fas fa-warehouse" /> Broker Net Holding (Kitta) <span className="ba-section-line" />
-          </div>
-          <section className="ba-holding-card">
-            <div className="ba-holding-count">{brokerFavorites.length} active brokers</div>
-            <BrokerHoldingChart favorites={brokerFavorites} />
-          </section>
-
-          {/* Zero-Sum */}
-          {filteredZeroSum.length > 0 && (
+          {/* Deep Broker Analysis */}
+          {ba.data?.brokerNetHoldings && ba.data.brokerNetHoldings.length > 0 && (
             <>
               <div className="ba-section-title">
-                <i className="fas fa-balance-scale-right" /> Zero-Sum Positions {q && <span className="ba-match-badge">{filteredZeroSum.length}</span>} <span className="ba-section-line" />
+                <i className="fas fa-microscope" /> Deep Broker Analysis
+                <span className="ba-section-line" />
               </div>
-              <section className="ba-zero-list">
-                {filteredZeroSum.map((item, i) => (
-                  <div key={i} className="ba-zero-item">
-                    <span className="ba-zero-stock">{item.stock}</span>
-                    <span className="ba-zero-detail">
-                      <i className="fas fa-arrow-up" style={{ color: "var(--ba-green)", marginRight: 4 }} /> Buyer: #{item.buyer}
-                    </span>
-                    <span className="ba-zero-detail">
-                      <i className="fas fa-arrow-down" style={{ color: "var(--ba-red)", marginRight: 4 }} /> Seller: #{item.seller}
-                    </span>
-                    <span className="ba-zero-net" style={{ color: item.net.startsWith("+") ? "var(--ba-green)" : "var(--ba-red)" }}>
-                      {item.net}
-                    </span>
+              <section className="ba-deep-broker-grid">
+                {/* Broker Activity Leaders - FIRST */}
+                <div className="ba-deep-card">
+                  <div className="ba-deep-card-header">
+                    <i className="fas fa-chart-bar" style={{ color: "var(--ba-blue)" }} />
+                    <span>Broker Activity Leaders</span>
                   </div>
-                ))}
+                  <div className="ba-deep-broker-list">
+                    {ba.data.brokerNetHoldings
+                      .sort((a, b) => (b.buyQty + b.sellQty) - (a.buyQty + a.sellQty))
+                      .slice(0, 5)
+                      .map((b, idx) => {
+                        const totalTrades = b.buyQty + b.sellQty;
+                        const maxVol = ba.data!.brokerNetHoldings[0]?.totalVolume || 1;
+                        const activityPercent = (totalTrades / maxVol) * 100;
+                        return (
+                          <div key={b.broker} className="ba-deep-broker-row" onClick={() => setSelectedBroker(b.broker)} style={{ cursor: "pointer" }}>
+                            <div className="ba-deep-rank">#{idx + 1}</div>
+                            <div className="ba-deep-broker-info">
+                              <div className="ba-deep-broker-name">Broker #{b.broker}</div>
+                              <div className="ba-deep-activity-bar">
+                                <div className="ba-deep-activity-fill" style={{ width: `${activityPercent}%` }} />
+                              </div>
+                            </div>
+                            <div className="ba-deep-broker-net">
+                              {num(totalTrades)} qty
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+
+                {/* Top 5 Most Active Brokers */}
+                <div className="ba-deep-card">
+                  <div className="ba-deep-card-header">
+                    <i className="fas fa-fire" style={{ color: "var(--ba-gold)" }} />
+                    <span>Top 5 Most Active Brokers</span>
+                  </div>
+                  <div className="ba-deep-broker-list">
+                    {ba.data.brokerNetHoldings.slice(0, 5).map((b, idx) => {
+                      const isBuyer = b.netQty > 0;
+                      return (
+                        <div key={b.broker} className="ba-deep-broker-row" onClick={() => setSelectedBroker(b.broker)} style={{ cursor: "pointer" }}>
+                          <div className="ba-deep-rank">#{idx + 1}</div>
+                          <div className="ba-deep-broker-info">
+                            <div className="ba-deep-broker-name">Broker #{b.broker}</div>
+                            <div className="ba-deep-broker-meta">{b.stockCount} stocks · {num(b.totalVolume)} qty</div>
+                          </div>
+                          <div className={`ba-deep-broker-net ${isBuyer ? "buy" : "sell"}`}>
+                            {isBuyer ? "▲" : "▼"} {Math.abs(b.netAmt).toFixed(2)} Cr
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Biggest Net Buyers */}
+                <div className="ba-deep-card">
+                  <div className="ba-deep-card-header">
+                    <i className="fas fa-arrow-up" style={{ color: "var(--ba-green)" }} />
+                    <span>Biggest Net Buyers</span>
+                  </div>
+                  <div className="ba-deep-broker-list">
+                    {ba.data.brokerNetHoldings
+                      .filter(b => b.netAmt > 0)
+                      .sort((a, b) => b.netAmt - a.netAmt)
+                      .slice(0, 5)
+                      .map((b, idx) => (
+                        <div key={b.broker} className="ba-deep-broker-row" onClick={() => setSelectedBroker(b.broker)} style={{ cursor: "pointer" }}>
+                          <div className="ba-deep-rank">#{idx + 1}</div>
+                          <div className="ba-deep-broker-info">
+                            <div className="ba-deep-broker-name">Broker #{b.broker}</div>
+                            <div className="ba-deep-broker-meta">Buy: {b.buyAmt.toFixed(2)} Cr · Sell: {b.sellAmt.toFixed(2)} Cr</div>
+                          </div>
+                          <div className="ba-deep-broker-net buy">
+                            +{b.netAmt.toFixed(2)} Cr
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+
+                {/* Biggest Net Sellers */}
+                <div className="ba-deep-card">
+                  <div className="ba-deep-card-header">
+                    <i className="fas fa-arrow-down" style={{ color: "var(--ba-red)" }} />
+                    <span>Biggest Net Sellers</span>
+                  </div>
+                  <div className="ba-deep-broker-list">
+                    {ba.data.brokerNetHoldings
+                      .filter(b => b.netAmt < 0)
+                      .sort((a, b) => a.netAmt - b.netAmt)
+                      .slice(0, 5)
+                      .map((b, idx) => (
+                        <div key={b.broker} className="ba-deep-broker-row" onClick={() => setSelectedBroker(b.broker)} style={{ cursor: "pointer" }}>
+                          <div className="ba-deep-rank">#{idx + 1}</div>
+                          <div className="ba-deep-broker-info">
+                            <div className="ba-deep-broker-name">Broker #{b.broker}</div>
+                            <div className="ba-deep-broker-meta">Buy: {b.buyAmt.toFixed(2)} Cr · Sell: {b.sellAmt.toFixed(2)} Cr</div>
+                          </div>
+                          <div className="ba-deep-broker-net sell">
+                            {b.netAmt.toFixed(2)} Cr
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </div>
               </section>
             </>
+          )}
+
+          {/* All Brokers Net Holdings Map */}
+          {ba.data?.brokerNetHoldings && ba.data.brokerNetHoldings.length > 0 && (
+            <>
+              <div className="ba-section-title-compact">
+                <i className="fas fa-th" /> All Brokers Net Holdings Map ({ba.data.brokerNetHoldings.length} Brokers)
+              </div>
+              <section className="ba-map-container">
+                {/* Stats Summary - Compact */}
+                <div className="ba-stats-grid-mini">
+                  <div className="ba-stat-card-mini">
+                    <div className="ba-stat-label-mini">Net Buyers</div>
+                    <div className="ba-stat-value-mini buy">
+                      {ba.data.brokerNetHoldings.filter(b => b.netQty > 0).length}
+                    </div>
+                  </div>
+                  <div className="ba-stat-card-mini">
+                    <div className="ba-stat-label-mini">Net Sellers</div>
+                    <div className="ba-stat-value-mini sell">
+                      {ba.data.brokerNetHoldings.filter(b => b.netQty < 0).length}
+                    </div>
+                  </div>
+                  <div className="ba-stat-card-mini">
+                    <div className="ba-stat-label-mini">Total Volume</div>
+                    <div className="ba-stat-value-mini gold">
+                      {num(ba.data.brokerNetHoldings.reduce((sum, b) => sum + b.totalVolume, 0))}
+                    </div>
+                  </div>
+                  <div className="ba-stat-card-mini">
+                    <div className="ba-stat-label-mini">Net Flow</div>
+                    <div className={`ba-stat-value-mini ${ba.data.brokerNetHoldings.reduce((sum, b) => sum + b.netAmt, 0) >= 0 ? "buy" : "sell"}`}>
+                      {ba.data.brokerNetHoldings.reduce((sum, b) => sum + b.netAmt, 0) >= 0 ? "+" : ""}{ba.data.brokerNetHoldings.reduce((sum, b) => sum + b.netAmt, 0).toFixed(2)} Cr
+                    </div>
+                  </div>
+                </div>
+
+                {/* Broker Grid Map - Compact */}
+                <div className="ba-broker-map-grid-compact">
+                  {ba.data.brokerNetHoldings.map((b) => {
+                    const isBuyer = b.netQty > 0;
+                    const intensity = Math.min(Math.abs(b.netAmt) / 5, 1);
+                    const bgColor = isBuyer 
+                      ? `rgba(59, 221, 154, ${0.1 + intensity * 0.4})` 
+                      : `rgba(245, 107, 122, ${0.1 + intensity * 0.4})`;
+                    const borderColor = isBuyer ? "var(--ba-green)" : "var(--ba-red)";
+                    
+                    return (
+                      <div key={b.broker} className="ba-broker-map-card-compact" style={{
+                        background: bgColor,
+                        borderColor: borderColor,
+                        cursor: "pointer",
+                      }}
+                      onClick={() => setSelectedBroker(b.broker)}
+                      onMouseEnter={(e) => {
+                        (e.currentTarget as HTMLDivElement).style.transform = "scale(1.05)";
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLDivElement).style.transform = "scale(1)";
+                      }}>
+                        <div className="ba-broker-id-compact">#{b.broker}</div>
+                        <div className="ba-broker-net-compact" style={{ color: borderColor }}>
+                          {isBuyer ? "+" : ""}{b.netAmt} Cr
+                        </div>
+                        <div className="ba-broker-meta-compact">{num(b.totalVolume)} qty</div>
+                        <div className="ba-broker-meta-compact">{b.stockCount} stocks</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            </>
+          )}
+
+          {/* Zero-Sum Detection Engine */}
+          {zeroSum.length > 0 && (
+            <>
+              <div className="ba-section-title-compact">
+                <i className="fas fa-balance-scale-right" /> Zero-Sum Detection Engine (Top 10)
+                {zeroSumSearch && filteredZeroSum.length > 0 && (
+                  <span className="ba-match-badge" style={{ marginLeft: 8 }}>
+                    {filteredZeroSum.length} result{filteredZeroSum.length !== 1 ? 's' : ''} for "{zeroSumSearch.toUpperCase()}"
+                  </span>
+                )}
+                <div className="ba-mini-search" style={{ marginLeft: "auto" }}>
+                  <i className="fas fa-search" />
+                  <input 
+                    value={zeroSumSearch} 
+                    onChange={(e) => setZeroSumSearch(e.target.value)} 
+                    placeholder="Search NEPSE stock..." 
+                    list="nepse-stocks-list"
+                  />
+                  <datalist id="nepse-stocks-list">
+                    {allStockSymbols.map((sym) => (
+                      <option key={sym} value={sym} />
+                    ))}
+                  </datalist>
+                </div>
+              </div>
+              <section className="ba-zero-sum-grid-compact">
+                {filteredZeroSum.map((item, i) => {
+                  const dominanceBarWidth = item.buyerPercent;
+                  const barColor = dominanceBarWidth > 55 ? "var(--ba-green)" : dominanceBarWidth < 45 ? "var(--ba-red)" : "var(--ba-gold)";
+                  
+                  return (
+                    <div key={i} className="ba-zero-sum-card-compact" style={{
+                      borderColor: `${barColor}20`,
+                    }}>
+                      {/* Header: Stock + Status + Confidence */}
+                      <div className="ba-zero-sum-header-compact">
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span className="ba-zero-sum-stock-compact">{item.stock}</span>
+                          <span className="ba-zero-sum-status-compact" style={{
+                            background: `${barColor}15`,
+                            borderColor: `${barColor}40`,
+                            color: barColor,
+                          }}>
+                            {item.statusEmoji} {item.status}
+                          </span>
+                        </div>
+                        <span className="ba-zero-sum-confidence-compact" style={{ color: barColor }}>{item.confidence}%</span>
+                      </div>
+
+                      {/* Dominance Bar - Split green/red bar */}
+                      <div style={{ marginBottom: 6 }}>
+                        <div className="ba-zero-sum-labels-compact">
+                          <span style={{ color: "var(--ba-green)", fontWeight: "700" }}>Buyer {item.buyerPercent}%</span>
+                          <span style={{ color: "var(--ba-red)", fontWeight: "700" }}>Seller {item.sellerPercent}%</span>
+                        </div>
+                        <div className="ba-zero-sum-bar-compact" style={{
+                          position: "relative",
+                          overflow: "hidden",
+                        }}>
+                          {/* Buyer side - GREEN */}
+                          <div style={{
+                            position: "absolute",
+                            left: 0, top: 0, bottom: 0,
+                            width: `${item.buyerPercent}%`,
+                            background: "var(--ba-green)",
+                          }} />
+                          {/* Seller side - RED */}
+                          <div style={{
+                            position: "absolute",
+                            right: 0, top: 0, bottom: 0,
+                            width: `${item.sellerPercent}%`,
+                            background: "var(--ba-red)",
+                          }} />
+                          {/* Divider line at meeting point */}
+                          <div style={{
+                            position: "absolute",
+                            left: `${item.buyerPercent}%`, top: 0, bottom: 0, width: 2,
+                            background: "rgba(255,255,255,0.5)",
+                            zIndex: 1,
+                          }} />
+                        </div>
+                      </div>
+
+                      {/* Compact Stats Row */}
+                      <div className="ba-zero-sum-stats-compact">
+                        <div className="ba-zero-sum-stat-compact">
+                          <span>Net: </span>
+                          <strong style={{ color: item.netValue >= 0 ? "var(--ba-green)" : "var(--ba-red)" }}>
+                            {item.netValue >= 0 ? "+" : ""}{item.netValue} Cr
+                          </strong>
+                        </div>
+                        <div className="ba-zero-sum-stat-compact">
+                          <span>Buy/Sell: </span>
+                          <span style={{ color: "var(--ba-green)" }}>{item.buyValue}</span>
+                          <span style={{ color: "var(--ba-muted)", margin: "0 2px" }}>/</span>
+                          <span style={{ color: "var(--ba-red)" }}>{item.sellValue} Cr</span>
+                        </div>
+                        <div className="ba-zero-sum-stat-compact">
+                          <span>Battle: </span>
+                          <strong style={{ color: "var(--ba-gold)" }}>{item.brokerBattle}</strong>
+                        </div>
+                        <div className="ba-zero-sum-stat-compact">
+                          <span>Winner: </span>
+                          <strong style={{ color: barColor }}>{item.winner.replace("Broker ", "#").replace(" slightly winning", "")}</strong>
+                        </div>
+                      </div>
+
+                      {/* Internal Rotation Flag */}
+                      {item.isInternalRotation && (
+                        <div className="ba-rotation-badge-compact">
+                          <i className="fas fa-sync-alt" />
+                          Internal Rotation Detected
+                        </div>
+                      )}
+
+                      {/* Top Brokers Breakdown */}
+                      {item.topBrokers && item.topBrokers.length > 0 && (
+                        <div className="ba-broker-breakdown" style={{
+                          marginTop: "8px",
+                          paddingTop: "8px",
+                          borderTop: "1px solid var(--border)",
+                        }}>
+                          <div style={{
+                            fontSize: "9px",
+                            fontWeight: "700",
+                            color: "var(--muted)",
+                            marginBottom: "4px",
+                            textTransform: "uppercase",
+                          }}>
+                            <i className="fas fa-users" style={{ marginRight: "4px" }} />
+                            Top Brokers
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+                            {item.topBrokers.slice(0, 3).map((broker, idx) => {
+                              const isNetBuyer = broker.netQty > 0;
+                              return (
+                                <div key={idx} style={{
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                  alignItems: "center",
+                                  fontSize: "9px",
+                                  padding: "2px 4px",
+                                  background: isNetBuyer ? "var(--up-bg)" : "var(--down-bg)",
+                                  borderRadius: "3px",
+                                }}>
+                                  <span style={{ fontWeight: "700", color: "var(--fg)" }}>
+                                    #{broker.broker}
+                                  </span>
+                                  <span style={{ 
+                                    fontWeight: "700", 
+                                    color: isNetBuyer ? "var(--up)" : "var(--down)" 
+                                  }}>
+                                    {isNetBuyer ? "▲" : "▼"} {Math.abs(broker.netAmt)} Cr
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </section>
+            </>
+          )}
+
+          {/* Broker Stock Holdings Popup */}
+          {selectedBroker && ba.data?.brokerNetHoldings && (
+            <div className="ba-broker-popup-overlay" onClick={() => setSelectedBroker(null)} style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: "rgba(0,0,0,0.5)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 1000,
+            }}>
+              <div className="ba-broker-popup" onClick={(e) => e.stopPropagation()} style={{
+                background: "var(--surface)",
+                border: "2px solid var(--border)",
+                borderRadius: "var(--radius-lg)",
+                padding: "20px",
+                maxWidth: "500px",
+                width: "90%",
+                maxHeight: "80vh",
+                overflow: "auto",
+                boxShadow: "0 8px 32px rgba(0,0,0,0.3)",
+              }}>
+                {/* Header */}
+                <div style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: "16px",
+                  paddingBottom: "12px",
+                  borderBottom: "2px solid var(--border)",
+                }}>
+                  <div>
+                    <div style={{ fontSize: "18px", fontWeight: "800", color: "var(--fg)" }}>
+                      <i className="fas fa-building" style={{ color: "var(--gold)", marginRight: "8px" }} />
+                      Broker #{selectedBroker}
+                    </div>
+                    {(() => {
+                      const broker = ba.data!.brokerNetHoldings.find(b => b.broker === selectedBroker);
+                      if (!broker) return null;
+                      const isBuyer = broker.netQty > 0;
+                      return (
+                        <div style={{ fontSize: "12px", color: "var(--muted)", marginTop: "4px" }}>
+                          {broker.stockCount} stocks · {num(broker.totalVolume)} qty · 
+                          <span style={{ color: isBuyer ? "var(--up)" : "var(--down)", fontWeight: "700" }}>
+                            {isBuyer ? "+" : ""}{broker.netAmt} Cr
+                          </span>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                  <button onClick={() => setSelectedBroker(null)} style={{
+                    background: "var(--surface-2)",
+                    border: "1px solid var(--border)",
+                    borderRadius: "50%",
+                    width: "32px",
+                    height: "32px",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "16px",
+                    color: "var(--muted)",
+                  }}>
+                    <i className="fas fa-times" />
+                  </button>
+                </div>
+
+                {/* Stock Holdings List */}
+                <div>
+                  <div style={{
+                    fontSize: "11px",
+                    fontWeight: "700",
+                    color: "var(--muted)",
+                    marginBottom: "8px",
+                    textTransform: "uppercase",
+                  }}>
+                    <i className="fas fa-chart-pie" style={{ marginRight: "4px" }} />
+                    Top Stock Holdings
+                  </div>
+                  {(() => {
+                    const broker = ba.data!.brokerNetHoldings.find(b => b.broker === selectedBroker);
+                    if (!broker || !broker.topStocks || broker.topStocks.length === 0) {
+                      return (
+                        <div style={{ textAlign: "center", padding: "20px", color: "var(--muted)" }}>
+                          No stock holdings data available
+                        </div>
+                      );
+                    }
+                    return (
+                      <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                        {broker.topStocks.map((stock, idx) => {
+                          const isNetBuy = stock.netQty > 0;
+                          return (
+                            <div key={idx} style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              padding: "8px 12px",
+                              background: isNetBuy ? "var(--up-bg)" : "var(--down-bg)",
+                              borderRadius: "6px",
+                              border: `1px solid ${isNetBuy ? "var(--up-soft)" : "var(--down-soft)"}`,
+                            }}>
+                              <Link href={`/stock/${stock.symbol}`} style={{
+                                fontWeight: "700",
+                                fontSize: "14px",
+                                color: "var(--fg)",
+                                textDecoration: "none",
+                              }}>
+                                {stock.symbol}
+                              </Link>
+                              <div style={{ textAlign: "right" }}>
+                                <div style={{
+                                  fontWeight: "700",
+                                  fontSize: "13px",
+                                  color: isNetBuy ? "var(--up)" : "var(--down)",
+                                }}>
+                                  {isNetBuy ? "▲" : "▼"} {Math.abs(stock.netAmt).toFixed(2)} Cr
+                                </div>
+                                <div style={{
+                                  fontSize: "10px",
+                                  color: "var(--muted)",
+                                }}>
+                                  {num(Math.abs(stock.netQty))} qty
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+            </div>
           )}
         </>
       )}
@@ -427,29 +935,69 @@ export default function FloorsheetDashboard() {
                   <tr><th>#</th><th>Stock</th><th>Agg. Buy Broker</th><th>Volume (Cr)</th><th>Agg. Sell Broker</th><th>Volume (Cr)</th></tr>
                 </thead>
                 <tbody>
-                  {Array.from({ length: Math.max(aggressiveBuy.length, aggressiveSell.length) }).map((_, i) => (
-                    <tr key={i}>
-                      <td>{i + 1}</td>
-                      <td><Link href={`/stock/${aggressiveBuy[i]?.stock || aggressiveSell[i]?.stock || ""}`} className="ba-stock-link">{aggressiveBuy[i]?.stock || aggressiveSell[i]?.stock || "-"}</Link></td>
-                      <td style={{ color: "var(--ba-green)" }}>#{aggressiveBuy[i]?.broker || "-"}</td>
-                      <td style={{ color: "var(--ba-green)" }}>{aggressiveBuy[i] ? `+${aggressiveBuy[i].volume.toFixed(2)}` : "-"}</td>
-                      <td style={{ color: "var(--ba-red)" }}>#{aggressiveSell[i]?.broker || "-"}</td>
-                      <td style={{ color: "var(--ba-red)" }}>{aggressiveSell[i] ? `${aggressiveSell[i].volume.toFixed(2)}` : "-"}</td>
-                    </tr>
-                  ))}
+                  {(() => {
+                    // Merge by unique stock symbol to avoid duplicates
+                    const stockMap = new Map<string, { buy: typeof aggressiveBuy[0] | null; sell: typeof aggressiveSell[0] | null }>();
+                    
+                    aggressiveBuy.forEach(item => {
+                      if (!stockMap.has(item.stock)) {
+                        stockMap.set(item.stock, { buy: null, sell: null });
+                      }
+                      stockMap.get(item.stock)!.buy = item;
+                    });
+                    
+                    aggressiveSell.forEach(item => {
+                      if (!stockMap.has(item.stock)) {
+                        stockMap.set(item.stock, { buy: null, sell: null });
+                      }
+                      stockMap.get(item.stock)!.sell = item;
+                    });
+                    
+                    // Sort by total volume (buy + sell)
+                    const sorted = [...stockMap.entries()]
+                      .sort((a, b) => {
+                        const aTotal = (a[1].buy?.volume || 0) + (a[1].sell?.volume || 0);
+                        const bTotal = (b[1].buy?.volume || 0) + (b[1].sell?.volume || 0);
+                        return bTotal - aTotal;
+                      })
+                      .slice(0, 50); // Top 50 unique stocks
+                    
+                    return sorted.map(([stock, data], i) => (
+                      <tr key={stock}>
+                        <td>{i + 1}</td>
+                        <td><Link href={`/stock/${stock}`} className="ba-stock-link">{stock}</Link></td>
+                        <td style={{ color: "var(--ba-green)" }}>#{data.buy?.broker || "-"}</td>
+                        <td style={{ color: "var(--ba-green)" }}>{data.buy ? `+${data.buy.volume.toFixed(2)}` : "-"}</td>
+                        <td style={{ color: "var(--ba-red)" }}>#{data.sell?.broker || "-"}</td>
+                        <td style={{ color: "var(--ba-red)" }}>{data.sell ? `${data.sell.volume.toFixed(2)}` : "-"}</td>
+                      </tr>
+                    ));
+                  })()}
                 </tbody>
               </table>
             ) : <div className="ba-no-results">{ba.loading ? "Loading floorsheet data..." : "No floorsheet data available"}</div>}
           </section>
 
           {/* Zero-Sum Stocks */}
-          {filteredZeroSum.length > 0 && (
+          {zeroSum.length > 0 && (
             <>
               <div className="ba-section-title">
-                <i className="fas fa-balance-scale" /> Contested Stocks (Buy vs Sell) {q && <span className="ba-match-badge">{filteredZeroSum.length}</span>} <span className="ba-section-line" />
+                <i className="fas fa-balance-scale" /> Contested Stocks (Buy vs Sell)
+                {/* Stock Search Bar */}
+                <div className="ba-mini-search" style={{ marginLeft: 12 }}>
+                  <i className="fas fa-search" />
+                  <input
+                    value={stockSearch}
+                    onChange={(e) => setStockSearch(e.target.value)}
+                    placeholder="Search NEPSE stock..."
+                    style={{ width: 180 }}
+                  />
+                </div>
+                {stockSearch && <span className="ba-match-badge" style={{ marginLeft: 8 }}>{filteredZeroSum.length}</span>}
+                <span className="ba-section-line" />
               </div>
               <section className="ba-order-card" style={{ marginBottom: 22 }}>
-                {filteredZeroSum.map((item, i) => (
+                {filteredZeroSum.length > 0 ? filteredZeroSum.map((item, i) => (
                   <div key={i} className="ba-week-item">
                     <div className="ba-week-head">
                       <span className="ba-week-stock"><Link href={`/stock/${item.stock}`}>{item.stock}</Link></span>
@@ -457,17 +1005,21 @@ export default function FloorsheetDashboard() {
                     </div>
                     <div className="ba-week-bar-wrap">
                       <div className="ba-week-marker" style={{
-                        left: "50%",
-                        background: item.net.startsWith("+") ? "var(--ba-green)" : "var(--ba-red)",
+                        left: `${item.buyerPercent}%`,
+                        background: item.netValue >= 0 ? "var(--ba-green)" : "var(--ba-red)",
                       }} />
                     </div>
                     <div className="ba-week-labels">
                       <span style={{ color: "var(--ba-red)" }}>Sell: #{item.seller}</span>
-                      <span style={{ color: item.net.startsWith("+") ? "var(--ba-green)" : "var(--ba-red)", fontWeight: 700 }}>Net: {item.net}</span>
+                      <span style={{ color: item.netValue >= 0 ? "var(--ba-green)" : "var(--ba-red)", fontWeight: 700 }}>Net: {item.netValue >= 0 ? "+" : ""}{item.netValue} Cr</span>
                       <span style={{ color: "var(--ba-green)" }}>Buy: #{item.buyer}</span>
                     </div>
                   </div>
-                ))}
+                )) : (
+                  <div className="ba-no-results">
+                    {stockSearch ? `No matches for "${stockSearch}"` : "No contested stocks detected"}
+                  </div>
+                )}
               </section>
             </>
           )}
@@ -491,8 +1043,8 @@ function BrokerHoldingChart({ favorites }: { favorites: Array<{ broker: string; 
       if (!canvasRef.current) return;
       if (chartRef.current) chartRef.current.destroy();
 
-      const top = favorites.slice(0, 8);
-      const colors = ["#3bdd9a", "#4b8cfa", "#f56b7a", "#f5b842", "#a78bfa", "#f59e0b", "#06b6d4", "#ec4899"];
+      const top = favorites.slice(0, 50);
+      const colors = ["#3bdd9a", "#4b8cfa", "#f56b7a", "#f5b842", "#a78bfa", "#f59e0b", "#06b6d4", "#ec4899", "#10b981", "#8b5cf6", "#ef4444", "#f97316"];
 
       chartRef.current = new Chart(canvasRef.current, {
         type: "bar",
@@ -502,8 +1054,8 @@ function BrokerHoldingChart({ favorites }: { favorites: Array<{ broker: string; 
             label: "Top Stocks Count",
             data: top.map((b) => b.favorites.length),
             backgroundColor: top.map((_, i) => colors[i % colors.length]),
-            borderRadius: 8,
-            barThickness: 24,
+            borderRadius: 6,
+            barThickness: 18,
           }],
         },
         options: {
@@ -538,5 +1090,5 @@ function BrokerHoldingChart({ favorites }: { favorites: Array<{ broker: string; 
     return () => { cancelled = true; if (chartRef.current) chartRef.current.destroy(); };
   }, [favorites]);
 
-  return <div style={{ height: Math.max(200, favorites.length * 40) }}><canvas ref={canvasRef} /></div>;
+  return <div style={{ height: Math.max(300, Math.min(favorites.length * 28, 800)) }}><canvas ref={canvasRef} /></div>;
 }

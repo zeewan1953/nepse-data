@@ -160,6 +160,22 @@ async function migrateSchema(): Promise<void> {
     await db.execute("CREATE INDEX IF NOT EXISTS idx_intraday_symbol_ts ON intraday_candles(symbol, ts)");
   } catch { /* indexes may already exist */ }
 
+  // MeroLagani daily broker summary (REAL data from MeroLagani API)
+  // Saved at 3:30 PM daily after market close
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS merolagani_broker_daily (
+      tradeDate TEXT NOT NULL,
+      brokerCode TEXT NOT NULL,
+      brokerName TEXT NOT NULL,
+      purchaseAmt REAL NOT NULL DEFAULT 0,
+      sellAmt REAL NOT NULL DEFAULT 0,
+      netAmt REAL NOT NULL DEFAULT 0,
+      totalAmt REAL NOT NULL DEFAULT 0,
+      savedAt INTEGER NOT NULL,
+      PRIMARY KEY (tradeDate, brokerCode)
+    )
+  `);
+
   // Broker flow analytics cache — stores computed JSON per date+section
   await db.execute(`
     CREATE TABLE IF NOT EXISTS broker_flow_cache (
@@ -550,4 +566,71 @@ export async function saveBrokerFlowCache(date: string, section: string, data: u
           ON CONFLICT(date, section) DO UPDATE SET payload=excluded.payload, savedAt=excluded.savedAt`,
     args: [date, section, payload, Date.now()],
   });
+}
+
+// ─── MeroLagani Broker Daily Data (REAL data saved at 3:30 PM) ─────────────
+export type MeroBrokerDaily = {
+  tradeDate: string;
+  brokerCode: string;
+  brokerName: string;
+  purchaseAmt: number;
+  sellAmt: number;
+  netAmt: number;
+  totalAmt: number;
+};
+
+// Save MeroLagani broker data for a specific date
+export async function saveMeroLaganiBrokerDaily(date: string, brokers: MeroBrokerDaily[]): Promise<number> {
+  if (!brokers.length || !date) return 0;
+  const now = Date.now();
+  // Upsert: insert or update if exists
+  const statements = brokers.map((b) => ({
+    sql: `INSERT INTO merolagani_broker_daily(tradeDate, brokerCode, brokerName, purchaseAmt, sellAmt, netAmt, totalAmt, savedAt)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(tradeDate, brokerCode) DO UPDATE SET
+            brokerName=excluded.brokerName,
+            purchaseAmt=excluded.purchaseAmt,
+            sellAmt=excluded.sellAmt,
+            netAmt=excluded.netAmt,
+            totalAmt=excluded.totalAmt,
+            savedAt=excluded.savedAt`,
+    args: [date, b.brokerCode, b.brokerName, b.purchaseAmt, b.sellAmt, b.netAmt, b.totalAmt, now],
+  }));
+  await db.batch(statements, "write");
+  return brokers.length;
+}
+
+// Get MeroLagani broker data for a specific date
+export async function getMeroLaganiBrokerDaily(date: string): Promise<MeroBrokerDaily[]> {
+  const r = await db.execute({
+    sql: `SELECT tradeDate, brokerCode, brokerName, purchaseAmt, sellAmt, netAmt, totalAmt
+          FROM merolagani_broker_daily
+          WHERE tradeDate = ?
+          ORDER BY ABS(netAmt) DESC`,
+    args: [date],
+  });
+  return r.rows.map((row) => ({
+    tradeDate: String(row.tradeDate),
+    brokerCode: String(row.brokerCode),
+    brokerName: String(row.brokerName),
+    purchaseAmt: Number(row.purchaseAmt),
+    sellAmt: Number(row.sellAmt),
+    netAmt: Number(row.netAmt),
+    totalAmt: Number(row.totalAmt),
+  }));
+}
+
+// Get latest available date for MeroLagani broker data
+export async function getLatestMeroBrokerDate(): Promise<string | null> {
+  const r = await db.execute("SELECT MAX(tradeDate) as d FROM merolagani_broker_daily");
+  return r.rows[0]?.d ? String(r.rows[0].d) : null;
+}
+
+// Check if data exists for a date
+export async function hasMeroBrokerData(date: string): Promise<boolean> {
+  const r = await db.execute({
+    sql: "SELECT COUNT(*) as cnt FROM merolagani_broker_daily WHERE tradeDate = ?",
+    args: [date],
+  });
+  return Number(r.rows[0]?.cnt ?? 0) > 0;
 }

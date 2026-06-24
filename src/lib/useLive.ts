@@ -68,27 +68,28 @@ export function usePersistentPoll<T>(
   const storageKey = `ppoll:${url}`;
   const FIVE_MIN = 5 * 60 * 1000;
 
-  const getCached = (): { data: T | null; updatedAt: number | null } => {
-    if (typeof window === "undefined") return { data: null, updatedAt: null };
+  const [state, setState] = useState<State<T>>({
+    data: null,
+    error: null,
+    loading: true,
+    updatedAt: null,
+  });
+  const [marketOpen, setMarketOpen] = useState(() => isNepseMarketOpen());
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hydrated = useRef(false);
+
+  // Hydrate from localStorage on client only — prevents hydration mismatch
+  useEffect(() => {
+    if (hydrated.current) return;
+    hydrated.current = true;
     try {
       const raw = localStorage.getItem(storageKey);
       if (raw) {
         const parsed = JSON.parse(raw);
-        return { data: parsed.data as T, updatedAt: parsed.updatedAt as number };
+        setState({ data: parsed.data as T, error: null, loading: false, updatedAt: parsed.updatedAt as number });
       }
     } catch { /* ignore */ }
-    return { data: null, updatedAt: null };
-  };
-
-  const cached = getCached();
-  const [state, setState] = useState<State<T>>({
-    data: cached.data,
-    error: null,
-    loading: cached.data !== null ? false : true,
-    updatedAt: cached.updatedAt,
-  });
-  const [marketOpen, setMarketOpen] = useState(() => isNepseMarketOpen());
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  }, [storageKey]);
   const alive = useRef(true);
 
   const load = useCallback(async () => {

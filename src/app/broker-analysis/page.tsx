@@ -79,18 +79,31 @@ export default function BrokerAnalysisPage() {
   const availableDates = dateData.data?.dates || [];
   const hasData = dateData.data && dateData.data.totals.trades > 0;
 
-  // Filtered stocks
+  // Filtered stocks - signals first, then by buy volume
   const filteredStocks = useMemo(() => {
     if (!accDistData.data?.stocks) return [];
-    if (!stockFilter) return accDistData.data.stocks.slice(0, 24);
-    const q = stockFilter.toLowerCase();
-    return accDistData.data.stocks
-      .filter((s) => s.symbol.toLowerCase().includes(q) || s.name?.toLowerCase().includes(q))
-      .slice(0, 24);
+    let items = accDistData.data.stocks;
+    if (stockFilter) {
+      const q = stockFilter.toLowerCase();
+      items = items.filter((s) => s.symbol.toLowerCase().includes(q) || s.name?.toLowerCase().includes(q));
+    }
+    // Signal stocks first, then by total traded value
+    return items.sort((a, b) => {
+      const aSig = a.signal !== "NEUTRAL" ? 1 : 0;
+      const bSig = b.signal !== "NEUTRAL" ? 1 : 0;
+      if (aSig !== bSig) return bSig - aSig;
+      return (b.buyAmt + b.sellAmt) - (a.buyAmt + a.sellAmt);
+    }).slice(0, 24);
   }, [accDistData.data, stockFilter]);
 
-  const topAccumulation = filteredStocks.filter((s) => s.netFlow > 0).slice(0, 10);
-  const topDistribution = filteredStocks.filter((s) => s.netFlow < 0).sort((a, b) => a.netFlow - b.netFlow).slice(0, 10);
+  const topAccumulation = filteredStocks
+    .filter((s) => s.signal === "ACCUMULATION")
+    .sort((a, b) => b.buyAmt - a.buyAmt)
+    .slice(0, 10);
+  const topDistribution = filteredStocks
+    .filter((s) => s.signal === "DISTRIBUTION")
+    .sort((a, b) => b.sellAmt - a.sellAmt)
+    .slice(0, 10);
   const topBrokers = dateData.data?.netFlow?.slice(0, 20) || [];
 
   return (
@@ -148,11 +161,11 @@ export default function BrokerAnalysisPage() {
             </div>
             <div className="ba-stat-box">
               <div className="label">Accumulated</div>
-              <div className="value green">{accDistData.data?.totals.accumulated ?? "—"}</div>
+              <div className="value green">{(accDistData.data?.totals as any)?.accumulated ?? "—"}</div>
             </div>
             <div className="ba-stat-box">
               <div className="label">Distributed</div>
-              <div className="value red">{accDistData.data?.totals.distributed ?? "—"}</div>
+              <div className="value red">{(accDistData.data?.totals as any)?.distributed ?? "—"}</div>
             </div>
           </div>
         </div>
@@ -212,7 +225,7 @@ export default function BrokerAnalysisPage() {
                 topAccumulation.map((s, i) => (
                   <div key={i} className="ba-acc-item">
                     <span className="symbol">{s.symbol}</span>
-                    <span className="amount">+{formatCr(s.netFlow)}</span>
+                    <span className="amount">+{formatCr(s.buyAmt)}</span>
                   </div>
                 ))
               ) : (
@@ -230,7 +243,7 @@ export default function BrokerAnalysisPage() {
                 topDistribution.map((s, i) => (
                   <div key={i} className="ba-dist-item">
                     <span className="symbol">{s.symbol}</span>
-                    <span className="amount">{formatCr(s.netFlow)}</span>
+                    <span className="amount">-{formatCr(s.sellAmt)}</span>
                   </div>
                 ))
               ) : (
@@ -358,11 +371,13 @@ export default function BrokerAnalysisPage() {
                       <div className="label">Sell Amt</div>
                       <div className="value" style={{ color: "var(--ba-red)" }}>{formatCr(s.sellAmt)}</div>
                     </div>
-                    <div style={{ gridColumn: "1 / -1" }}>
-                      <div className="label">Net Flow</div>
-                      <div className="value" style={{ color: s.netFlow >= 0 ? "var(--ba-green)" : "var(--ba-red)" }}>
-                        {s.netFlow >= 0 ? "+" : ""}{formatCr(s.netFlow)}
-                      </div>
+                    <div>
+                      <div className="label">Top Buyer</div>
+                      <div className="value" style={{ color: "var(--ba-green)", fontSize: 11 }}>{(s as any).topBuyer ? `#${(s as any).topBuyer}` : "—"}</div>
+                    </div>
+                    <div>
+                      <div className="label">Top Seller</div>
+                      <div className="value" style={{ color: "var(--ba-red)", fontSize: 11 }}>{(s as any).topSeller ? `#${(s as any).topSeller}` : "—"}</div>
                     </div>
                   </div>
                 </div>

@@ -1,0 +1,98 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: nepse_postgres
+    environment:
+      POSTGRES_DB: nepse_depth
+      POSTGRES_USER: nepse
+      POSTGRES_PASSWORD: nepse123
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - nepse_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nepse"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: nepse_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - nepse_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # FastAPI Backend
+  fastapi:
+    build: ./backend
+    container_name: nepse_fastapi
+    environment:
+      DATABASE_URL: postgresql://nepse:nepse123@postgres:5432/nepse_depth
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - nepse_network
+    restart: unless-stopped
+
+  # Data Collector
+  collector:
+    build: ./collector
+    container_name: nepse_collector
+    environment:
+      DATABASE_URL: postgresql://nepse:nepse123@postgres:5432/nepse_depth
+      REDIS_URL: redis://redis:6379
+      COLLECTION_INTERVAL: 60
+    volumes:
+      - ./collector/session:/app/session
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - nepse_network
+    restart: unless-stopped
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: nepse_nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - fastapi
+    networks:
+      - nepse_network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  nepse_network:
+    driver: bridge

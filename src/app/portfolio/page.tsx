@@ -35,13 +35,19 @@ export default function PortfolioPage() {
 
   // Data freshness indicator
   const lastUpdate = live.data?.data?.[0]?.lastUpdatedDateTime;
-  const dataAge = useMemo(() => {
-    if (!lastUpdate) return null;
-    const diff = Date.now() - new Date(lastUpdate).getTime();
-    if (diff < 60_000) return { text: "Live · just now", color: "text-up" };
-    if (diff < 300_000) return { text: `Live · ${Math.floor(diff / 60_000)}m ago`, color: "text-up" };
-    if (diff < 3_600_000) return { text: `Delayed · ${Math.floor(diff / 60_000)}m ago`, color: "text-amber-500" };
-    return { text: `Stale · ${Math.floor(diff / 3_600_000)}h ago`, color: "text-down" };
+  const [dataAge, setDataAge] = useState<{ text: string; color: string } | null>(null);
+  useEffect(() => {
+    if (!lastUpdate) { setDataAge(null); return; }
+    const calc = () => {
+      const diff = Date.now() - new Date(lastUpdate).getTime();
+      if (diff < 60_000) setDataAge({ text: "Live · just now", color: "text-up" });
+      else if (diff < 300_000) setDataAge({ text: `Live · ${Math.floor(diff / 60_000)}m ago`, color: "text-up" });
+      else if (diff < 3_600_000) setDataAge({ text: `Delayed · ${Math.floor(diff / 60_000)}m ago`, color: "text-amber-500" });
+      else setDataAge({ text: `Stale · ${Math.floor(diff / 3_600_000)}h ago`, color: "text-down" });
+    };
+    calc();
+    const id = setInterval(calc, 30_000);
+    return () => clearInterval(id);
   }, [lastUpdate]);
 
   const { items: lots, add: addLot, remove: removeLot } = useLots();

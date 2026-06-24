@@ -228,6 +228,11 @@ async function fetchNews(): Promise<NewsItem[]> {
   ]);
   // Deduplicate by title similarity, sort by time, limit to 30
   const all = [...ml, ...ss, ...ck, ...np, ...as_];
+  
+  // Log image stats
+  const totalWithImages = all.filter(item => item.image).length;
+  console.log(`[News API] Total items: ${all.length}, With images: ${totalWithImages}, Without: ${all.length - totalWithImages}`);
+  
   const seenTitles = new Set<string>();
   const unique = all.filter((item) => {
     const key = item.title.slice(0, 40).toLowerCase();

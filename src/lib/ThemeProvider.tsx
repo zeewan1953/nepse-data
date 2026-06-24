@@ -9,13 +9,10 @@ type ThemeContextType = {
 const ThemeContext = createContext<ThemeContextType>({ dark: false, toggle: () => {} });
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [dark, setDark] = useState(false);
-
-  useEffect(() => {
-    // Always light mode
-    setDark(false);
-    document.documentElement.classList.remove("dark");
-  }, []);
+  const [dark, setDark] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try { return localStorage.getItem("dari-sir-theme") === "dark"; } catch { return false; }
+  });
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);

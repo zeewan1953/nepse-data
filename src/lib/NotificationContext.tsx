@@ -7,6 +7,7 @@ export type Toast = {
   message: string;
   type: "news" | "broker" | "info" | "signal" | "price";
   time: number;
+  image?: string; // Optional thumbnail for news
 };
 
 export type NotificationSettings = {
@@ -35,7 +36,7 @@ type NotifCtx = {
   toasts: Toast[];
   unread: number;
   settings: NotificationSettings;
-  notify: (title: string, message: string, type?: Toast["type"]) => void;
+  notify: (title: string, message: string, type?: Toast["type"], image?: string) => void;
   clear: () => void;
   dismiss: (id: string) => void;
   updateSettings: (settings: Partial<NotificationSettings>) => void;
@@ -79,7 +80,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     setSettings((prev) => ({ ...prev, [type]: !prev[type] }));
   }, []);
 
-  const notify = useCallback((title: string, message: string, type: Toast["type"] = "info") => {
+  const notify = useCallback((title: string, message: string, type: Toast["type"] = "info", image?: string) => {
     // Check if notifications are globally enabled
     if (!settings.enabled) return;
 
@@ -87,7 +88,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     if (!settings[type]) return;
 
     const id = `n${++counter}`;
-    const t: Toast = { id, title, message, type, time: Date.now() };
+    const t: Toast = { id, title, message, type, time: Date.now(), image };
     setToasts((prev) => [t, ...prev].slice(0, 50));
     setUnread((prev) => prev + 1);
 

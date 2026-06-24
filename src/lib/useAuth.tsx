@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback, createContext, useContext } from "react";
+import { useState, useCallback, createContext, useContext } from "react";
 
 export type UserProfile = {
   name: string;
@@ -28,16 +28,15 @@ const Ctx = createContext<AuthCtx>({
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<UserProfile | null>(null);
-
-  useEffect(() => {
+  const [user, setUser] = useState<UserProfile | null>(() => {
+    if (typeof window === "undefined") return null;
     try {
       const raw = localStorage.getItem(KEY);
-      if (raw) setUser(JSON.parse(raw));
+      return raw ? JSON.parse(raw) : null;
     } catch {
-      /* ignore */
+      return null;
     }
-  }, []);
+  });
 
   const save = useCallback((u: UserProfile | null) => {
     setUser(u);

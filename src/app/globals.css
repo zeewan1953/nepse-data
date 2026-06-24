@@ -253,3 +253,651 @@ body {
      Muted:     class="text-muted text-xs"
      Link:      class="text-primary hover:text-primary-hover"
    ============================================================ */
+
+/* ============================================================
+   FLOORSHEET BROKER ANALYSIS — GRID LAYOUT SYSTEM
+   ============================================================ */
+
+/* Main 2-column grid container */
+.ba-grid-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: 20px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 1024px) {
+  .ba-grid-container {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Grid columns */
+.ba-grid-column {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Stats Summary Grid (4 cards) */
+.ba-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+/* Individual stat cards */
+.ba-stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px 12px;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+
+.ba-stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.ba-stat-label {
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+.ba-stat-value {
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.ba-stat-value-buy {
+  color: var(--up);
+}
+
+.ba-stat-value-sell {
+  color: var(--down);
+}
+
+.ba-stat-value-gold {
+  color: var(--gold);
+}
+
+/* Broker Map Grid */
+.ba-broker-map-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 10px;
+}
+
+/* Individual broker map cards */
+.ba-broker-map-card {
+  border: 2px solid;
+  border-radius: var(--radius-md);
+  padding: 12px 8px;
+  text-align: center;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  background: var(--surface);
+}
+
+.ba-broker-id {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--gold);
+  margin-bottom: 6px;
+}
+
+.ba-broker-net {
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.ba-broker-meta {
+  font-size: 9px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+/* Map container */
+.ba-map-container {
+  margin-bottom: 22px;
+}
+
+/* ============================================================
+   FLOORSHEET COMPACT HEADER LAYOUT
+   ============================================================ */
+
+/* Main header container */
+.ba-header-compact {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow-sm);
+}
+
+/* Header row (logo + search + tabs) */
+.ba-header-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 768px) {
+  .ba-header-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+/* Logo */
+.ba-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--fg);
+  white-space: nowrap;
+}
+
+.ba-logo i {
+  font-size: 20px;
+  color: var(--gold);
+}
+
+/* Search bar compact */
+.ba-search-compact {
+  flex: 1;
+  min-width: 200px;
+  max-width: 400px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
+  gap: 8px;
+}
+
+.ba-search-compact i {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.ba-search-compact input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 13px;
+  color: var(--fg);
+}
+
+.ba-search-count {
+  background: var(--primary);
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: var(--radius-full);
+  min-width: 20px;
+  text-align: center;
+}
+
+/* Tabs compact */
+.ba-tabs-compact {
+  display: flex;
+  gap: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 4px;
+}
+
+.ba-tab-compact {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.ba-tab-compact:hover {
+  color: var(--fg);
+  background: var(--surface);
+}
+
+.ba-tab-compact.active {
+  background: var(--primary);
+  color: white;
+}
+
+.ba-tab-compact i {
+  font-size: 12px;
+}
+
+/* Stats grid compact */
+.ba-stats-grid-compact {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+@media (max-width: 640px) {
+  .ba-stats-grid-compact {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Stat card compact */
+.ba-stat-card-compact {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  transition: all 0.2s ease;
+}
+
+.ba-stat-card-compact:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.ba-stat-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  font-size: 16px;
+}
+
+.ba-stat-green .ba-stat-icon {
+  background: var(--up-bg);
+  color: var(--up);
+}
+
+.ba-stat-red .ba-stat-icon {
+  background: var(--down-bg);
+  color: var(--down);
+}
+
+.ba-stat-blue .ba-stat-icon {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.ba-stat-content {
+  flex: 1;
+}
+
+.ba-stat-label {
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 2px;
+}
+
+.ba-stat-value {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--fg);
+  line-height: 1.2;
+}
+
+.ba-stat-sub {
+  font-size: 9px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+/* ============================================================
+   COMPACT SECTIONS - Broker Holding, Map, Zero-Sum
+   ============================================================ */
+
+/* Compact section title */
+.ba-section-title-compact {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--fg);
+  margin: 12px 0 8px 0;
+  padding-bottom: 6px;
+  border-bottom: 2px solid var(--border);
+}
+
+.ba-section-title-compact i {
+  color: var(--gold);
+  font-size: 14px;
+}
+
+/* Compact stats grid (4 small cards) */
+.ba-stats-grid-mini {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+@media (max-width: 768px) {
+  .ba-stats-grid-mini {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.ba-stat-card-mini {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px;
+  text-align: center;
+}
+
+.ba-stat-label-mini {
+  font-size: 7px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.2px;
+  margin-bottom: 3px;
+}
+
+.ba-stat-value-mini {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--fg);
+}
+
+.ba-stat-value-mini.buy {
+  color: var(--up);
+}
+
+.ba-stat-value-mini.sell {
+  color: var(--down);
+}
+
+.ba-stat-value-mini.gold {
+  color: var(--gold);
+}
+
+/* Ultra compact broker map grid - 101 brokers */
+.ba-broker-map-grid-compact {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(65px, 1fr));
+  gap: 4px;
+}
+
+.ba-broker-map-card-compact {
+  border: 1.5px solid;
+  border-radius: 4px;
+  padding: 4px 3px;
+  text-align: center;
+  transition: all 0.15s ease;
+  cursor: pointer;
+  background: var(--surface);
+}
+
+.ba-broker-map-card-compact:hover {
+  transform: scale(1.05);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+.ba-broker-id-compact {
+  font-size: 9px;
+  font-weight: 800;
+  color: var(--gold);
+  margin-bottom: 2px;
+}
+
+.ba-broker-net-compact {
+  font-size: 7px;
+  font-weight: 700;
+  margin-bottom: 1px;
+  line-height: 1.2;
+}
+
+.ba-broker-meta-compact {
+  font-size: 6px;
+  color: var(--muted);
+  margin-top: 1px;
+  line-height: 1.2;
+}
+
+/* Deep Broker Analysis Section */
+.ba-deep-broker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.ba-deep-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+.ba-deep-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--fg);
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--border);
+}
+
+.ba-deep-card-header i {
+  font-size: 16px;
+}
+
+.ba-deep-broker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ba-deep-broker-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+}
+
+.ba-deep-broker-row:hover {
+  background: var(--primary-light);
+  border-color: var(--primary-soft);
+  transform: translateX(4px);
+}
+
+.ba-deep-rank {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--gold);
+  min-width: 30px;
+  text-align: center;
+}
+
+.ba-deep-broker-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.ba-deep-broker-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--fg);
+  margin-bottom: 2px;
+}
+
+.ba-deep-broker-meta {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.ba-deep-broker-net {
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.ba-deep-broker-net.buy {
+  color: var(--up);
+}
+
+.ba-deep-broker-net.sell {
+  color: var(--down);
+}
+
+.ba-deep-activity-bar {
+  width: 100%;
+  height: 6px;
+  background: var(--border-light);
+  border-radius: 3px;
+  margin-top: 4px;
+  overflow: hidden;
+}
+
+.ba-deep-activity-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary), var(--primary-hover));
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+/* Compact holding card */
+.ba-holding-card-compact {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px;
+  margin-bottom: 12px;
+}
+
+.ba-holding-count-compact {
+  font-size: 10px;
+  color: var(--muted);
+  margin-bottom: 8px;
+  text-align: center;
+}
+
+/* Compact zero-sum cards */
+.ba-zero-sum-grid-compact {
+  display: grid;
+  gap: 6px;
+}
+
+.ba-zero-sum-card-compact {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+}
+
+.ba-zero-sum-header-compact {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.ba-zero-sum-stock-compact {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--gold);
+}
+
+.ba-zero-sum-status-compact {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.ba-zero-sum-confidence-compact {
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.ba-zero-sum-bar-compact {
+  height: 12px;
+  background: rgba(0,0,0,0.2);
+  border-radius: 3px;
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.ba-zero-sum-bar-fill-compact {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+}
+
+.ba-zero-sum-labels-compact {
+  display: flex;
+  justify-content: space-between;
+  font-size: 8px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.ba-zero-sum-stats-compact {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 9px;
+}
+
+.ba-zero-sum-stat-compact {
+  color: var(--muted);
+}
+
+.ba-zero-sum-stat-compact strong {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.ba-rotation-badge-compact {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  font-size: 8px;
+  font-weight: 600;
+  color: var(--gold);
+}

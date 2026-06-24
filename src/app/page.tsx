@@ -133,6 +133,10 @@ type NepsSummary = {
   flatCount: number;
   totalVolume: number;
   totalValue: number;
+  totalTransactions: number;
+  totalScripsTraded: number;
+  totalMarketCap: number;
+  totalFloatMarketCap: number;
   multiTimeframeAlignment: string;
   fibonacciLevels: { level: string; price: number }[];
   riskReward: { entry: number; stopLoss: number; takeProfit: number; ratio: string };
@@ -154,7 +158,7 @@ function ltpOf(g: TopTenItem): number {
 /* ═══════════════════════════════════════════════════════════════
    NEPSE Summary Hero Panel — Light Theme
    ═══════════════════════════════════════════════════════════════ */
-function NepseSummaryHero({ summary }: { summary: NepsSummary }) {
+function NepseSummaryHero({ summary, nepaliTime }: { summary: NepsSummary; nepaliTime?: string }) {
   const isBuy = summary.recommendation.includes("BUY");
   const isSell = summary.recommendation.includes("SELL");
   const changePositive = summary.change >= 0;
@@ -167,43 +171,91 @@ function NepseSummaryHero({ summary }: { summary: NepsSummary }) {
 
   return (
     <section className="rounded-xl border border-border bg-surface shadow-sm">
-      <div className="p-4">
-        {/* Header: Index + Recommendation + Alignment */}
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-3 pb-3 border-b border-border">
-          <div className="flex items-center gap-3">
-            <span className="text-lg">📊</span>
+      <div className="p-3">
+        {/* Header: Index + Recommendation + Alignment + Nepal Time */}
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-2 pb-2 border-b border-border">
+          <div className="flex items-center gap-2">
+            <span className="text-base">📊</span>
             <div>
-              <div className="flex items-center gap-2">
-                <span className="text-base font-black text-foreground">NEPSE Summary</span>
-                <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${recBadge}`}>
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm font-black text-foreground">NEPSE Summary</span>
+                {nepaliTime && (
+                  <span className="flex items-center gap-1 rounded-lg bg-primary/10 px-1.5 py-0.5 border border-primary/20">
+                    <span className="text-[10px]">🇳🇵</span>
+                    <span className="text-[8px] font-bold text-primary tabular-nums">{nepaliTime}</span>
+                  </span>
+                )}
+                <span className={`rounded-full px-2 py-0.5 text-[8px] font-bold ${recBadge}`}>
                   {summary.recommendation}
                 </span>
               </div>
-              <div className="flex items-baseline gap-2 mt-0.5">
-                <span className="text-2xl font-black text-foreground tabular-nums">{summary.nepseIndex}</span>
-                <span className={`text-xs font-bold tabular-nums ${changePositive ? "text-up" : "text-down"}`}>
+              <div className="flex items-baseline gap-1.5 mt-0.5">
+                <span className="text-xl font-black text-foreground tabular-nums">{summary.nepseIndex}</span>
+                <span className={`text-[10px] font-bold tabular-nums ${changePositive ? "text-up" : "text-down"}`}>
                   {changePositive ? "▲" : "▼"} {Math.abs(summary.change)} ({summary.changePct.toFixed(2)}%)
                 </span>
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2 text-[10px]">
-            <span className="rounded-lg bg-surface-2 px-2.5 py-1 border border-border">
+          <div className="flex items-center gap-1.5 text-[9px]">
+            <span className="rounded-lg bg-surface-2 px-2 py-0.5 border border-border">
               <span className="text-muted">Alignment: </span>
               <span className="font-bold text-foreground">{summary.multiTimeframeAlignment}</span>
             </span>
-            <span className="rounded-lg bg-surface-2 px-2.5 py-1 border border-border">
+            <span className="rounded-lg bg-surface-2 px-2 py-0.5 border border-border">
               <span className="text-muted">Sentiment: </span>
               <span className="font-bold text-foreground">{summary.sentiment}</span>
             </span>
           </div>
         </div>
 
-        {/* Stats Row */}
-        <div className="grid grid-cols-3 gap-2 mb-3">
-          <div className="rounded-lg bg-surface-2 border border-border p-2.5">
-            <div className="text-[9px] text-muted uppercase tracking-wide mb-1">Market Breadth</div>
-            <div className="flex items-center gap-2 text-xs">
+        {/* Stats Row - Comprehensive Market Data */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5 mb-2">
+          {/* Total Turnover */}
+          <div className="rounded-lg bg-surface-2 border border-border p-2">
+            <div className="text-[8px] text-muted uppercase tracking-wide mb-0.5">Total Turnover</div>
+            <div className="text-xs font-bold text-foreground">{compact(summary.totalValue)}</div>
+          </div>
+
+          {/* Total Traded Shares */}
+          <div className="rounded-lg bg-surface-2 border border-border p-2">
+            <div className="text-[8px] text-muted uppercase tracking-wide mb-0.5">Total Traded Shares</div>
+            <div className="text-xs font-bold text-foreground">{num(summary.totalVolume)}</div>
+          </div>
+
+          {/* Total Transactions */}
+          <div className="rounded-lg bg-surface-2 border border-border p-2">
+            <div className="text-[8px] text-muted uppercase tracking-wide mb-0.5">Total Transactions</div>
+            <div className="text-xs font-bold text-foreground">{num(summary.totalTransactions)}</div>
+          </div>
+
+          {/* Total Scrips Traded */}
+          <div className="rounded-lg bg-surface-2 border border-border p-2">
+            <div className="text-[8px] text-muted uppercase tracking-wide mb-0.5">Total Scrips Traded</div>
+            <div className="text-xs font-bold text-foreground">{summary.totalScripsTraded}</div>
+          </div>
+        </div>
+
+        {/* Market Cap Row */}
+        <div className="grid grid-cols-2 gap-1.5 mb-2">
+          {/* Total Market Cap */}
+          <div className="rounded-lg bg-gradient-to-br from-primary/10 to-surface-2 border border-primary/30 p-2">
+            <div className="text-[8px] text-primary uppercase tracking-wide mb-0.5 font-bold">Total Market Cap</div>
+            <div className="text-sm font-black text-primary">{compact(summary.totalMarketCap)}</div>
+          </div>
+
+          {/* Float Market Cap */}
+          <div className="rounded-lg bg-gradient-to-br from-amber-500/10 to-surface-2 border border-amber-500/30 p-2">
+            <div className="text-[8px] text-amber-500 uppercase tracking-wide mb-0.5 font-bold">Float Market Cap</div>
+            <div className="text-sm font-black text-amber-500">{compact(summary.totalFloatMarketCap)}</div>
+          </div>
+        </div>
+
+        {/* Market Breadth + RSI Row */}
+        <div className="grid grid-cols-2 gap-1.5 mb-2">
+          <div className="rounded-lg bg-surface-2 border border-border p-2">
+            <div className="text-[8px] text-muted uppercase tracking-wide mb-0.5">Market Breadth</div>
+            <div className="flex items-center gap-1.5 text-[10px]">
               <span className="text-up font-bold">{summary.upCount}▲</span>
               <span className="text-border">|</span>
               <span className="text-down font-bold">{summary.downCount}▼</span>
@@ -211,30 +263,14 @@ function NepseSummaryHero({ summary }: { summary: NepsSummary }) {
               <span className="text-muted font-bold">{summary.flatCount}—</span>
             </div>
           </div>
-          <div className="rounded-lg bg-surface-2 border border-border p-2.5">
-            <div className="text-[9px] text-muted uppercase tracking-wide mb-1">RSI (Daily)</div>
-            <div className="flex items-center gap-2">
-              <span className={`text-lg font-black ${summary.daily.rsi > 70 ? "text-down" : summary.daily.rsi < 30 ? "text-up" : "text-amber-500"}`}>
-                {summary.daily.rsi}
-              </span>
-              <span className="text-[9px] text-muted">
-                {summary.daily.rsi > 70 ? "Overbought" : summary.daily.rsi < 30 ? "Oversold" : "Neutral"}
-              </span>
-            </div>
-          </div>
-          <div className="rounded-lg bg-surface-2 border border-border p-2.5">
-            <div className="text-[9px] text-muted uppercase tracking-wide mb-1">Turnover</div>
-            <div className="text-sm font-bold text-foreground">{compact(summary.totalValue)}</div>
-            <div className="text-[9px] text-muted">Vol: {compact(summary.totalVolume)} shares</div>
-          </div>
         </div>
 
         {/* Support/Resistance + Signals */}
-        <div className="grid md:grid-cols-3 gap-2">
-          <div className="rounded-lg bg-surface-2 border border-border p-2.5">
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[10px] font-bold text-primary">📅 Daily</span>
-              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+        <div className="grid md:grid-cols-3 gap-1.5">
+          <div className="rounded-lg bg-surface-2 border border-border p-2">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[9px] font-bold text-primary">📅 Daily</span>
+              <span className={`text-[8px] font-bold px-1 py-0.5 rounded ${
                 summary.daily.trend === "Bullish" ? "bg-up-bg text-up" :
                 summary.daily.trend === "Bearish" ? "bg-down-bg text-down" :
                 "bg-surface text-muted"
@@ -242,7 +278,7 @@ function NepseSummaryHero({ summary }: { summary: NepsSummary }) {
                 {summary.daily.trend === "Bullish" ? "▲ Bull" : summary.daily.trend === "Bearish" ? "▼ Bear" : "→ Neutral"}
               </span>
             </div>
-            <div className="space-y-0.5 text-[10px]">
+            <div className="space-y-0.5 text-[9px]">
               <div className="flex justify-between">
                 <span className="text-up font-medium">S1: {summary.daily.support.s1}</span>
                 <span className="text-down font-medium">R1: {summary.daily.resistance.r1}</span>
@@ -253,10 +289,10 @@ function NepseSummaryHero({ summary }: { summary: NepsSummary }) {
               </div>
             </div>
           </div>
-          <div className="rounded-lg bg-surface-2 border border-border p-2.5">
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[10px] font-bold text-purple-600">📆 Weekly</span>
-              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+          <div className="rounded-lg bg-surface-2 border border-border p-2">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[9px] font-bold text-purple-600">📆 Weekly</span>
+              <span className={`text-[8px] font-bold px-1 py-0.5 rounded ${
                 summary.weekly.trend === "Bullish" ? "bg-up-bg text-up" :
                 summary.weekly.trend === "Bearish" ? "bg-down-bg text-down" :
                 "bg-surface text-muted"
@@ -264,7 +300,7 @@ function NepseSummaryHero({ summary }: { summary: NepsSummary }) {
                 {summary.weekly.trend === "Bullish" ? "▲ Bull" : summary.weekly.trend === "Bearish" ? "▼ Bear" : "→ Neutral"}
               </span>
             </div>
-            <div className="space-y-0.5 text-[10px]">
+            <div className="space-y-0.5 text-[9px]">
               <div className="flex justify-between">
                 <span className="text-up font-medium">S1: {summary.weekly.support.s1}</span>
                 <span className="text-down font-medium">R1: {summary.weekly.resistance.r1}</span>
@@ -275,9 +311,9 @@ function NepseSummaryHero({ summary }: { summary: NepsSummary }) {
               </div>
             </div>
           </div>
-          <div className="rounded-lg bg-surface-2 border border-border p-2.5">
-            <div className="text-[10px] font-bold text-amber-600 mb-1.5">🔑 Key Signals</div>
-            <div className="space-y-1 text-[9px]">
+          <div className="rounded-lg bg-surface-2 border border-border p-2">
+            <div className="text-[9px] font-bold text-amber-600 mb-1">🔑 Key Signals</div>
+            <div className="space-y-0.5 text-[8px]">
               {summary.accumulation.length > 0 && (
                 <div className="flex items-start gap-1 text-up">
                   <span className="shrink-0">📈</span>
@@ -293,7 +329,7 @@ function NepseSummaryHero({ summary }: { summary: NepsSummary }) {
               {summary.accumulation.length === 0 && summary.distribution.length === 0 && (
                 <div className="text-muted">No strong signals</div>
               )}
-              <div className="text-muted pt-1 border-t border-border">
+              <div className="text-muted pt-0.5 border-t border-border">
                 MACD: <span className={summary.daily.macd.histogram > 0 ? "text-up" : "text-down"}>
                   {summary.daily.macd.histogram > 0 ? "Bullish" : "Bearish"}
                 </span>
@@ -335,6 +371,7 @@ export default function Dashboard() {
   const live = usePersistentPoll<{ data: LiveMarketData[]; count: number }>("/api/live", 30_000);
   const deepResearch = usePoll<DeepResearchResp>("/api/deep-research", open ? 30_000 : 120_000);
   const nepseSummary = usePoll<NepsSummary>("/api/nepse-summary", open ? 60_000 : 300_000);
+  const brokerAnalysis = usePoll<any>("/api/broker-analysis", open ? 60_000 : 300_000);
 
   // Stabilize NEPSE Summary - only update if data is valid
   useEffect(() => {
@@ -381,33 +418,24 @@ export default function Dashboard() {
     });
 
   return (
-    <div className="space-y-6">
-      {/* Header: Nepal Time + DARI SIR Title */}
+    <div className="space-y-4">
+      {/* Compact Header: DARI SIR + Subtitle */}
       <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-border/50">
-        {/* Nepal Time */}
-        {mounted && (
-          <div className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-primary/8 to-surface px-3 py-2 border border-primary/20">
-            <span className="text-base">🇳🇵</span>
-            <div>
-              <div className="text-[9px] font-semibold text-muted uppercase tracking-wider">Nepal Time</div>
-              <div className="text-xs font-bold text-primary tabular-nums">{nepaliTime}</div>
-            </div>
+        <div className="flex items-center gap-3">
+          {/* DARI SIR Title */}
+          <div>
+            <h1 className="text-2xl font-black text-foreground tracking-tight">DARI SIR</h1>
+            <p className="text-[10px] text-muted font-medium">Nepal Stock Exchange — live dashboard</p>
           </div>
-        )}
+        </div>
         
         {/* User Greeting */}
         <UserGreeting />
       </div>
 
-      {/* Main Title */}
-      <div className="text-center">
-        <h1 className="text-4xl font-black text-foreground tracking-tight">DARI SIR</h1>
-        <p className="text-sm text-muted mt-1 font-medium">Nepal Stock Exchange — live dashboard</p>
-      </div>
-
       {/* 📊 Top Row: NEPSE Summary (Hero Panel) */}
       {stableNepseSummary && stableNepseSummary.nepseIndex > 0 && (
-        <NepseSummaryHero summary={stableNepseSummary} />
+        <NepseSummaryHero summary={stableNepseSummary} nepaliTime={nepaliTime} />
       )}
 
       {/* Live Market - Full Width */}
@@ -645,6 +673,123 @@ export default function Dashboard() {
         </section>
       </div>
 
+      {/* Deep Broker Analysis Section */}
+      {brokerAnalysis.data?.brokerNetHoldings && brokerAnalysis.data.brokerNetHoldings.length > 0 && (
+        <section className="rounded-xl border border-border bg-surface shadow-sm">
+          <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+            <div className="flex items-center gap-2">
+              <span className="text-sm">🔬</span>
+              <h2 className="text-sm font-bold text-foreground">Deep Broker Analysis</h2>
+              <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[8px] font-bold text-primary">
+                {brokerAnalysis.data.brokerNetHoldings.length} BROKERS
+              </span>
+            </div>
+            <span className="text-[9px] text-muted">
+              Updated: {new Date(brokerAnalysis.data.timestamp).toLocaleTimeString()}
+            </span>
+          </div>
+
+          <div className="grid gap-4 p-4 md:grid-cols-2 lg:grid-cols-4">
+            {/* Activity Leaders */}
+            <div className="rounded-lg border border-border bg-surface-2 p-3">
+              <div className="mb-2 flex items-center gap-1.5">
+                <span className="text-xs font-bold text-blue-500">📊 Top Activity</span>
+              </div>
+              <div className="space-y-1.5">
+                {brokerAnalysis.data.brokerNetHoldings
+                  .sort((a: any, b: any) => (b.buyQty + b.sellQty) - (a.buyQty + a.sellQty))
+                  .slice(0, 5)
+                  .map((b: any, idx: number) => (
+                    <div key={b.broker} className="flex items-center justify-between rounded px-2 py-1 text-[10px] hover:bg-surface transition">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-primary">#{idx + 1}</span>
+                        <span className="font-bold">Broker {b.broker}</span>
+                      </div>
+                      <span className="text-muted">{num(b.buyQty + b.sellQty)}</span>
+                    </div>
+                  ))}
+              </div>
+            </div>
+
+            {/* Biggest Net Buyers */}
+            <div className="rounded-lg border border-border bg-surface-2 p-3">
+              <div className="mb-2 flex items-center gap-1.5">
+                <span className="text-xs font-bold text-up">📈 Net Buyers</span>
+              </div>
+              <div className="space-y-1.5">
+                {brokerAnalysis.data.brokerNetHoldings
+                  .filter((b: any) => b.netAmt > 0)
+                  .sort((a: any, b: any) => b.netAmt - a.netAmt)
+                  .slice(0, 5)
+                  .map((b: any, idx: number) => (
+                    <div key={b.broker} className="flex items-center justify-between rounded px-2 py-1 text-[10px] hover:bg-surface transition">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-primary">#{idx + 1}</span>
+                        <span className="font-bold">Broker {b.broker}</span>
+                      </div>
+                      <span className="font-bold text-up">+{b.netAmt.toFixed(2)} Cr</span>
+                    </div>
+                  ))}
+              </div>
+            </div>
+
+            {/* Biggest Net Sellers */}
+            <div className="rounded-lg border border-border bg-surface-2 p-3">
+              <div className="mb-2 flex items-center gap-1.5">
+                <span className="text-xs font-bold text-down">📉 Net Sellers</span>
+              </div>
+              <div className="space-y-1.5">
+                {brokerAnalysis.data.brokerNetHoldings
+                  .filter((b: any) => b.netAmt < 0)
+                  .sort((a: any, b: any) => a.netAmt - b.netAmt)
+                  .slice(0, 5)
+                  .map((b: any, idx: number) => (
+                    <div key={b.broker} className="flex items-center justify-between rounded px-2 py-1 text-[10px] hover:bg-surface transition">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-primary">#{idx + 1}</span>
+                        <span className="font-bold">Broker {b.broker}</span>
+                      </div>
+                      <span className="font-bold text-down">{b.netAmt.toFixed(2)} Cr</span>
+                    </div>
+                  ))}
+              </div>
+            </div>
+
+            {/* Most Active by Volume */}
+            <div className="rounded-lg border border-border bg-surface-2 p-3">
+              <div className="mb-2 flex items-center gap-1.5">
+                <span className="text-xs font-bold text-amber-500">🔥 Most Active</span>
+              </div>
+              <div className="space-y-1.5">
+                {brokerAnalysis.data.brokerNetHoldings.slice(0, 5).map((b: any, idx: number) => (
+                  <div key={b.broker} className="flex items-center justify-between rounded px-2 py-1 text-[10px] hover:bg-surface transition">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-primary">#{idx + 1}</span>
+                      <span className="font-bold">Broker {b.broker}</span>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-muted">{num(b.totalVolume)}</div>
+                      <div className={`text-[9px] font-bold ${b.netQty > 0 ? "text-up" : "text-down"}`}>
+                        {b.netQty > 0 ? "▲" : "▼"} {b.stockCount} stocks
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t border-border px-4 py-2">
+            <div className="flex flex-wrap items-center gap-3 text-[9px] text-muted">
+              <span className="font-bold">Insights:</span>
+              <span>Total Volume: {num(brokerAnalysis.data.totalVolume || 0)} shares</span>
+              <span>Total Value: {(brokerAnalysis.data.totalValue || 0).toFixed(2)} Cr</span>
+              <span>Active Brokers: {brokerAnalysis.data.brokerNetHoldings.length}</span>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Demo Trading section removed - now in sidebar above */}
     </div>
   );
@@ -752,10 +897,10 @@ function MarketPanel({ liveData, noOuterBorder, mounted }: { liveData: LiveMarke
             </tr>
           </thead>
           <tbody>
-            {!liveData && (
+            {!mounted && (
               <tr><td colSpan={10} className="px-2 py-6 text-center text-muted">Loading market data...</td></tr>
             )}
-            {displayed.map((r) => {
+            {mounted && displayed.map((r) => {
               const chg = r.percentageChange;
               const bg = chg > 0 ? "bg-green-500" : chg < 0 ? "bg-red-500" : "bg-blue-500";
               const sType = classifySymbol(r.symbol, r.securityName);
@@ -780,7 +925,7 @@ function MarketPanel({ liveData, noOuterBorder, mounted }: { liveData: LiveMarke
                 </tr>
               );
             })}
-            {liveData && displayed.length === 0 && (
+            {mounted && liveData && displayed.length === 0 && (
               <tr><td colSpan={10} className="px-2 py-6 text-center text-muted">No data found</td></tr>
             )}
           </tbody>

@@ -27,19 +27,37 @@ const CATEGORY_COLORS: Record<string, string> = {
 };
 
 export default function NewsPage() {
-  const news = usePoll<NewsResp>("/api/news", 300_000);
+  const news = usePoll<NewsResp>("/api/news", 600_000); // Refresh every 10 minutes
   const { notify } = useNotification();
-  const prevCountRef = useRef(0);
+  const prevIdsRef = useRef<Set<string>>(new Set());
 
-  // Notify when new news arrives
+  // Notify for EVERY new news item
   useEffect(() => {
-    const count = news.data?.news?.length ?? 0;
-    if (prevCountRef.current > 0 && count > prevCountRef.current) {
-      const diff = count - prevCountRef.current;
-      notify("New News", `${diff} new article${diff > 1 ? "s" : ""} available`, "news");
+    if (!news.data?.news?.length) return;
+    
+    const currentIds = new Set(news.data.news.map(n => n.id));
+    const previousIds = prevIdsRef.current;
+    
+    // Find new news items that weren't there before
+    const newNews = news.data.news.filter(n => !previousIds.has(n.id));
+    
+    if (previousIds.size > 0 && newNews.length > 0) {
+      // Send individual notification for each new news
+      newNews.forEach((item, idx) => {
+        setTimeout(() => {
+          notify(
+            "📰 New News",
+            item.title.substring(0, 100),
+            "news",
+            item.image || undefined
+          );
+        }, idx * 500); // Stagger notifications by 500ms
+      });
     }
-    prevCountRef.current = count;
-  }, [news.data?.news?.length, notify]);
+    
+    // Update the tracked IDs
+    prevIdsRef.current = currentIds;
+  }, [news.data?.news, notify]);
   const [filter, setFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [selectedArticle, setSelectedArticle] = useState<NewsItem | null>(null);
@@ -164,12 +182,20 @@ export default function NewsPage() {
       )}
 
       {/* Featured Article (first with image) */}
-      {filtered.length > 0 && filtered[0].image && (
+      {filtered.length > 0 && (
         <div onClick={() => openArticle(filtered[0])}
           className="group relative cursor-pointer overflow-hidden rounded-2xl border border-border bg-surface shadow-sm transition hover:shadow-lg">
-          <div className="relative h-64 overflow-hidden">
-            <img src={filtered[0].image} alt="" className="h-full w-full object-cover transition group-hover:scale-105" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
+          <div className="relative h-64 overflow-hidden bg-gradient-to-br from-primary/5 to-primary/15">
+            {filtered[0].image ? (
+              <>
+                <img src={filtered[0].image} alt="" className="h-full w-full object-cover transition group-hover:scale-105" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
+              </>
+            ) : (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className="text-6xl opacity-20">📰</span>
+              </div>
+            )}
             <div className="absolute bottom-0 left-0 right-0 p-5">
               <span className={`mb-2 inline-block rounded-md px-2 py-0.5 text-[10px] font-bold ${CATEGORY_COLORS[filtered[0].category] ?? "bg-slate-500/15 text-slate-400"}`}>
                 {filtered[0].category}
@@ -189,7 +215,18 @@ export default function NewsPage() {
             {n.image ? (
               <div className="relative h-36 overflow-hidden">
                 <img src={n.image} alt="" className="h-full w-full object-cover transition group-hover:scale-105"
-                  onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                  onError={(e) => { 
+                    const target = e.target as HTMLImageElement;
+                    // Fallback to placeholder if image fails
+                    target.style.display = "none";
+                    const parent = target.parentElement;
+                    if (parent && !parent.querySelector('.fallback-icon')) {
+                      const fallback = document.createElement('div');
+                      fallback.className = 'fallback-icon absolute inset-0 flex items-center justify-center bg-gradient-to-br from-primary/5 to-primary/15';
+                      fallback.innerHTML = '<span class="text-4xl opacity-30">📰</span>';
+                      parent.appendChild(fallback);
+                    }
+                  }} />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
               </div>
             ) : (

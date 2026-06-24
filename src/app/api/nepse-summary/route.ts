@@ -33,6 +33,10 @@ type Summary = {
   flatCount: number;
   totalVolume: number;
   totalValue: number;
+  totalTransactions: number;
+  totalScripsTraded: number;
+  totalMarketCap: number;
+  totalFloatMarketCap: number;
   multiTimeframeAlignment: string;
   fibonacciLevels: { level: string; price: number }[];
   riskReward: { entry: number; stopLoss: number; takeProfit: number; ratio: string };
@@ -72,10 +76,29 @@ async function analyze(stocks: LiveStock[]): Promise<Summary> {
       sentiment: "डेटा पर्खनुहोस्",
       upCount: 0, downCount: 0, flatCount: 0,
       totalVolume: 0, totalValue: 0,
+      totalTransactions: 0, totalScripsTraded: 0,
+      totalMarketCap: 0, totalFloatMarketCap: 0,
       multiTimeframeAlignment: "N/A",
       fibonacciLevels: [],
       riskReward: { entry: 0, stopLoss: 0, takeProfit: 0, ratio: "N/A" },
     };
+  }
+
+  // Fetch MeroLagani market summary for overall stats
+  let totalTransactions = 0;
+  let totalScripsTraded = 0;
+  let totalMarketCap = 0;
+  let totalFloatMarketCap = 0;
+  try {
+    const meroSummary = await fetchMeroLaganiSummary();
+    if (meroSummary?.overall) {
+      totalTransactions = parseInt(meroSummary.overall.tn) || 0;
+      totalScripsTraded = parseInt(meroSummary.overall.st) || 0;
+      totalMarketCap = parseFloat(meroSummary.overall.mc.replace(/,/g, "")) || 0;
+      totalFloatMarketCap = parseFloat(meroSummary.overall.fc.replace(/,/g, "")) || 0;
+    }
+  } catch {
+    console.error("Failed to fetch MeroLagani overall stats");
   }
 
   const up = stocks.filter((s) => s.percentageChange > 0);
@@ -411,6 +434,10 @@ async function analyze(stocks: LiveStock[]): Promise<Summary> {
     upCount: up.length, downCount: down.length, flatCount: stocks.length - up.length - down.length,
     totalVolume: stocks.reduce((s, x) => s + x.totalTradeQuantity, 0),
     totalValue: totalValue,
+    totalTransactions,
+    totalScripsTraded,
+    totalMarketCap,
+    totalFloatMarketCap,
     multiTimeframeAlignment,
     fibonacciLevels,
     riskReward,

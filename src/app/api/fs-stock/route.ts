@@ -1,4 +1,5 @@
 import { execute } from "@/lib/db";
+import { getTargetDateWithFallback } from "@/lib/date-utils";
 import type { NextRequest } from "next/server";
 
 export const runtime = "nodejs";
@@ -12,7 +13,10 @@ function todayStr(): string {
 export async function GET(req: NextRequest) {
   try {
     const sp = req.nextUrl.searchParams;
-    const date = sp.get("date") || todayStr();
+    const dateParam = sp.get("date");
+    
+    // Auto-fallback to latest available date
+    const { date } = await getTargetDateWithFallback(dateParam || undefined);
     const symbol = sp.get("symbol") || undefined;
 
     // Get all trades for this date (optionally filtered by symbol)
