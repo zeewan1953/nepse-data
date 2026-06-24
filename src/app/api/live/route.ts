@@ -18,17 +18,22 @@ async function fetchFromMeroLagani(): Promise<{ rows: LiveMarketData[]; source: 
   const mero = await fetchMeroLaganiSummary();
   if (!mero?.stock?.detail?.length) return null;
 
+  // Fetch OHLC map from DB to enrich with open/high/low
+  let ohlc = new Map<string, Ohlc>();
+  try { ohlc = await getOhlcMap(); } catch { /* ohlc optional */ }
+
   const rows: LiveMarketData[] = mero.stock.detail.map((s) => {
     const pc = calcMeroPercent(s);
     const prevClose = s.lp - s.c;
+    const o = ohlc.get(s.s);
     return {
       securityId: 0,
       securityName: s.s,
       symbol: s.s,
       indexId: 0,
-      openPrice: 0,
-      highPrice: 0,
-      lowPrice: 0,
+      openPrice: o?.openPrice ?? 0,
+      highPrice: o?.highPrice ?? 0,
+      lowPrice: o?.lowPrice ?? 0,
       totalTradeQuantity: s.q,
       totalTradeValue: s.lp * s.q,
       lastTradedPrice: s.lp,
@@ -36,7 +41,7 @@ async function fetchFromMeroLagani(): Promise<{ rows: LiveMarketData[]; source: 
       lastUpdatedDateTime: mero.overall?.d ?? "",
       lastTradedVolume: s.q,
       previousClose: prevClose,
-      averageTradedPrice: 0,
+      averageTradedPrice: o?.averageTradedPrice ?? 0,
     };
   });
 
