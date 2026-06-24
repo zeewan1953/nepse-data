@@ -50,6 +50,24 @@ type BrokerData = {
   };
 };
 
+type HoldingData = {
+  date: string;
+  status: "finalized" | "pending" | "empty";
+  brokers: Array<{
+    brokerId: string;
+    buyAmt: number;
+    sellAmt: number;
+    netAmt: number;
+    cumulativeNet: number | null;
+    holdingPct: number | null;
+    note: string | null;
+    rank: number;
+  }>;
+  totalBuyAmt: number;
+  totalSellAmt: number;
+  totalNetAmt: number;
+};
+
 function todayStr(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kathmandu" });
 }
@@ -75,6 +93,7 @@ export default function BrokerAnalysisPage() {
     activeBroker ? `/api/fs-broker?date=${selectedDate}&broker=${activeBroker}` : "",
     30_000
   );
+  const holdingData = usePoll<HoldingData>(`/api/broker-holding?date=${selectedDate}`, 30_000);
 
   const availableDates = dateData.data?.dates || [];
   const hasData = dateData.data && dateData.data.totals.trades > 0;
@@ -114,7 +133,7 @@ export default function BrokerAnalysisPage() {
           <i className="fas fa-chart-line" />
           BROKER ANALYSIS
         </div>
-        <div className="ba-subtitle">Dari Sir - Institutional Flow Tracker</div>
+        <div className="ba-subtitle">AXION - Institutional Flow Tracker</div>
       </header>
 
       {/* Date & Stats */}
@@ -383,6 +402,127 @@ export default function BrokerAnalysisPage() {
                 </div>
               ))}
             </div>
+          </section>
+
+          {/* Broker Buy/Sell Holding Widget */}
+          <section className="ba-holding-section">
+            <div className="ba-section-title">
+              <i className="fas fa-scale-balanced" /> Broker Buy/Sell Holding
+              <span className="ba-holding-status">
+                {holdingData.loading ? (
+                  <span className="badge badge-loading">Loading...</span>
+                ) : holdingData.data?.status === "finalized" ? (
+                  <span className="badge badge-finalized"><i className="fas fa-check-circle" /> Finalized</span>
+                ) : holdingData.data?.status === "pending" ? (
+                  <span className="badge badge-pending"><i className="fas fa-clock" /> Awaiting finalization (post-market)</span>
+                ) : (
+                  <span className="badge badge-empty"><i className="fas fa-circle" /> No Data</span>
+                )}
+              </span>
+            </div>
+
+            {holdingData.data?.status === "finalized" && holdingData.data.brokers.length > 0 && (
+              <div className="ba-holding-grid">
+                {/* Table */}
+                <table className="ba-table ba-holding-table">
+                  <thead>
+                    <tr>
+                      <th>Broker</th>
+                      <th>Buy Amt</th>
+                      <th>Sell Amt</th>
+                      <th>Net Amt</th>
+                      <th>Holding (est.)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {holdingData.data.brokers.slice(0, 15).map((b) => (
+                      <tr key={b.brokerId}>
+                        <td className="broker-id">#{b.brokerId}</td>
+                        <td>{formatCr(b.buyAmt)}</td>
+                        <td>{formatCr(b.sellAmt)}</td>
+                        <td className={b.netAmt >= 0 ? "positive" : "negative"}>
+                          {b.netAmt >= 0 ? "+" : ""}{formatCr(b.netAmt)}
+                        </td>
+                        <td>
+                          {b.holdingPct !== null && b.note === null ? (
+                            <div className="holding-bar-container">
+                              <div className="holding-bar" style={{ width: `${Math.abs(b.holdingPct)}%`, background: b.netAmt >= 0 ? "var(--ba-green, #22c55e)" : "var(--ba-red, #ef4444)" }} />
+                              <span className="holding-pct">{b.holdingPct}%</span>
+                            </div>
+                          ) : (
+                            <span className="text-muted" style={{ fontSize: 11 }}>{b.note ?? "—"}</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td><strong>TOTAL</strong></td>
+                      <td><strong>{formatCr(holdingData.data.totalBuyAmt)}</strong></td>
+                      <td><strong>{formatCr(holdingData.data.totalSellAmt)}</strong></td>
+                      <td className={holdingData.data.totalNetAmt >= 0 ? "positive" : "negative"}>
+                        <strong>{holdingData.data.totalNetAmt >= 0 ? "+" : ""}{formatCr(holdingData.data.totalNetAmt)}</strong>
+                      </td>
+                      <td />
+                    </tr>
+                  </tfoot>
+                </table>
+
+                {/* Diverging Bar Chart */}
+                <div className="ba-holding-chart">
+                  <div className="chart-title">Net Position by Broker</div>
+                  <div className="diverging-bar-chart">
+                    {holdingData.data.brokers.slice(0, 10).map((b) => {
+                      const maxAbs = Math.max(...holdingData.data.brokers.slice(0, 10).map((x) => Math.abs(x.netAmt)), 1);
+                      const pct = (Math.abs(b.netAmt) / maxAbs) * 100;
+                      return (
+                        <div key={b.brokerId} className="diverging-bar-row">
+                          <div className="bar-label">#{b.brokerId}</div>
+                          <div className="bar-track">
+                            {b.netAmt >= 0 ? (
+                              <>
+                                <div className="bar-fill positive" style={{ width: `${pct}%` }} />
+                                <div className="bar-spacer" />
+                              </>
+                            ) : (
+                              <>
+                                <div className="bar-spacer" />
+                                <div className="bar-fill negative" style={{ width: `${pct}%` }} />
+                              </>
+                            )}
+                          </div>
+                          <div className="bar-value">{formatCr(b.netAmt)}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {holdingData.data?.status === "pending" && (
+              <div className="ba-empty" style={{ padding: 20 }}>
+                <i className="fas fa-clock" />
+                <div className="empty-title">Awaiting Finalization</div>
+                <div className="empty-sub">Broker buy/sell data will appear after market close once the floorsheet has stabilized</div>
+              </div>
+            )}
+
+            {holdingData.data?.status === "empty" && (
+              <div className="ba-empty" style={{ padding: 20 }}>
+                <i className="fas fa-database" />
+                <div className="empty-title">No broker data for {selectedDate}</div>
+                <div className="empty-sub">No finalized floorsheet data available for this date</div>
+              </div>
+            )}
+
+            {holdingData.loading && !holdingData.data && (
+              <div className="ba-loading" style={{ padding: 20 }}>
+                <div className="ba-spinner" />
+                <div style={{ fontSize: 13 }}>Loading holding data...</div>
+              </div>
+            )}
           </section>
         </>
       )}

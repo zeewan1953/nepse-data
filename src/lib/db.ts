@@ -157,6 +157,37 @@ async function migrateSchema(): Promise<void> {
     )
   `);
 
+  // Add status column for finalized/provisional tracking
+  try {
+    await db.execute("ALTER TABLE broker_daily_agg ADD COLUMN status TEXT NOT NULL DEFAULT 'provisional'");
+  } catch {
+    // already exists
+  }
+  try {
+    await db.execute("ALTER TABLE broker_daily_agg ADD COLUMN finalizedAt INTEGER");
+  } catch {
+    // already exists
+  }
+
+  // Broker daily summary (per spec: broker-wise buy/sell/holding)
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS broker_daily_summary (
+      tradeDate TEXT NOT NULL,
+      symbol TEXT NOT NULL,
+      brokerCode TEXT NOT NULL,
+      buyQty REAL NOT NULL DEFAULT 0,
+      sellQty REAL NOT NULL DEFAULT 0,
+      netQty REAL NOT NULL DEFAULT 0,
+      buyAmt REAL NOT NULL DEFAULT 0,
+      sellAmt REAL NOT NULL DEFAULT 0,
+      buyContracts INTEGER NOT NULL DEFAULT 0,
+      sellContracts INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'provisional',
+      finalizedAt INTEGER,
+      PRIMARY KEY (tradeDate, symbol, brokerCode)
+    )
+  `);
+
   // Indexes for fast floorsheet queries
   try {
     await db.execute("CREATE INDEX IF NOT EXISTS idx_fs_date ON floorsheet_trades(tradeDate)");
