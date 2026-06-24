@@ -19,6 +19,7 @@ async function fetchFromMeroLagani(): Promise<{ rows: LiveMarketData[]; source: 
   if (!mero?.stock?.detail?.length) return null;
 
   // Build OHLC map from turnover detail (has open/high/low)
+  // FORCE REBUILD 2026-06-25
   const ohlc = new Map<string, { openPrice: number; highPrice: number; lowPrice: number; avgPrice: number }>();
   if (mero.turnover?.detail) {
     for (const t of mero.turnover.detail) {
