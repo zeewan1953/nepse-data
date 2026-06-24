@@ -230,14 +230,14 @@ export default function Dashboard() {
     });
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       {/* Compact Header: AXION + Subtitle */}
-      <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-border/50">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 pb-1.5 border-b border-border/50">
+        <div className="flex items-center gap-2">
           {/* AXION Title */}
           <div>
-            <h1 className="text-2xl font-black text-foreground tracking-tight">AXION</h1>
-            <p className="text-[10px] text-muted font-medium">Nepal Stock Exchange — live dashboard</p>
+            <h1 className="text-lg font-black text-foreground tracking-tight">AXION</h1>
+            <p className="text-[9px] text-muted font-medium">Nepal Stock Exchange — live dashboard</p>
           </div>
         </div>
         
@@ -245,30 +245,30 @@ export default function Dashboard() {
         <UserGreeting />
       </div>
 
-      {/* Live Market - Full Width */}
-      <MarketPanel liveData={live.data ? (live.data as { data: LiveMarketData[] }).data : undefined} noOuterBorder mounted={mounted} />
+      {/* Live Market - Compact */}
+      <MarketPanel liveData={live.data ? (live.data as { data: LiveMarketData[] }).data : undefined} noOuterBorder mounted={mounted} compact />
 
       {/* AI Recommendations - Deep Research Engine (TOP) */}
       {deepResearch.data?.success && deepResearch.data.recommendations && (
         <section className="rounded-lg border border-primary/40 bg-gradient-to-r from-primary/5 to-surface shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-primary/20 px-3 py-2">
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm font-black">🧠 AI Deep Research</h2>
-              <span className="animate-pulse rounded bg-primary/20 px-1.5 py-0.5 text-[8px] font-bold text-primary">50+ INDICATORS</span>
-              <span className="rounded bg-up-bg px-1.5 py-0.5 text-[8px] font-bold text-up">{deepResearch.data.summary.buy} BUY</span>
-              <span className="rounded bg-down-bg px-1.5 py-0.5 text-[8px] font-bold text-down">{deepResearch.data.summary.sell} SELL</span>
+          <div className="flex flex-wrap items-center justify-between gap-1 border-b border-primary/20 px-2 py-1">
+            <div className="flex items-center gap-1.5">
+              <h2 className="text-xs font-black">🧠 AI Deep Research</h2>
+              <span className="animate-pulse rounded bg-primary/20 px-1 py-0.5 text-[7px] font-bold text-primary">50+ INDICATORS</span>
+              <span className="rounded bg-up-bg px-1 py-0.5 text-[7px] font-bold text-up">{deepResearch.data.summary.buy} BUY</span>
+              <span className="rounded bg-down-bg px-1 py-0.5 text-[7px] font-bold text-down">{deepResearch.data.summary.sell} SELL</span>
             </div>
-            <span className="text-[9px] text-muted">Confidence: {deepResearch.data.summary.avgConfidence}% | Updated: {new Date(deepResearch.data.generatedAt).toLocaleTimeString()}</span>
+            <span className="text-[8px] text-muted">Confidence: {deepResearch.data.summary.avgConfidence}% | Updated: {new Date(deepResearch.data.generatedAt).toLocaleTimeString()}</span>
           </div>
-          <div className="grid gap-3 p-3 md:grid-cols-2">
+          <div className="grid gap-2 p-2 md:grid-cols-2">
             {/* Top 3 BUY */}
             <div>
-              <div className="mb-2 flex items-center gap-1.5">
-                <span className="text-xs font-bold text-up">📈 Top 3 BUY Recommendations</span>
+              <div className="mb-1 flex items-center gap-1">
+                <span className="text-[10px] font-bold text-up">📈 Top 3 BUY Recommendations</span>
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 {deepResearch.data.recommendations.buy.slice(0, 3).map((r, i) => (
-                  <Link key={r.symbol} href={`/stock/${r.symbol}`} className="flex items-center justify-between rounded-lg border border-up/30 bg-up-bg/30 p-2 transition hover:shadow hover:border-up/60">
+                  <Link key={r.symbol} href={`/stock/${r.symbol}`} className="flex items-center justify-between rounded-lg border border-up/30 bg-up-bg/30 p-1.5 transition hover:shadow hover:border-up/60">
                     <div className="flex items-center gap-2">
                       <span className="flex h-6 w-6 items-center justify-center rounded-full bg-up/20 text-[10px] font-bold text-up">#{i + 1}</span>
                       <div>
@@ -290,12 +290,12 @@ export default function Dashboard() {
             </div>
             {/* Top 3 SELL */}
             <div>
-              <div className="mb-2 flex items-center gap-1.5">
-                <span className="text-xs font-bold text-down">📉 Top 3 SELL Recommendations</span>
+              <div className="mb-1 flex items-center gap-1">
+                <span className="text-[10px] font-bold text-down">📉 Top 3 SELL Recommendations</span>
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 {deepResearch.data.recommendations.sell.slice(0, 3).map((r, i) => (
-                  <Link key={r.symbol} href={`/stock/${r.symbol}`} className="flex items-center justify-between rounded-lg border border-down/30 bg-down-bg/30 p-2 transition hover:shadow hover:border-down/60">
+                  <Link key={r.symbol} href={`/stock/${r.symbol}`} className="flex items-center justify-between rounded-lg border border-down/30 bg-down-bg/30 p-1.5 transition hover:shadow hover:border-down/60">
                     <div className="flex items-center gap-2">
                       <span className="flex h-6 w-6 items-center justify-center rounded-full bg-down/20 text-[10px] font-bold text-down">#{i + 1}</span>
                       <div>
@@ -316,8 +316,8 @@ export default function Dashboard() {
               </div>
             </div>
           </div>
-          <div className="border-t border-primary/20 px-3 py-1.5">
-            <div className="flex flex-wrap items-center gap-3 text-[8px] text-muted">
+          <div className="border-t border-primary/20 px-2 py-1">
+            <div className="flex flex-wrap items-center gap-2 text-[7px] text-muted">
               <span className="font-bold">Score Breakdown:</span>
               <span>Technical: RSI, Stoch, CCI</span>
               <span>Momentum: MACD, Patterns</span>
@@ -329,19 +329,19 @@ export default function Dashboard() {
       )}
 
       {/* AI Recommendations - Deep Research Engine (TOP) */}
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="grid gap-2 lg:grid-cols-2">
         {/* Top AI Signals */}
         {allSignals.length > 0 && (
           <section className="rounded-lg border border-primary/30 bg-surface shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-1.5 border-b border-border px-3 py-1.5">
-              <div className="flex items-center gap-1.5">
-                <h2 className="text-xs font-bold">🎯 Top AI</h2>
+            <div className="flex flex-wrap items-center justify-between gap-1 border-b border-border px-2 py-1">
+              <div className="flex items-center gap-1">
+                <h2 className="text-[11px] font-bold">🎯 Top AI</h2>
                 <span className="animate-pulse rounded bg-primary/10 px-1 py-0.5 text-[7px] font-bold text-primary">AI</span>
                 <span className="rounded bg-up-bg px-1 py-0.5 text-[7px] font-bold text-up">{allSignals.filter(s => s.recommendation === "Buy").length}B</span>
                 <span className="rounded bg-down-bg px-1 py-0.5 text-[7px] font-bold text-down">{allSignals.filter(s => s.recommendation === "Sell").length}S</span>
               </div>
             </div>
-            <div className="grid gap-1 p-1.5 sm:grid-cols-2">
+            <div className="grid gap-1 p-1 sm:grid-cols-2">
               {allSignals.filter((s) => s.recommendation !== "Hold" || s.confidence > 70).slice(0, 6).map((s) => {
                 const isBuy = s.recommendation === "Buy";
                 const isSell = s.recommendation === "Sell";
@@ -372,9 +372,9 @@ export default function Dashboard() {
 
         {/* Breakout Signals */}
         <section className="rounded-lg border border-primary/30 bg-surface shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-1.5 border-b border-border px-3 py-1.5">
-            <div className="flex items-center gap-1.5">
-              <h2 className="text-xs font-bold">⚡ Breakout</h2>
+          <div className="flex flex-wrap items-center justify-between gap-1 border-b border-border px-2 py-1">
+            <div className="flex items-center gap-1">
+              <h2 className="text-[11px] font-bold">⚡ Breakout</h2>
               <span className="animate-pulse rounded bg-primary/10 px-1 py-0.5 text-[7px] font-bold text-primary">SMC</span>
               <span className="rounded bg-up-bg px-1 py-0.5 text-[7px] font-bold text-up">{breakouts.filter(b => b.instBreakout?.status === "VALID BREAKOUT").length}V</span>
               <span className="rounded bg-down-bg px-1 py-0.5 text-[7px] font-bold text-down">{breakouts.filter(b => b.instBreakout?.status === "FAKE BREAKOUT (AVOID)").length}F</span>
@@ -426,20 +426,20 @@ export default function Dashboard() {
       </div>
 
       {/* Top Gainers / Top Losers */}
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="grid gap-2 lg:grid-cols-2">
         <MoverCard title="🟢 Top Gainers" tone="up" rows={movers.data?.gainers ?? []} />
         <MoverCard title="🔴 Top Losers" tone="down" rows={movers.data?.losers ?? []} />
       </div>
 
       {/* Buy/Sell Pressure */}
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="grid gap-2 lg:grid-cols-2">
         {/* Buy Pressure */}
         <section className="rounded-lg border border-up/30 bg-up-bg/10 shadow-sm">
-          <div className="flex items-center gap-2 border-b border-up/20 px-3 py-1.5">
-            <span className="text-xs font-bold text-up">🟢 Buy Pressure</span>
-            <span className="text-[8px] text-muted">Top Stocks</span>
+          <div className="flex items-center gap-1 border-b border-up/20 px-2 py-1">
+            <span className="text-[10px] font-bold text-up">🟢 Buy Pressure</span>
+            <span className="text-[7px] text-muted">Top Stocks</span>
           </div>
-          <div className="space-y-1 p-2">
+          <div className="space-y-0.5 p-1.5">
             {(live.data as any)?.data
               ?.filter((r: LiveMarketData) => classifySymbol(r.symbol, r.securityName) !== "DB" && !/\d/.test(r.symbol) && r.percentageChange > 0 && r.totalTradeValue > 0)
               ?.sort((a: LiveMarketData, b: LiveMarketData) => (b.percentageChange * b.totalTradeValue) - (a.percentageChange * a.totalTradeValue))
@@ -458,11 +458,11 @@ export default function Dashboard() {
 
         {/* Sell Pressure */}
         <section className="rounded-lg border border-down/30 bg-down-bg/10 shadow-sm">
-          <div className="flex items-center gap-2 border-b border-down/20 px-3 py-1.5">
-            <span className="text-xs font-bold text-down">🔴 Sell Pressure</span>
-            <span className="text-[8px] text-muted">Top Stocks</span>
+          <div className="flex items-center gap-1 border-b border-down/20 px-2 py-1">
+            <span className="text-[10px] font-bold text-down">🔴 Sell Pressure</span>
+            <span className="text-[7px] text-muted">Top Stocks</span>
           </div>
-          <div className="space-y-1 p-2">
+          <div className="space-y-0.5 p-1.5">
             {(live.data as any)?.data
               ?.filter((r: LiveMarketData) => classifySymbol(r.symbol, r.securityName) !== "DB" && !/\d/.test(r.symbol) && r.percentageChange < 0 && r.totalTradeValue > 0)
               ?.sort((a: LiveMarketData, b: LiveMarketData) => (Math.abs(b.percentageChange) * b.totalTradeValue) - (Math.abs(a.percentageChange) * a.totalTradeValue))
@@ -483,26 +483,26 @@ export default function Dashboard() {
       {/* Deep Broker Analysis Section */}
       {brokerAnalysis.data?.brokerNetHoldings && brokerAnalysis.data.brokerNetHoldings.length > 0 && (
         <section className="rounded-xl border border-border bg-surface shadow-sm">
-          <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
-            <div className="flex items-center gap-2">
-              <span className="text-sm">🔬</span>
-              <h2 className="text-sm font-bold text-foreground">Deep Broker Analysis</h2>
-              <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[8px] font-bold text-primary">
+          <div className="flex items-center justify-between border-b border-border px-3 py-1.5">
+            <div className="flex items-center gap-1">
+              <span className="text-[11px]">🔬</span>
+              <h2 className="text-xs font-bold text-foreground">Deep Broker Analysis</h2>
+              <span className="rounded bg-primary/10 px-1 py-0.5 text-[7px] font-bold text-primary">
                 {brokerAnalysis.data.brokerNetHoldings.length} BROKERS
               </span>
             </div>
-            <span className="text-[9px] text-muted">
+            <span className="text-[8px] text-muted">
               Updated: {new Date(brokerAnalysis.data.timestamp).toLocaleTimeString()}
             </span>
           </div>
 
-          <div className="grid gap-4 p-4 md:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-3 p-3 md:grid-cols-2 lg:grid-cols-4">
             {/* Activity Leaders */}
-            <div className="rounded-lg border border-border bg-surface-2 p-3">
-              <div className="mb-2 flex items-center gap-1.5">
-                <span className="text-xs font-bold text-blue-500">📊 Top Activity</span>
+            <div className="rounded-lg border border-border bg-surface-2 p-2">
+              <div className="mb-1 flex items-center gap-1">
+                <span className="text-[10px] font-bold text-blue-500">📊 Top Activity</span>
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 {brokerAnalysis.data.brokerNetHoldings
                   .sort((a: any, b: any) => (b.buyQty + b.sellQty) - (a.buyQty + a.sellQty))
                   .slice(0, 5)
@@ -586,8 +586,8 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="border-t border-border px-4 py-2">
-            <div className="flex flex-wrap items-center gap-3 text-[9px] text-muted">
+          <div className="border-t border-border px-3 py-1">
+            <div className="flex flex-wrap items-center gap-2 text-[8px] text-muted">
               <span className="font-bold">Insights:</span>
               <span>Total Volume: {num(brokerAnalysis.data.totalVolume || 0)} shares</span>
               <span>Total Value: {(brokerAnalysis.data.totalValue || 0).toFixed(2)} Cr</span>

@@ -5,7 +5,7 @@ import type { LiveMarketData } from "@/lib/types";
 import { classifySymbol, TYPE_BADGE } from "@/lib/types";
 import { npr, pct, compact, num } from "@/lib/format";
 
-export default function MarketPanel({ liveData, noOuterBorder, mounted }: { liveData: LiveMarketData[] | undefined; noOuterBorder?: boolean; mounted?: boolean }) {
+export default function MarketPanel({ liveData, noOuterBorder, mounted, compact: isCompact }: { liveData: LiveMarketData[] | undefined; noOuterBorder?: boolean; mounted?: boolean; compact?: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const [sortKey, setSortKey] = useState<"percentageChange" | "symbol" | "lastTradedPrice" | "totalTradeQuantity">("symbol");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -36,7 +36,7 @@ export default function MarketPanel({ liveData, noOuterBorder, mounted }: { live
     });
   }, [liveData, sortKey, sortDir, filter, search]);
 
-  const displayed = expanded ? rows : rows.slice(0, 10);
+  const displayed = expanded ? rows : rows.slice(0, isCompact ? 5 : 10);
 
   const arrow = (k: typeof sortKey) => sortKey === k ? (sortDir === "asc" ? " ▲" : " ▼") : "";
 
@@ -62,7 +62,7 @@ export default function MarketPanel({ liveData, noOuterBorder, mounted }: { live
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto" style={{ maxHeight: noOuterBorder ? "340px" : "500px", overflowY: "auto" }}>
+      <div className="overflow-x-auto" style={{ maxHeight: isCompact ? "200px" : noOuterBorder ? "340px" : "500px", overflowY: "auto" }}>
         <table className="w-full text-xs">
           <thead className="sticky top-0 z-10 bg-surface-2 text-[10px] uppercase tracking-wide text-muted">
             <tr>
