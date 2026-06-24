@@ -209,7 +209,7 @@ html, body {
 .ba-metric-sub .red { color: var(--ba-red); }
 .ba-metric-sub .muted { color: var(--ba-text-tertiary); }
 
-/* ─── DATE SECTION (compact inline) ─── */
+/* ─── TIMEFRAME SECTION (compact inline) ─── */
 .ba-date-row {
   display: flex;
   align-items: center;
@@ -217,47 +217,36 @@ html, body {
   margin-bottom: var(--ba-space-5);
 }
 
-.ba-date-picker {
+.ba-tf-buttons {
   display: flex;
-  align-items: center;
-  gap: var(--ba-space-2);
+  gap: 2px;
   background: var(--ba-surface);
   border: 1px solid var(--ba-border);
   border-radius: var(--ba-radius-sm);
-  padding: 6px 12px;
+  padding: 2px;
 }
 
-.ba-date-picker i {
-  color: var(--ba-gold);
-  font-size: 14px;
-}
-
-.ba-date-picker input[type="date"] {
+.ba-tf-btn {
   background: transparent;
   border: none;
-  color: var(--ba-text);
+  color: var(--ba-text-secondary);
   font-family: var(--ba-font-mono);
-  font-size: 14px;
-  font-weight: 500;
-  padding: 2px 0;
-  min-width: 120px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 4px;
   cursor: pointer;
+  transition: all 0.15s;
 }
+.ba-tf-btn:hover { color: var(--ba-text); background: var(--ba-surface-raised); }
+.ba-tf-btn.active { color: #fff; background: var(--ba-gold); }
 
-.ba-date-picker input[type="date"]::-webkit-calendar-picker-indicator {
-  filter: invert(1);
-  cursor: pointer;
-}
-
-.ba-update-notice {
+.ba-nepal-clock {
   font-size: 12px;
   color: var(--ba-text-tertiary);
-  display: flex;
-  align-items: center;
-  gap: 4px;
+  font-family: var(--ba-font-mono);
+  margin-left: auto;
 }
-
-.ba-update-notice i { font-size: 11px; color: var(--ba-gold); }
 
 /* ─── SEARCH BAR ─── */
 .ba-search-bar {

@@ -69,10 +69,6 @@ type HoldingData = {
   totalNetAmt: number;
 };
 
-function todayStr(): string {
-  return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kathmandu" });
-}
-
 function formatCr(n: number): string {
   const abs = Math.abs(n);
   if (abs >= 1e7) return (n / 1e7).toFixed(2) + " Cr";
@@ -106,7 +102,21 @@ export default function BrokerAnalysisPage() {
   const [activeBroker, setActiveBroker] = useState<string | null>(null);
   const [footprintSymbol, setFootprintSymbol] = useState<string | null>(null);
   const [brokerFlowFilter, setBrokerFlowFilter] = useState("");
+  const [timeframe, setTimeframe] = useState<"1D" | "3D" | "1W" | "1M" | "3M">("1D");
+  const [nptClock, setNptClock] = useState("");
   useEffect(() => { setBrokerFlowFilter(""); }, [footprintSymbol]);
+
+  // NPT clock
+  useEffect(() => {
+    const tick = () => {
+      const now = new Date();
+      const npt = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kathmandu" }));
+      setNptClock(npt.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true }));
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
 
   // Bootstrap: fetch latest available date on mount
   const latestDate = usePoll<{ date: string; dates: string[] }>("/api/fs-date?date=", 0);
@@ -224,24 +234,14 @@ export default function BrokerAnalysisPage() {
         </div>
       </section>
 
-      {/* Date & Search Bar */}
+      {/* Timeframe & Search Bar */}
       <div className="ba-date-row">
-        <div className="ba-date-picker">
-          <i className="fas fa-calendar" />
-          {selectedDate ? (
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              max={todayStr()}
-            />
-          ) : (
-            <span style={{ color: "var(--ba-text-tertiary)", fontFamily: "var(--ba-font-mono)", fontSize: 14 }}>Loading...</span>
-          )}
+        <div className="ba-tf-buttons">
+          {(["1D", "3D", "1W", "1M", "3M"] as const).map((t) => (
+            <button key={t} onClick={() => setTimeframe(t)} className={`ba-tf-btn ${timeframe === t ? "active" : ""}`}>{t}</button>
+          ))}
         </div>
-        <span className="ba-update-notice">
-          <i className="fas fa-clock" /> updates after 3PM NPT
-        </span>
+        <span className="ba-nepal-clock">{nptClock || "—"} NPT</span>
       </div>
 
       {/* Compact Search Bar */}
