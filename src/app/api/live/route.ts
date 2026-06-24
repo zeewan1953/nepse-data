@@ -18,7 +18,7 @@ async function fetchFromMeroLagani(): Promise<{ rows: LiveMarketData[]; source: 
   const mero = await fetchMeroLaganiSummary();
   if (!mero?.stock?.detail?.length) return null;
 
-  // Build OHLC map from turnover detail (has open/high/low) with DB fallback
+  // Build OHLC map from turnover detail (has open/high/low) with DB and NEPSE fallback
   const ohlcFromTurnover = new Map<string, Ohlc>();
   if (mero.turnover?.detail) {
     for (const t of mero.turnover.detail) {
@@ -27,7 +27,26 @@ async function fetchFromMeroLagani(): Promise<{ rows: LiveMarketData[]; source: 
       }
     }
   }
-  // Fallback to DB OHLC for stocks missing from turnover
+  // Fallback: fetch OHLC from NEPSE API security list
+  if (ohlcFromTurnover.size === 0) {
+    try {
+      const nepse = getNepse();
+      const securities = await safeNepseCall(() => nepse.getSecurityList(), "Security list OHLC").catch(() => []);
+      if (Array.isArray(securities)) {
+        for (const s of securities) {
+          if (s.activeStatus === "A" && (s as any).openPrice) {
+            ohlcFromTurnover.set(s.symbol, {
+              openPrice: (s as any).openPrice ?? 0,
+              highPrice: (s as any).highPrice ?? 0,
+              lowPrice: (s as any).lowPrice ?? 0,
+              averageTradedPrice: (s as any).averageTradedPrice ?? 0,
+            });
+          }
+        }
+      }
+    } catch { /* nepse ohlc optional */ }
+  }
+  // Last resort: DB OHLC
   if (ohlcFromTurnover.size === 0) {
     try {
       const dbOhlc = await getOhlcMap();
