@@ -1043,7 +1043,7 @@ function VerifyDashboard() {
                 <div className="text-base font-bold tabular-nums">{verifyResult.ohlcvRows}</div>
               </div>
               <div className="rounded-lg border border-border bg-surface-2 p-2">
-                <div className="text-[10px] font-semibold text-muted">Live (MeroLagani)</div>
+                <div className="text-[10px] font-semibold text-muted">Live (nepseput)</div>
                 <div className="text-base font-bold tabular-nums">{verifyResult.liveStocks}</div>
               </div>
               <div className="rounded-lg border border-border bg-surface-2 p-2">
@@ -1110,7 +1110,7 @@ function VerifyDashboard() {
             {/* Live Data */}
             {verifyResult.live?.length > 0 && (
               <div>
-                <div className="text-xs font-bold text-muted mb-2">Live (MeroLagani)</div>
+                <div className="text-xs font-bold text-muted mb-2">Live (nepseput)</div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead><tr className="border-b border-border text-xs text-muted">
