@@ -16,7 +16,7 @@ type LiveResp = { data: LiveMarketData[]; count: number };
 type PriceMap = Record<string, { ltp: number; updatedAt: number; totalQty: number }>;
 type PrevCloseMap = Record<string, { prevClose: number; date: string }>;
 
-type Tab = "trade" | "signals" | "health" | "logs" | "robot";
+type Tab = "trade" | "signals" | "health" | "logs" | "robot" | "verify";
 
 type SignalRow = {
   symbol: string; name?: string; sector?: string;
@@ -226,6 +226,7 @@ export default function DemoPage() {
     { key: "trade", label: "Trade", icon: "🛒" },
     { key: "signals", label: "Signals", icon: "📊" },
     { key: "robot", label: "Auto Robot", icon: "🤖" },
+    { key: "verify", label: "Verify", icon: "🔎" },
     { key: "logs", label: "Logs", icon: "📋" },
     { key: "health", label: "Health", icon: "🔍" },
   ];
@@ -387,6 +388,7 @@ export default function DemoPage() {
       {activeTab === "signals" && <SignalDashboard />}
       {activeTab === "health" && <HealthDashboard />}
       {activeTab === "robot" && <AutoRobotDashboard />}
+      {activeTab === "verify" && <VerifyDashboard />}
       {activeTab === "logs" && <LogDashboard />}
 
       {ticketOpen && state && <OrderTicketModal state={state} prices={prices} prevClose={prevClose} symbol={ticketSymbol} initPrice={ticketPrice} signalSnapshot={ticketSignal} onClose={() => setTicketOpen(false)} onPlace={placeOrder} />}
@@ -834,6 +836,191 @@ function AutoRobotDashboard() {
               </div>
             )}
           </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function VerifyDashboard() {
+  const [symbol, setSymbol] = useState("");
+  const [verifyResult, setVerifyResult] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const runVerify = async () => {
+    setLoading(true); setError(""); setVerifyResult(null);
+    try {
+      const params = new URLSearchParams();
+      if (symbol.trim()) params.set("symbol", symbol.trim().toUpperCase());
+      params.set("limit", "10");
+      const r = await fetch(`/api/verify-data?${params}`);
+      const d = await r.json();
+      if (d.error) { setError(d.error); return; }
+      setVerifyResult(d);
+    } catch (e) {
+      setError((e as Error)?.message || "Verify failed");
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-border bg-surface p-4 shadow-sm">
+        <h3 className="mb-4 text-base font-bold">🔎 Data Verification</h3>
+        <div className="text-xs text-muted mb-4 leading-relaxed">
+          Cross-references app data with live sources. Run the local data proxy on your machine to fetch from nepalstock/nepsealpha.
+          <pre className="mt-1 rounded bg-surface-2 p-2 text-[10px]">node scripts/data-proxy.mjs --stock NABIL</pre>
+        </div>
+
+        <div className="flex gap-2 mb-4">
+          <input value={symbol} onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+            placeholder="Symbol (leave blank for all)" maxLength={20}
+            className="flex-1 rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm font-bold uppercase outline-none focus:border-amber-500"
+          />
+          <button onClick={runVerify} disabled={loading}
+            className="rounded-lg bg-amber-500 px-4 py-2 text-xs font-bold text-white hover:bg-amber-600 disabled:opacity-50">
+            {loading ? "Verifying..." : "Verify"}
+          </button>
+        </div>
+
+        {error && <div className="mb-3 rounded-lg bg-down-bg px-3 py-2 text-xs font-bold text-down">{error}</div>}
+
+        {verifyResult && (
+          <div className="space-y-3">
+            {/* Summary */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+              <div className="rounded-lg border border-border bg-surface-2 p-2">
+                <div className="text-[10px] font-semibold text-muted">OHLCV Rows</div>
+                <div className="text-base font-bold tabular-nums">{verifyResult.ohlcvRows}</div>
+              </div>
+              <div className="rounded-lg border border-border bg-surface-2 p-2">
+                <div className="text-[10px] font-semibold text-muted">Live (MeroLagani)</div>
+                <div className="text-base font-bold tabular-nums">{verifyResult.liveStocks}</div>
+              </div>
+              <div className="rounded-lg border border-border bg-surface-2 p-2">
+                <div className="text-[10px] font-semibold text-muted">Collected Sources</div>
+                <div className="text-base font-bold tabular-nums">{verifyResult.collectedSources}</div>
+              </div>
+              <div className={`rounded-lg border p-2 ${verifyResult.mismatches?.length > 0 ? "border-down/30 bg-down-bg/5" : "border-up/30 bg-up-bg/5"}`}>
+                <div className="text-[10px] font-semibold text-muted">Mismatches</div>
+                <div className={`text-base font-bold tabular-nums ${verifyResult.mismatches?.length > 0 ? "text-down" : "text-up"}`}>
+                  {verifyResult.mismatches?.length ?? 0}
+                </div>
+              </div>
+            </div>
+
+            {/* Mismatches */}
+            {verifyResult.mismatches?.length > 0 && (
+              <div className="rounded-lg border border-down/30 bg-down-bg/5 p-3">
+                <div className="text-xs font-bold text-down mb-2">Data Mismatches Detected</div>
+                {verifyResult.mismatches.map((m: any, i: number) => (
+                  <div key={i} className="flex items-center gap-4 text-xs py-1 border-b border-border/30 last:border-0">
+                    <span className="font-bold text-primary">{m.symbol}</span>
+                    <span className="text-muted">{m.field}:</span>
+                    <span className="text-down line-through">Rs {m.dbValue}</span>
+                    <span className="text-up">→ Rs {m.liveValue}</span>
+                    <span className="text-down">({m.diffPct})</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* OHLCV Data */}
+            {verifyResult.ohlcv?.length > 0 && (
+              <div>
+                <div className="text-xs font-bold text-muted mb-2">OHLCV (App DB)</div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead><tr className="border-b border-border text-xs text-muted">
+                      <th className="py-1 text-left">Symbol</th>
+                      <th className="py-1 text-left">Date</th>
+                      <th className="py-1 text-right">Open</th>
+                      <th className="py-1 text-right">High</th>
+                      <th className="py-1 text-right">Low</th>
+                      <th className="py-1 text-right">Close</th>
+                      <th className="py-1 text-right">Volume</th>
+                    </tr></thead>
+                    <tbody>
+                      {verifyResult.ohlcv.map((r: any, i: number) => (
+                        <tr key={i} className="border-b border-border/30 text-xs">
+                          <td className="py-1 font-bold text-primary">{r.symbol}</td>
+                          <td className="py-1 text-muted">{r.date}</td>
+                          <td className="py-1 text-right tabular-nums">{r.open}</td>
+                          <td className="py-1 text-right tabular-nums">{r.high}</td>
+                          <td className="py-1 text-right tabular-nums">{r.low}</td>
+                          <td className="py-1 text-right font-bold tabular-nums">{r.close}</td>
+                          <td className="py-1 text-right tabular-nums">{r.volume}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Live Data */}
+            {verifyResult.live?.length > 0 && (
+              <div>
+                <div className="text-xs font-bold text-muted mb-2">Live (MeroLagani)</div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead><tr className="border-b border-border text-xs text-muted">
+                      <th className="py-1 text-left">Symbol</th>
+                      <th className="py-1 text-right">LTP</th>
+                      <th className="py-1 text-right">Change</th>
+                      <th className="py-1 text-right">Volume</th>
+                    </tr></thead>
+                    <tbody>
+                      {verifyResult.live.map((r: any, i: number) => (
+                        <tr key={i} className="border-b border-border/30 text-xs">
+                          <td className="py-1 font-bold text-primary">{r.symbol}</td>
+                          <td className="py-1 text-right tabular-nums font-bold">Rs {r.ltp}</td>
+                          <td className={`py-1 text-right tabular-nums ${(r.change ?? 0) >= 0 ? "text-up" : "text-down"}`}>
+                            {(r.change ?? 0) >= 0 ? "+" : ""}{r.change}%
+                          </td>
+                          <td className="py-1 text-right tabular-nums">{r.volume?.toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Collected Sources */}
+            {verifyResult.collected?.length > 0 && (
+              <div>
+                <div className="text-xs font-bold text-muted mb-2">Collected Data (via local proxy)</div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead><tr className="border-b border-border text-xs text-muted">
+                      <th className="py-1 text-left">Time</th>
+                      <th className="py-1 text-left">Source</th>
+                      <th className="py-1 text-left">Type</th>
+                      <th className="py-1 text-left">Payload</th>
+                    </tr></thead>
+                    <tbody>
+                      {verifyResult.collected.map((r: any, i: number) => (
+                        <tr key={i} className="border-b border-border/30 text-xs">
+                          <td className="py-1 text-muted tabular-nums">{r.time}</td>
+                          <td className="py-1">{r.source}</td>
+                          <td className="py-1">{r.type}</td>
+                          <td className="py-1 text-muted truncate max-w-[200px]" title={r.payload}>{r.payload}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {!verifyResult && !loading && !error && (
+          <div className="py-8 text-center text-muted text-xs">
+            Enter a symbol and click Verify to cross-reference app data with live sources.
+          </div>
         )}
       </div>
     </div>
