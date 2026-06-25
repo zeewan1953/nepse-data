@@ -16,7 +16,7 @@ type LiveResp = { data: LiveMarketData[]; count: number };
 type PriceMap = Record<string, { ltp: number; updatedAt: number; totalQty: number }>;
 type PrevCloseMap = Record<string, { prevClose: number; date: string }>;
 
-type Tab = "trade" | "signals" | "health" | "logs" | "robot" | "verify";
+type Tab = "trade" | "signals" | "health" | "logs" | "robot" | "verify" | "chat";
 
 type SignalRow = {
   symbol: string; name?: string; sector?: string;
@@ -227,6 +227,7 @@ export default function DemoPage() {
     { key: "signals", label: "Signals", icon: "📊" },
     { key: "robot", label: "Auto Robot", icon: "🤖" },
     { key: "verify", label: "Verify", icon: "🔎" },
+    { key: "chat", label: "Chat", icon: "💬" },
     { key: "logs", label: "Logs", icon: "📋" },
     { key: "health", label: "Health", icon: "🔍" },
   ];
@@ -389,6 +390,7 @@ export default function DemoPage() {
       {activeTab === "health" && <HealthDashboard />}
       {activeTab === "robot" && <AutoRobotDashboard />}
       {activeTab === "verify" && <VerifyDashboard />}
+      {activeTab === "chat" && <ChatDashboard />}
       {activeTab === "logs" && <LogDashboard />}
 
       {ticketOpen && state && <OrderTicketModal state={state} prices={prices} prevClose={prevClose} symbol={ticketSymbol} initPrice={ticketPrice} signalSnapshot={ticketSignal} onClose={() => setTicketOpen(false)} onPlace={placeOrder} />}
@@ -837,6 +839,152 @@ function AutoRobotDashboard() {
             )}
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+type ChatMsg = {
+  role: "user" | "assistant";
+  type: "text" | "table" | "error" | "action";
+  title?: string;
+  content: any;
+  data?: any[];
+};
+
+function ChatDashboard() {
+  const [msgs, setMsgs] = useState<ChatMsg[]>([
+    { role: "assistant", type: "text", title: "🤖 Assistant", content: "Namaste! म क के गर्न सक्छु:\n\n📊 `NABIL` — stock signal\n🏦 `broker 58` — broker analysis\n📈 `market` — market summary\n🔎 `verify NABIL` — verify data\n🤖 `autotrade` — run auto-trader\n💼 `positions` — portfolio\n🧪 `test /api/live` — test API\n❓ `help` — commands" },
+  ]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const send = async () => {
+    const msg = input.trim();
+    if (!msg || loading) return;
+    setInput("");
+
+    setMsgs((prev) => [...prev, { role: "user", type: "text", content: msg, title: "You" }]);
+    setLoading(true);
+
+    try {
+      const r = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: msg }),
+      });
+      const data = await r.json();
+      setMsgs((prev) => [...prev, {
+        role: "assistant",
+        type: data.type || "text",
+        title: data.title || "Response",
+        content: data.content,
+        data: data.data,
+      }]);
+    } catch {
+      setMsgs((prev) => [...prev, { role: "assistant", type: "error", title: "Error", content: "Request failed" }]);
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div className="flex flex-col h-[calc(100vh-240px)] min-h-[400px] rounded-xl border border-border bg-surface shadow-sm">
+      {/* Header */}
+      <div className="border-b border-border px-4 py-3">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">🤖</span>
+          <span className="font-bold">AI Assistant</span>
+          <span className="text-[10px] text-muted">— पूरा पावर सबै API हरू</span>
+        </div>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        {msgs.map((m, i) => (
+          <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+            <div className={`max-w-[85%] rounded-xl px-4 py-2 ${
+              m.role === "user"
+                ? "bg-amber-500/20 border border-amber-500/30"
+                : m.type === "error" ? "bg-down-bg/10 border border-down/30"
+                : m.type === "action" ? "bg-up-bg/10 border border-up/30"
+                : "bg-surface-2 border border-border"
+            }`}>
+              {/* Title */}
+              {m.title && m.role === "assistant" && (
+                <div className="text-xs font-bold text-amber-500 mb-1">{m.title}</div>
+              )}
+
+              {/* Text content */}
+              {(m.type === "text" || !m.data) && (
+                <div className="text-xs whitespace-pre-wrap leading-relaxed">{m.content}</div>
+              )}
+
+              {/* Table data */}
+              {m.data && m.data.length > 0 && (
+                <div className="mt-1 overflow-x-auto">
+                  <table className="w-full text-[10px]">
+                    <thead>
+                      <tr className="border-b border-border text-muted">
+                        {Object.keys(m.data[0]).map((k) => (
+                          <th key={k} className="py-1 pr-2 text-left font-semibold uppercase">{k}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {m.data.map((row: any, ri: number) => (
+                        <tr key={ri} className="border-b border-border/20">
+                          {Object.keys(row).map((k) => (
+                            <td key={k} className={`py-1 pr-2 tabular-nums ${k === "type" && (row[k] === "BUY" || row[k] === "SELL") ? "font-bold " + (row[k] === "BUY" ? "text-up" : "text-down") : ""}`}>
+                              {String(row[k] ?? "—")}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Key-value content */}
+              {m.type === "table" && !m.data && m.content && typeof m.content === "object" && Object.keys(m.content).length > 0 && (
+                <div className="mt-1 grid grid-cols-2 gap-1 text-[10px]">
+                  {Object.entries(m.content).map(([k, v]) => (
+                    <div key={k} className="flex justify-between rounded bg-surface-2/50 px-2 py-1">
+                      <span className="text-muted font-medium">{k}</span>
+                      <span className="font-bold tabular-nums">{String(v ?? "—")}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Array content */}
+              {Array.isArray(m.content) && !m.data && (
+                <div className="mt-1 text-xs">{m.content.join("\n")}</div>
+              )}
+            </div>
+          </div>
+        ))}
+        {loading && (
+          <div className="flex justify-start">
+            <div className="bg-surface-2 border border-border rounded-xl px-4 py-2">
+              <span className="text-xs text-muted animate-pulse">Thinking...</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Input */}
+      <div className="border-t border-border p-3">
+        <form onSubmit={(e) => { e.preventDefault(); send(); }} className="flex gap-2">
+          <input value={input} onChange={(e) => setInput(e.target.value)}
+            placeholder='Type a command... e.g. "NABIL", "market", "help"'
+            className="flex-1 rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs outline-none focus:border-amber-500"
+          />
+          <button type="submit" disabled={loading || !input.trim()}
+            className="rounded-lg bg-amber-500 px-4 py-2 text-xs font-bold text-white hover:bg-amber-600 disabled:opacity-50">
+            Send
+          </button>
+        </form>
       </div>
     </div>
   );

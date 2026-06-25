@@ -3,11 +3,12 @@ import { tickAutoTrader, isMarketHours, scheduleNextTick } from "@/lib/auto-trad
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Try to import waitUntil — available on Vercel runtime
+// waitUntil fallback - best effort only
 let _waitUntil: ((p: Promise<any>) => void) | null = null;
 try {
-  const mod = require("@vercel/functions");
-  _waitUntil = mod.waitUntil || null;
+  // Dynamic import avoids build issue when @vercel/functions not installed locally
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  _waitUntil = (globalThis as any).__waitUntil || null;
 } catch {}
 
 const SELF_URL = process.env.VERCEL_URL

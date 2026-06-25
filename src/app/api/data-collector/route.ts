@@ -47,17 +47,16 @@ export async function POST(req: Request) {
           const low = parseFloat(item.low || item.lowPrice || 0);
           const open = parseFloat(item.open || item.openPrice || 0);
           const volume = parseInt(item.volume || item.totalTradedQuantity || item.quantity || 0);
-          const turnover = parseFloat(item.turnover || item.totalTradedValue || 0);
-          const date = (item.date || item.tradeDate || new Date().toISOString().slice(0, 10)).replace(/\//g, "-");
+          const value = parseFloat(item.turnover || item.totalTradedValue || 0);
+          const tradeDate = (item.date || item.tradeDate || new Date().toISOString().slice(0, 10)).replace(/\//g, "-");
           if (symbol) {
             try {
+              // Delete + insert (upsert for composite PK tradeDate, symbol)
+              await db.execute({ sql: "DELETE FROM stock_daily_ohlcv WHERE tradeDate = ? AND symbol = ?", args: [tradeDate, symbol] });
               await db.execute({
-                sql: `INSERT INTO stock_daily_ohlcv (symbol, date, open, high, low, close, volume, turnover)
-                      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                      ON CONFLICT(symbol, date) DO UPDATE SET
-                        open = excluded.open, high = excluded.high, low = excluded.low,
-                        close = excluded.close, volume = excluded.volume, turnover = excluded.turnover`,
-                args: [symbol, date, open || 0, high || 0, low || 0, ltp || 0, volume || 0, turnover || 0],
+                sql: `INSERT INTO stock_daily_ohlcv (tradeDate, symbol, open, high, low, close, volume, value)
+                      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                args: [tradeDate, symbol, open || 0, high || 0, low || 0, ltp || 0, volume || 0, value || 0],
               });
             } catch {}
           }
@@ -86,12 +85,11 @@ export async function POST(req: Request) {
       if (stock.symbol && stock.ltp) {
         const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kathmandu" });
         try {
+          await db.execute({ sql: "DELETE FROM stock_daily_ohlcv WHERE tradeDate = ? AND symbol = ?", args: [today, stock.symbol] });
           await db.execute({
-            sql: `INSERT INTO stock_daily_ohlcv (symbol, date, open, high, low, close, volume)
-                  VALUES (?, ?, ?, ?, ?, ?, ?)
-                  ON CONFLICT(symbol, date) DO UPDATE SET
-                    close = excluded.close, volume = excluded.volume`,
-            args: [stock.symbol, today, stock.ltp, stock.ltp, stock.ltp, stock.ltp, stock.volume || 0],
+            sql: `INSERT INTO stock_daily_ohlcv (tradeDate, symbol, open, high, low, close, volume)
+                  VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            args: [today, stock.symbol, stock.ltp, stock.ltp, stock.ltp, stock.ltp, stock.volume || 0],
           });
         } catch {}
       }
