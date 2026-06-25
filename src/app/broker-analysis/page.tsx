@@ -1,5 +1,5 @@
 "use client";
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { usePoll } from "@/lib/useLive";
 import { computeBrokerFootprint, getBestFlowSummary, patternLabel, patternColor } from "@/lib/broker-footprint";
 import "./broker-analysis.css";
@@ -7,6 +7,7 @@ import "./broker-analysis.css";
 // Types
 type DateOverview = {
   date: string;
+  source?: string;
   totals: { trades: number; qty: number; amount: number; brokers: number; stocks: number };
   netFlow: Array<{ id: string; buyAmt: number; sellAmt: number; netAmt: number }>;
   dates: string[];
@@ -92,6 +93,7 @@ type FootprintData = {
     pattern: string;
     windowDays: number;
   } | null;
+  note?: string;
 };
 
 export default function BrokerAnalysisPage() {
@@ -104,6 +106,8 @@ export default function BrokerAnalysisPage() {
   const [brokerFlowFilter, setBrokerFlowFilter] = useState("");
   const [timeframe, setTimeframe] = useState<"1D" | "3D" | "1W" | "1M" | "3M">("1D");
   const [nptClock, setNptClock] = useState("");
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
   useEffect(() => { setBrokerFlowFilter(""); }, [footprintSymbol]);
 
   // NPT clock
@@ -118,6 +122,29 @@ export default function BrokerAnalysisPage() {
     return () => clearInterval(id);
   }, []);
 
+  // Sync floorsheet data from NEPSE
+  const handleSync = useCallback(async () => {
+    setSyncing(true);
+    setSyncMsg(null);
+    try {
+      const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kathmandu" });
+      const res = await fetch(`/api/broker-sync?date=${today}`, { cache: "no-store" });
+      const data = await res.json();
+      if (data.success) {
+        setSyncMsg(`Synced ${data.date}: ${data.sync?.tradeCount ?? "—"} trades`);
+        // Refresh page data by changing a state to trigger re-fetch
+        setBootstrapped(false);
+        setSelectedDate("");
+      } else {
+        setSyncMsg(`Sync failed: ${data.message}`);
+      }
+    } catch (e) {
+      setSyncMsg(`Sync error: ${(e as Error).message}`);
+    } finally {
+      setSyncing(false);
+    }
+  }, []);
+
   // Bootstrap: fetch latest available date on mount
   const latestDate = usePoll<{ date: string; dates: string[] }>("/api/fs-date?date=", 0);
   useEffect(() => {
@@ -127,14 +154,45 @@ export default function BrokerAnalysisPage() {
     }
   }, [latestDate.data?.date, bootstrapped]);
 
+  // Compute date range from timeframe
+  const dateFrom = useMemo(() => {
+    if (!selectedDate || !latestDate.data?.dates?.length) return selectedDate || "";
+    const dates = latestDate.data.dates;
+    const idx = dates.indexOf(selectedDate);
+    if (idx === -1) return selectedDate;
+    const lookback: Record<string, number> = { "1D": 0, "3D": 2, "1W": 6, "1M": 21, "3M": 63 };
+    return dates[Math.min(dates.length - 1, idx + (lookback[timeframe] ?? 0))];
+  }, [timeframe, selectedDate, latestDate.data?.dates]);
+
+  const isRange = timeframe !== "1D" && dateFrom && selectedDate && dateFrom !== selectedDate;
+
+  // Build API URLs based on timeframe
+  const fsDateUrl = selectedDate
+    ? isRange
+      ? `/api/fs-date?from=${dateFrom}&to=${selectedDate}`
+      : `/api/fs-date?date=${selectedDate}`
+    : "";
+  const accDistUrl = selectedDate
+    ? isRange
+      ? `/api/accumulation?from=${dateFrom}&to=${selectedDate}`
+      : `/api/accumulation?date=${selectedDate}`
+    : "";
+  const brokerUrl = activeBroker && selectedDate
+    ? isRange
+      ? `/api/fs-broker?from=${dateFrom}&to=${selectedDate}&broker=${activeBroker}`
+      : `/api/fs-broker?date=${selectedDate}&broker=${activeBroker}`
+    : "";
+  const holdingUrl = selectedDate
+    ? isRange
+      ? `/api/broker-holding?from=${dateFrom}&to=${selectedDate}`
+      : `/api/broker-holding?date=${selectedDate}`
+    : "";
+
   // Fetch data — usePoll is always called (rules of hooks), URL changes trigger refetch
-  const dateData = usePoll<DateOverview>(selectedDate ? `/api/fs-date?date=${selectedDate}` : "", 0);
-  const accDistData = usePoll<AccDistData>(selectedDate ? `/api/accumulation?date=${selectedDate}` : "", 0);
-  const brokerData = usePoll<BrokerData>(
-    activeBroker && selectedDate ? `/api/fs-broker?date=${selectedDate}&broker=${activeBroker}` : "",
-    0
-  );
-  const holdingData = usePoll<HoldingData>(selectedDate ? `/api/broker-holding?date=${selectedDate}` : "", 0);
+  const dateData = usePoll<DateOverview>(fsDateUrl, 0);
+  const accDistData = usePoll<AccDistData>(accDistUrl, 0);
+  const brokerData = usePoll<BrokerData>(brokerUrl, 0);
+  const holdingData = usePoll<HoldingData>(holdingUrl, 0);
   const footprintData = usePoll<FootprintData>(
     footprintSymbol && selectedDate ? `/api/broker-flow/${footprintSymbol}/${selectedDate}` : "",
     0
@@ -185,16 +243,25 @@ export default function BrokerAnalysisPage() {
           NEPSE Market Summary
         </div>
         <div className="ba-subtitle">AXION — Institutional Flow Tracker</div>
+        <div className="ba-header-actions">
+          {syncMsg && <span className="ba-sync-msg">{syncMsg}</span>}
+          <button className="ba-sync-btn" onClick={handleSync} disabled={syncing}>
+            <i className={`fas ${syncing ? "fa-spinner fa-spin" : "fa-cloud-arrow-down"}`} />
+            {syncing ? "Syncing…" : "Sync"}
+          </button>
+        </div>
       </header>
 
       {/* Market Summary Panel */}
       <section className="ba-summary-panel">
         <div className="ba-summary-header">
           <div className="ba-summary-title">
-            <i className="fas fa-chart-bar" /> {selectedDate || "—"}
+            <i className="fas fa-chart-bar" /> {isRange ? `${dateFrom} – ${selectedDate}` : selectedDate || "—"}
+            {isRange && <span className="ba-tf-label">{timeframe}</span>}
           </div>
-          <span className="ba-badge finalized">
-            <i className="fas fa-check-circle" /> Floor finalized
+          <span className={`ba-badge ${dateData.data?.source === "merolagani" ? "live" : "finalized"}`}>
+            <i className={`fas ${dateData.data?.source === "merolagani" ? "fa-bolt" : "fa-check-circle"}`} />
+            {dateData.data?.source === "merolagani" ? "MeroLagani Live" : "Floor finalized"}
           </span>
         </div>
 
@@ -626,6 +693,13 @@ export default function BrokerAnalysisPage() {
                 </button>
               </div>
 
+              {/* MeroLagani data note */}
+              {footprintData.data?.note && (
+                <div className="ba-empty" style={{ padding: 12, marginBottom: 8, fontSize: 12 }}>
+                  <i className="fas fa-info-circle" /> {footprintData.data.note}
+                </div>
+              )}
+
               {/* Best Flow Summary Cards */}
               {(() => {
                 const flow = footprintData.data as any;
@@ -639,17 +713,17 @@ export default function BrokerAnalysisPage() {
                   <div className="ba-flow-summary">
                     <div className="ba-flow-card accumulator">
                       <div className="card-label">Top Accumulator</div>
-                      <div className="card-value">#{topBuyer.brokerId}</div>
+                       <div className="card-value">#{topBuyer.brokerCode || topBuyer.brokerId}</div>
                       <div className="card-detail">Buy: {formatCr(topBuyer.buyAmt)}</div>
                     </div>
                     <div className="ba-flow-card distributor">
                       <div className="card-label">Top Distributor</div>
-                      <div className="card-value">#{topSeller.brokerId}</div>
+                       <div className="card-value">#{topSeller.brokerCode || topSeller.brokerId}</div>
                       <div className="card-detail">Sell: {formatCr(topSeller.sellAmt)}</div>
                     </div>
                     <div className="ba-flow-card most-active">
                       <div className="card-label">Most Active</div>
-                      <div className="card-value">#{mostActive.brokerId}</div>
+                       <div className="card-value">#{mostActive.brokerCode || mostActive.brokerId}</div>
                       <div className="card-detail">Volume: {formatCr(mostActive.buyAmt + mostActive.sellAmt)}</div>
                     </div>
                   </div>
@@ -681,8 +755,8 @@ export default function BrokerAnalysisPage() {
                       {top5.map((b: any) => {
                         const pct = (Math.abs(b.netAmt) / maxAbs) * 100;
                         return (
-                          <div key={b.brokerId} className="diverging-bar-row" onClick={() => setActiveBroker(String(b.brokerId))} style={{ cursor: "pointer" }}>
-                            <div className="bar-label">#{b.brokerId}</div>
+                          <div key={b.brokerCode || b.brokerId} className="diverging-bar-row" onClick={() => setActiveBroker(String(b.brokerCode || b.brokerId))} style={{ cursor: "pointer" }}>
+                            <div className="bar-label">#{b.brokerCode || b.brokerId}</div>
                             <div className="bar-track">
                               {b.netAmt >= 0 ? (
                                 <>
@@ -726,10 +800,10 @@ export default function BrokerAnalysisPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {filtered.map((b: any, i: number) => (
-                        <tr key={i} onClick={() => setActiveBroker(String(b.brokerId))}>
+                        {filtered.map((b: any, i: number) => (
+                        <tr key={i} onClick={() => setActiveBroker(String(b.brokerCode || b.brokerId))}>
                           <td className="num" style={{ color: "var(--ba-text-tertiary)" }}>{i + 1}</td>
-                          <td className="broker-id">#{b.brokerId}</td>
+                          <td className="broker-id">#{b.brokerCode || b.brokerId}</td>
                           <td className="num">{b.buyQty?.toLocaleString() ?? "—"}</td>
                           <td className="num">{formatCr(b.buyAmt)}</td>
                           <td className="num">{b.sellQty?.toLocaleString() ?? "—"}</td>
@@ -741,7 +815,8 @@ export default function BrokerAnalysisPage() {
                       ))}
                     </tbody>
                     <tfoot>
-                      {(() => {
+                        {(() => {
+                        if (!allBrokers.length) return null;
                         const tb = allBrokers.reduce((a: any, b: any) => ({ buyAmt: a.buyAmt + b.buyAmt, sellAmt: a.sellAmt + b.sellAmt, netAmt: a.netAmt + b.netAmt }));
                         return (
                           <tr>

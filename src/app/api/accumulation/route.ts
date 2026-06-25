@@ -1,24 +1,81 @@
 import { execute, getAvailableDates } from "@/lib/db";
 import { getTargetDateWithFallback } from "@/lib/date-utils";
+import { fetchMeroLaganiSummary } from "@/lib/merolagani";
 import type { NextRequest } from "next/server";
+
+function todayStr(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kathmandu" });
+}
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Calculate accumulation/distribution for a specific date
+// Calculate accumulation/distribution for a specific date or date range
 // For each stock, tracks per-broker buy/sell to identify net imbalances
 export async function GET(req: NextRequest) {
   try {
     const sp = req.nextUrl.searchParams;
     const dateParam = sp.get("date");
-    const { date } = await getTargetDateWithFallback(dateParam || undefined);
+    const fromParam = sp.get("from");
+    const toParam = sp.get("to");
 
-    const trades = await execute(
-      "SELECT stockSymbol, securityName, buyerMemberId, sellerMemberId, contractQuantity, contractAmount FROM floorsheet_trades WHERE tradeDate = ?",
-      [date],
+    let date: string;
+    let rangeMode = false;
+
+    if (fromParam && toParam) {
+      date = `${fromParam} – ${toParam}`;
+      rangeMode = true;
+    } else {
+      const fallback = await getTargetDateWithFallback(dateParam || undefined);
+      date = fallback.date;
+    }
+
+    const trades = await (rangeMode
+      ? execute(
+          "SELECT stockSymbol, securityName, buyerMemberId, sellerMemberId, contractQuantity, contractAmount FROM floorsheet_trades WHERE tradeDate >= ? AND tradeDate <= ?",
+          [fromParam!, toParam!],
+        )
+      : execute(
+          "SELECT stockSymbol, securityName, buyerMemberId, sellerMemberId, contractQuantity, contractAmount FROM floorsheet_trades WHERE tradeDate = ?",
+          [date],
+        )
     );
 
     if (!trades.rows.length) {
+      // Try MeroLagani for live stock turnover data
+      const mero = await fetchMeroLaganiSummary();
+      if (mero?.turnover?.detail?.length) {
+        const meroDate = (mero.broker.date || mero.overall?.d || date).slice(0, 10).replace(/\//g, "-");
+        const stocks = mero.turnover.detail.map((s) => ({
+          symbol: s.s,
+          name: s.n || "",
+          buyAmt: Math.round(s.t / 2),
+          sellAmt: Math.round(s.t / 2),
+          buyQty: 0,
+          sellQty: 0,
+          netFlow: 0,
+          netQty: 0,
+          avgPrice: s.lp || 0,
+          signal: "NEUTRAL" as const,
+          topBuyer: "",
+          topSeller: "",
+        })).sort((a, b) => (b.buyAmt + b.sellAmt) - (a.buyAmt + a.sellAmt));
+        const dates = await getAvailableDates();
+        return Response.json({
+          date: meroDate,
+          source: "merolagani",
+          stocks,
+          trend: [],
+          dates,
+          totals: {
+            totalAccumulation: 0,
+            totalDistribution: 0,
+            accumulated: 0,
+            distributed: 0,
+            neutral: stocks.length,
+          },
+        });
+      }
       const dates = await getAvailableDates();
       return Response.json({ date, stocks: [], trend: [], dates, error: "No data for this date" });
     }
@@ -109,11 +166,16 @@ export async function GET(req: NextRequest) {
       };
     }).sort((a, b) => (b.buyAmt + b.sellAmt) - (a.buyAmt + a.sellAmt));
 
-    // Get 7-day trend
+    // Get trend — daily turnover for each date in range (or 7-day window for single date)
     const dates = await getAvailableDates();
     const sortedDates = dates.sort().reverse();
-    const dateIndex = sortedDates.indexOf(date);
-    const trendDates = sortedDates.slice(Math.max(0, dateIndex - 6), dateIndex + 1).reverse();
+    let trendDates: string[];
+    if (rangeMode) {
+      trendDates = sortedDates.filter((d) => d >= fromParam! && d <= toParam!).reverse();
+    } else {
+      const dateIndex = sortedDates.indexOf(date);
+      trendDates = sortedDates.slice(Math.max(0, dateIndex - 6), dateIndex + 1).reverse();
+    }
 
     const trend = [];
     for (const d of trendDates) {

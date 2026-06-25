@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
     const baseUrl = req.nextUrl.origin;
     let syncResult = { status: "skipped", message: "Could not trigger sync" };
     try {
-      const syncResp = await fetch(`${baseUrl}/api/floorsheet/sync`, {
+      const syncResp = await fetch(`${baseUrl}/api/floorsheet/sync?date=${date}`, {
         headers: { cookie: req.headers.get("cookie") ?? "" },
       });
       if (syncResp.ok) {

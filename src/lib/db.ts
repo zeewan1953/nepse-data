@@ -241,6 +241,17 @@ async function migrateSchema(): Promise<void> {
   } catch {
     // index may already exist or table was created differently
   }
+
+  // Add hash + buy/sell qty columns to merolagani_broker_daily for change detection
+  try {
+    await db.execute("ALTER TABLE merolagani_broker_daily ADD COLUMN hash TEXT");
+  } catch { /* already exists */ }
+  try {
+    await db.execute("ALTER TABLE merolagani_broker_daily ADD COLUMN buyQty REAL DEFAULT 0");
+  } catch { /* already exists */ }
+  try {
+    await db.execute("ALTER TABLE merolagani_broker_daily ADD COLUMN sellQty REAL DEFAULT 0");
+  } catch { /* already exists */ }
 }
 migrateSchema().catch(console.error);
 
@@ -674,4 +685,149 @@ export async function hasMeroBrokerData(date: string): Promise<boolean> {
     args: [date],
   });
   return Number(r.rows[0]?.cnt ?? 0) > 0;
+}
+
+// ─── Broker Daily Summary (unified cache-aside layer) ────────────────────
+
+export type BrokerDailySummaryRow = {
+  tradeDate: string;
+  brokerCode: string;
+  brokerName: string;
+  buyAmt: number;
+  sellAmt: number;
+  netAmt: number;
+  totalAmt: number;
+  buyQty: number | null;
+  sellQty: number | null;
+  source: "merolagani";
+};
+
+export type BrokerHistoryRow = {
+  date: string;
+  source: "floorsheet" | "merolagani";
+  buyQty: number | null;
+  sellQty: number | null;
+  netQty: number | null;
+  buyAmt: number | null;
+  sellAmt: number | null;
+  netAmt: number | null;
+};
+
+function computeHash(data: unknown): string {
+  const s = JSON.stringify(data);
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  }
+  return (h >>> 0).toString(36);
+}
+
+// Upsert MeroLagani broker daily summary (cache-aside write)
+export async function upsertBrokerDailySummary(
+  date: string,
+  brokers: Array<{
+    brokerCode: string;
+    brokerName: string;
+    purchaseAmt: number;
+    sellAmt: number;
+    netAmt: number;
+    totalAmt: number;
+  }>,
+): Promise<number> {
+  if (!brokers.length || !date) return 0;
+  const now = Date.now();
+  const dataHash = computeHash(brokers);
+  const statements = brokers.map((b) => ({
+    sql: `INSERT INTO merolagani_broker_daily(tradeDate, brokerCode, brokerName, purchaseAmt, sellAmt, netAmt, totalAmt, savedAt, hash)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(tradeDate, brokerCode) DO UPDATE SET
+            brokerName=excluded.brokerName,
+            purchaseAmt=excluded.purchaseAmt,
+            sellAmt=excluded.sellAmt,
+            netAmt=excluded.netAmt,
+            totalAmt=excluded.totalAmt,
+            savedAt=excluded.savedAt,
+            hash=excluded.hash`,
+    args: [date, b.brokerCode, b.brokerName, b.purchaseAmt, b.sellAmt, b.netAmt, b.totalAmt, now, dataHash],
+  }));
+  await db.batch(statements, "write");
+  return brokers.length;
+}
+
+// Get all MeroLagani broker data for a specific date
+export async function getBrokerDailySummary(date: string): Promise<BrokerDailySummaryRow[]> {
+  const r = await db.execute({
+    sql: `SELECT tradeDate, brokerCode, brokerName, purchaseAmt, sellAmt, netAmt, totalAmt, buyQty, sellQty, hash
+          FROM merolagani_broker_daily
+          WHERE tradeDate = ?
+          ORDER BY ABS(netAmt) DESC`,
+    args: [date],
+  });
+  return r.rows.map((row) => ({
+    tradeDate: String(row.tradeDate),
+    brokerCode: String(row.brokerCode),
+    brokerName: String(row.brokerName || ""),
+    buyAmt: Number(row.purchaseAmt),
+    sellAmt: Number(row.sellAmt),
+    netAmt: Number(row.netAmt),
+    totalAmt: Number(row.totalAmt),
+    buyQty: row.buyQty != null ? Number(row.buyQty) : null,
+    sellQty: row.sellQty != null ? Number(row.sellQty) : null,
+    source: "merolagani",
+  }));
+}
+
+// Get hash for a date (to detect changes)
+export async function getBrokerDailyHash(date: string): Promise<string | null> {
+  const r = await db.execute({
+    sql: "SELECT hash FROM merolagani_broker_daily WHERE tradeDate = ? LIMIT 1",
+    args: [date],
+  });
+  return r.rows.length > 0 ? String(r.rows[0].hash ?? "") : null;
+}
+
+// Get broker data from floorsheet agg for a specific date + broker
+export async function getFloorBrokerData(date: string, brokerCode: string): Promise<BrokerHistoryRow | null> {
+  const r = await db.execute({
+    sql: `SELECT SUM(buyQty) as buyQty, SUM(buyAmt) as buyAmt,
+                 SUM(sellQty) as sellQty, SUM(sellAmt) as sellAmt,
+                 SUM(netQty) as netQty, SUM(netAmt) as netAmt
+          FROM broker_daily_agg
+          WHERE tradeDate = ? AND brokerId = ?`,
+    args: [date, brokerCode],
+  });
+  if (!r.rows.length || !r.rows[0].buyQty) return null;
+  const row = r.rows[0];
+  return {
+    date,
+    source: "floorsheet",
+    buyQty: Number(row.buyQty),
+    sellQty: Number(row.sellQty),
+    netQty: Number(row.netQty),
+    buyAmt: Number(row.buyAmt),
+    sellAmt: Number(row.sellAmt),
+    netAmt: Number(row.netAmt),
+  };
+}
+
+// Get broker data from MeroLagani cache for a specific date + broker
+export async function getMeroBrokerData(date: string, brokerCode: string): Promise<BrokerHistoryRow | null> {
+  const r = await db.execute({
+    sql: `SELECT purchaseAmt, sellAmt, netAmt, totalAmt
+          FROM merolagani_broker_daily
+          WHERE tradeDate = ? AND brokerCode = ?`,
+    args: [date, brokerCode],
+  });
+  if (!r.rows.length) return null;
+  const row = r.rows[0];
+  return {
+    date,
+    source: "merolagani",
+    buyQty: null,
+    sellQty: null,
+    netQty: null,
+    buyAmt: Number(row.purchaseAmt),
+    sellAmt: Number(row.sellAmt),
+    netAmt: Number(row.netAmt),
+  };
 }

@@ -73,6 +73,36 @@ html, body {
   margin-bottom: var(--ba-space-5);
 }
 
+.ba-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--ba-space-2);
+}
+
+.ba-sync-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--ba-bg);
+  border: 1px solid var(--ba-border);
+  border-radius: var(--ba-radius-sm);
+  color: var(--ba-text-secondary);
+  font-family: var(--ba-font-display);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.ba-sync-btn:hover { color: var(--ba-text); border-color: var(--ba-gold); }
+.ba-sync-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.ba-sync-msg {
+  font-size: 11px;
+  color: var(--ba-gold);
+  font-family: var(--ba-font-mono);
+}
+
 .ba-logo {
   font-size: 22px;
   font-weight: 500;
@@ -121,6 +151,19 @@ html, body {
 }
 
 /* ─── STATUS BADGE ─── */
+.ba-tf-label {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--ba-radius-sm);
+  font-size: 10px;
+  font-weight: 600;
+  font-family: var(--ba-font-mono);
+  background: var(--ba-neutral-bg);
+  color: var(--ba-text-secondary);
+  letter-spacing: 0.3px;
+}
+
 .ba-badge {
   display: inline-flex;
   align-items: center;
@@ -137,6 +180,11 @@ html, body {
 .ba-badge.finalized {
   background: var(--ba-green-bg);
   color: var(--ba-green);
+}
+
+.ba-badge.live {
+  background: #1e3a5f;
+  color: #60a5fa;
 }
 
 .ba-badge.warning {

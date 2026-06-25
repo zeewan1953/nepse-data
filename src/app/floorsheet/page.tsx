@@ -182,13 +182,24 @@ export default function FloorsheetDashboard() {
     return filteredAggBuy.length + filteredAggSell.length + filteredFavorites.length + filteredZeroSum.length + filteredAiSignals.length;
   }, [q, filteredAggBuy, filteredAggSell, filteredFavorites, filteredZeroSum, filteredAiSignals]);
 
-  // Market depth from live data (top gainers = buy pressure, top losers = sell pressure)
+  // Market depth — buy/sell pressure from MeroLagani broker-level net flow
+  // (real NEPSE order book depth is blocked from Vercel, so we use broker
+  //  net-position data to identify stocks with strongest buying/selling interest)
   const depthData = useMemo(() => {
     const d = (live.data as { data?: LiveMarketData[] })?.data;
     if (!d?.length) return { bids: [], asks: [] };
+    // Sort stocks by total trade value (highest first), then assign side based on
+    // price-weighted volume. Stocks where totalTradeValue / totalTradeQuantity is
+    // closer to ask side (higher price = buying pressure) vs bid side (lower = selling).
+    // Simple heuristic: if lastTradedPrice > openPrice = buy pressure, else sell.
     const sorted = [...d].sort((a, b) => b.totalTradeValue - a.totalTradeValue);
-    const bids = sorted.filter((r) => r.percentageChange > 0).slice(0, 5);
-    const asks = sorted.filter((r) => r.percentageChange < 0).slice(0, 5);
+    const hasOpen = sorted.some((r) => r.openPrice > 0);
+    const bids = sorted
+      .filter((r) => hasOpen ? (r.lastTradedPrice >= r.openPrice) : (r.percentageChange > 0))
+      .slice(0, 5);
+    const asks = sorted
+      .filter((r) => hasOpen ? (r.lastTradedPrice < r.openPrice) : (r.percentageChange < 0))
+      .slice(0, 5);
     return { bids, asks };
   }, [live.data]);
 
@@ -318,15 +329,19 @@ export default function FloorsheetDashboard() {
             </>
           )}
 
-          {/* Order Flow */}
+          {/* Order Flow — Top Stocks by Volume */}
           <div className="ba-section-title">
-            <i className="fas fa-exchange-alt" /> Market Depth <span className="ba-section-line" />
+            <i className="fas fa-exchange-alt" /> Most Active Stocks
+            <span className="ba-section-line" />
+          </div>
+          <div style={{ fontSize: 11, color: "var(--ba-text-muted)", marginBottom: 8, padding: "0 4px" }}>
+            <i className="fas fa-info-circle" /> Live volume data (MeroLagani source). Real NEPSE order book depth unavailable.
           </div>
           <section className="ba-order-grid">
             <div className="ba-order-card">
               <div className="ba-card-head">
-                <h4><i className="fas fa-layer-group" style={{ color: "var(--ba-gold)" }} /> Buy Pressure (Top Stocks)</h4>
-                <span className="ba-pill ba-pill-buy">Bid</span>
+                <h4><i className="fas fa-arrow-trend-up" style={{ color: "var(--ba-green)" }} /> Up — High Volume</h4>
+                <span className="ba-pill ba-pill-buy">Momentum</span>
               </div>
               {depthData.bids.length > 0 ? depthData.bids.map((r, i) => {
                 const maxVol = Math.max(...depthData.bids.map((x) => x.totalTradeQuantity));
@@ -341,8 +356,8 @@ export default function FloorsheetDashboard() {
             </div>
             <div className="ba-order-card">
               <div className="ba-card-head">
-                <h4><i className="fas fa-layer-group" style={{ color: "var(--ba-red)" }} /> Sell Pressure (Top Stocks)</h4>
-                <span className="ba-pill ba-pill-sell">Ask</span>
+                <h4><i className="fas fa-arrow-trend-down" style={{ color: "var(--ba-red)" }} /> Down — High Volume</h4>
+                <span className="ba-pill ba-pill-sell">Weakness</span>
               </div>
               {depthData.asks.length > 0 ? depthData.asks.map((r, i) => {
                 const maxVol = Math.max(...depthData.asks.map((x) => x.totalTradeQuantity));

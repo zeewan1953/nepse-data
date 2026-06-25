@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { fetchMeroLaganiSummary } from "@/lib/merolagani";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,6 +55,37 @@ export async function GET(req: Request, { params }: { params: Promise<{ symbol: 
   }
 
   if (!rows || rows.length === 0) {
+    // Fallback: MeroLagani overall broker activity (per-broker totals, not per-stock)
+    const mero = await fetchMeroLaganiSummary();
+    if (mero?.broker?.detail?.length) {
+      const meroDate = (mero.broker.date || mero.overall?.d || date).slice(0, 10).replace(/\//g, "-");
+      const brokers = mero.broker.detail.map((b) => ({
+        brokerCode: b.b,
+        buyQty: 0,
+        sellQty: 0,
+        netQty: 0,
+        buyAmt: Number(b.p) || 0,
+        sellAmt: Number(b.s) || 0,
+        buyContracts: 0,
+        sellContracts: 0,
+      }));
+      const totals = {
+        buyQty: 0, sellQty: 0, netQty: 0,
+        buyAmt: brokers.reduce((a: number, b: any) => a + b.buyAmt, 0),
+        sellAmt: brokers.reduce((a: number, b: any) => a + b.sellAmt, 0),
+      };
+      return Response.json({
+        symbol: sym,
+        date: meroDate,
+        source: "merolagani",
+        status: "live",
+        finalizedAt: null,
+        accurate: false,
+        brokers,
+        totals,
+        note: "MeroLagani only provides aggregate broker activity (all stocks combined), not per-stock breakdown",
+      });
+    }
     return Response.json({
       symbol: sym,
       date,

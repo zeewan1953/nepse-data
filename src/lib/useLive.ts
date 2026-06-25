@@ -23,19 +23,22 @@ export function usePoll<T>(url: string, intervalMs: number): State<T> & { refres
   });
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const alive = useRef(true);
+  const loadGen = useRef(0);
 
   const load = useCallback(async () => {
+    if (!url) return;
+    const thisGen = ++loadGen.current;
     try {
       const res = await fetch(url, { cache: "no-store" });
       const json = await res.json();
-      if (!alive.current) return;
+      if (thisGen !== loadGen.current) return;
       if (!res.ok) {
         setState((s) => ({ ...s, error: json?.error ?? `HTTP ${res.status}`, loading: false }));
       } else {
         setState({ data: json as T, error: null, loading: false, updatedAt: Date.now() });
       }
     } catch (e) {
-      if (alive.current)
+      if (thisGen === loadGen.current)
         setState((s) => ({ ...s, error: (e as Error).message, loading: false }));
     }
   }, [url]);

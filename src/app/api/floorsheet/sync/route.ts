@@ -2,6 +2,7 @@ import { getNepse, cached } from "@/lib/nepse";
 import { saveFloorsheetTrades, saveBrokerDailyAgg, saveDailyOhlcv, getFloorsheetCount, getAvailableDates } from "@/lib/db";
 import { fetchMeroLaganiSummary, calcMeroPercent } from "@/lib/merolagani";
 import type { FloorSheet, FloorSheetItem } from "@rumess/nepse-api";
+import type { NextRequest } from "next/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -72,9 +73,10 @@ function computeBrokerAgg(date: string, items: FloorSheetItem[]) {
   });
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const date = todayStr();
+    const dateParam = req?.nextUrl?.searchParams?.get("date");
+    const date = dateParam || todayStr();
 
     const result = await cached(`fs-sync:${date}`, 3_000, async () => {
       const existingCount = await getFloorsheetCount(date);
