@@ -42,37 +42,38 @@ export async function GET(req: NextRequest) {
     );
 
     if (!trades.rows.length) {
-      // Try MeroLagani for live stock turnover data
+      // Try MeroLagani for live stock turnover data (no buy/sell split available)
       const mero = await fetchMeroLaganiSummary();
       if (mero?.turnover?.detail?.length) {
-        const meroDate = (mero.broker.date || mero.overall?.d || date).slice(0, 10).replace(/\//g, "-");
         const stocks = mero.turnover.detail.map((s) => ({
           symbol: s.s,
           name: s.n || "",
-          buyAmt: Math.round(s.t / 2),
-          sellAmt: Math.round(s.t / 2),
-          buyQty: 0,
-          sellQty: 0,
-          netFlow: 0,
-          netQty: 0,
+          buyAmt: null,
+          sellAmt: null,
+          buyQty: null,
+          sellQty: null,
+          netFlow: null,
+          netQty: null,
           avgPrice: s.lp || 0,
-          signal: "NEUTRAL" as const,
-          topBuyer: "",
-          topSeller: "",
-        })).sort((a, b) => (b.buyAmt + b.sellAmt) - (a.buyAmt + a.sellAmt));
+          signal: null,
+          topBuyer: null,
+          topSeller: null,
+          turnover: s.t || 0,
+          qty: s.q || 0,
+        })).sort((a, b) => (b.turnover) - (a.turnover));
         const dates = await getAvailableDates();
         return Response.json({
-          date: meroDate,
+          date,
           source: "merolagani",
           stocks,
           trend: [],
           dates,
           totals: {
-            totalAccumulation: 0,
-            totalDistribution: 0,
-            accumulated: 0,
-            distributed: 0,
-            neutral: stocks.length,
+            totalAccumulation: null,
+            totalDistribution: null,
+            accumulated: null,
+            distributed: null,
+            neutral: null,
           },
         });
       }
