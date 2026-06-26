@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { Logo } from "@/components/Logo";
 
 export default function AuthForm({ initialMode }: { initialMode: "login" | "signup" }) {
   const router = useRouter();
@@ -79,8 +80,7 @@ export default function AuthForm({ initialMode }: { initialMode: "login" | "sign
     <div className="mx-auto mt-6 max-w-md">
       <div className="rounded-2xl border border-border bg-surface p-6 shadow-sm text-center">
         <div className="mb-4 flex items-center justify-center gap-2">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-primary font-black text-white">D</span>
-          <span className="text-xl font-extrabold">AXION</span>
+          <Logo size={40} />
         </div>
         <h1 className="mb-2 text-lg font-bold">
           {initialMode === "signup" ? "Create your account" : "Welcome back"}

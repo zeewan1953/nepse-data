@@ -10,6 +10,7 @@ import { useTheme } from "@/lib/ThemeProvider";
 import { useAuth } from "@/lib/useAuth";
 import { useNotification } from "@/lib/NotificationContext";
 import { getMarketSession, getMarketStatusLabel, getNPTNow } from "@/lib/market-hours";
+import { Logo } from "@/components/Logo";
 
 /* ─── SVG Icon helper ─── */
 const Icon = ({ d, size = 16, cls = "" }: { d: string; size?: number; cls?: string }) => (
@@ -318,16 +319,7 @@ export default function AppHeader() {
         <div className="mx-auto flex max-w-[1400px] items-center gap-1 sm:gap-3 px-2 sm:px-4 py-1.5 sm:py-2">
           {/* Logo */}
           <Link href="/" className="flex shrink-0 items-center gap-1.5 sm:gap-2.5">
-            <div className="grid h-7 w-7 sm:h-9 sm:w-9 place-items-center rounded-lg" style={{ background: "#0F6E56" }}>
-              <svg width="16" height="16" className="sm:w-5 sm:h-5" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 17l6-6 4 4 8-8" />
-                <path d="M17 7h4v4" />
-              </svg>
-            </div>
-            <div className="leading-tight">
-              <div className="text-[13px] sm:text-[15px] font-semibold" style={{ color: "#1a1a1a" }}>AXION</div>
-              <div className="hidden sm:block text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: "#1D9E75" }}>NEPSE ANALYTICS</div>
-            </div>
+            <Logo size={36} tagline="NEPSE Analytics" />
           </Link>
 
           {/* Mobile Menu Button */}

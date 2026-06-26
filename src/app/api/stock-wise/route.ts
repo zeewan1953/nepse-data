@@ -50,9 +50,19 @@ export async function GET(req: NextRequest) {
     if (fromParam && toParam) {
       fromDate = fromParam;
       toDate = toParam;
+    } else if (dateParam) {
+      fromDate = dateParam;
+      toDate = dateParam;
     } else {
-      fromDate = dateParam || today;
-      toDate = dateParam || today;
+      // No date specified → use the LATEST available trading day in the DB,
+      // so the page auto-follows new data instead of being stuck on "today"
+      // (which may have no floorsheet yet).
+      const latest = await execute(
+        "SELECT MAX(tradeDate) AS d FROM floorsheet_trades",
+      );
+      const latestDate = (latest.rows[0] as any)?.d ? String((latest.rows[0] as any).d) : today;
+      fromDate = latestDate;
+      toDate = latestDate;
     }
 
     // Fetch all floorsheet trades for the date range

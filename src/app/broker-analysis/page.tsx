@@ -110,7 +110,9 @@ function StockWiseTab({ dateKey }: { dateKey: string }) {
   const fetchWithDate = useCallback(async (date: string) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/stock-wise?date=${date}&sort=${sort}`);
+      // Empty date → API auto-selects the latest available trading day.
+      const dateQ = date ? `date=${date}&` : "";
+      const res = await fetch(`/api/stock-wise?${dateQ}sort=${sort}`);
       const d: StockWiseResp = await res.json();
       if (d.stocks && d.stocks.length > 0) {
         setData(d);
@@ -799,11 +801,10 @@ function BrokerFavoriteTab({ brokers, range }: { brokers: BrokerOption[]; range:
 
 // ─── Main Page ──────────────────────────────────────────────────────────────
 
-function getRangeDate(range: TimeRange): string {
-  const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kathmandu" });
-  // We only have floorsheet data for known dates; use today as the single-date param
-  // For multi-day ranges, the API now accepts from/to
-  return today;
+function getRangeDate(_range: TimeRange): string {
+  // Return empty so the API auto-selects the LATEST available trading day.
+  // This makes the page follow new data automatically instead of pinning to "today".
+  return "";
 }
 
 export default function BrokerAnalysisPage() {
