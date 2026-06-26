@@ -452,10 +452,9 @@ export default function Dashboard() {
             />
           </div>
 
-          {/* Indices + Sub-Indices */}
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <IndexTable title="Indices" icon="📑" rows={indices.data?.index ?? []} />
-            <IndexTable title="Sub-Indices" icon="🏷️" rows={indices.data?.subIndices ?? []} />
+          {/* Sub-Indices */}
+          <div className="grid grid-cols-1 gap-4">
+            <IndexTable title="Sub-Indices" icon="📑" rows={indices.data?.subIndices ?? []} />
           </div>
         </section>
       </div>
