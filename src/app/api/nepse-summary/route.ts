@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { fetchMeroLaganiSummary, calcMeroPercent } from "@/lib/merolagani";
-import { getNepse, safeNepseCall, cached } from "@/lib/nepse";
+import { getNepse, safeNepseCall, cached, getDailyTradeStats } from "@/lib/nepse";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -44,19 +44,32 @@ type Summary = {
 
 async function fetchLive(): Promise<LiveStock[]> {
   try {
-    // Fetch directly from MeroLagani (same as /api/live)
     const mero = await fetchMeroLaganiSummary();
-    if (!mero?.stock?.detail?.length) return [];
-    
-    return mero.stock.detail.map((s) => ({
-      symbol: s.s,
-      percentageChange: calcMeroPercent(s),
-      totalTradeValue: s.lp * s.q,
-      totalTradeQuantity: s.q,
-    }));
+    if (mero?.stock?.detail?.length) {
+      return mero.stock.detail.map((s) => ({
+        symbol: s.s,
+        percentageChange: calcMeroPercent(s),
+        totalTradeValue: s.lp * s.q,
+        totalTradeQuantity: s.q,
+      }));
+    }
   } catch {
-    return [];
+    // fallback
   }
+  try {
+    const stats = await cached("daily-trade-stats", 10_000, () => getDailyTradeStats());
+    if (stats.length) {
+      return stats.map((s) => ({
+        symbol: s.symbol,
+        percentageChange: s.percentageChange,
+        totalTradeValue: (s.totalTradeQuantity ?? 0) * (s.lastTradedPrice ?? s.closePrice ?? 0),
+        totalTradeQuantity: s.totalTradeQuantity,
+      }));
+    }
+  } catch {
+    // give up
+  }
+  return [];
 }
 
 async function analyze(stocks: LiveStock[]): Promise<Summary> {
