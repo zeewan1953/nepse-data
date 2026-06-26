@@ -1,15 +1,10 @@
 "use client";
 import { useState, useEffect } from "react";
-import Link from "next/link";
+import { usePoll } from "@/lib/useLive";
+import type { LiveMarketData } from "@/lib/types";
+import MarketPanel from "@/components/MarketPanel";
 
 // Types
-type NavItem = {
-  id: string;
-  label: string;
-  icon: string;
-  href: string;
-};
-
 type MarketStats = {
   index: number;
   change: number;
@@ -33,18 +28,6 @@ type TopStock = {
   volume?: number;
   category?: string;
 };
-
-// Navigation items
-const NAV_ITEMS: NavItem[] = [
-  { id: "dashboard", label: "Dashboard", icon: "📊", href: "/dashboard" },
-  { id: "market", label: "Market", icon: "📈", href: "/market" },
-  { id: "watchlist", label: "Watchlist", icon: "⭐", href: "/watchlist" },
-  { id: "portfolio", label: "Portfolio", icon: "🏢", href: "/portfolio" },
-  { id: "orders", label: "Orders", icon: "📋", href: "/orders" },
-  { id: "screener", label: "Screener", icon: "⚡", href: "/screener" },
-  { id: "ipo", label: "IPO", icon: "🔔", href: "/ipo" },
-  { id: "settings", label: "Settings", icon: "⚙️", href: "/settings" },
-];
 
 // Format helpers
 function formatNum(n: number, decimals = 2): string {
@@ -71,15 +54,18 @@ function getChangeIcon(change: number): string {
 
 // Main Dashboard Component
 export default function Dashboard() {
-  const [active, setActive] = useState("dashboard");
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [stats, setStats] = useState<MarketStats | null>(null);
   const [topGainers, setTopGainers] = useState<TopStock[]>([]);
   const [topLosers, setTopLosers] = useState<TopStock[]>([]);
   const [topVolume, setTopVolume] = useState<TopStock[]>([]);
   const [loading, setLoading] = useState(true);
+  const [mounted, setMounted] = useState(false);
 
-  useEffect(() => {
+  // Live market data polling
+  const live = usePoll<{ data: LiveMarketData[]; count: number }>("/api/live", 30_000);
+
+  useEffect(() => { 
+    setMounted(true);
     fetchDashboardData();
     const interval = setInterval(fetchDashboardData, 60000); // Refresh every minute
     return () => clearInterval(interval);
@@ -161,6 +147,19 @@ export default function Dashboard() {
             </div>
           </div>
 
+          {/* Live Market Panel */}
+          <div className="rounded-lg border border-border bg-surface">
+            <div className="px-4 py-3 border-b border-border">
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-bold text-foreground">📊 Live Market</h2>
+                <span className="text-[10px] text-muted font-medium">
+                  {live.data ? `${live.data.count} stocks` : "Loading..."}
+                </span>
+              </div>
+            </div>
+            <MarketPanel liveData={live.data?.data} mounted={mounted} compact />
+          </div>
+
           {/* Main Grid Layout - Two Columns on Desktop */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
 
@@ -238,24 +237,21 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* Top Gainers, Losers, Volume */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Top Gainers, Losers, Volume - Compact Panels */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
             {/* Top Gainers */}
-            <div className="rounded-lg border border-border bg-surface p-4">
-              <h3 className="text-sm font-semibold text-foreground mb-3">TOP GAINERS</h3>
-              <div className="space-y-2">
-                {topGainers.map((stock) => (
-                  <div key={stock.symbol} className="flex items-center justify-between p-2 hover:bg-surface-2 rounded transition">
-                    <div>
-                      <div className="font-semibold text-foreground text-sm">{stock.symbol}</div>
-                      <div className="text-[10px] text-muted">
-                        {stock.category || "Listed"}
-                      </div>
+            <div className="rounded-lg border border-border bg-surface p-3">
+              <h3 className="text-xs font-bold text-foreground mb-2 uppercase tracking-wide">📈 Top Gainers</h3>
+              <div className="space-y-1.5">
+                {topGainers.slice(0, 5).map((stock) => (
+                  <div key={stock.symbol} className="flex items-center justify-between px-2 py-1.5 hover:bg-surface-2 rounded transition">
+                    <div className="min-w-0 flex-1">
+                      <div className="font-semibold text-foreground text-xs truncate">{stock.symbol}</div>
                     </div>
-                    <div className="text-right">
-                      <div className="text-sm font-semibold text-foreground">{formatNum(stock.ltp, 2)}</div>
-                      <div className="text-xs font-semibold text-green-600">
-                        +{formatNum(Math.abs(stock.change), 2)} (+{formatNum(stock.changePercent, 2)}%)
+                    <div className="text-right ml-2">
+                      <div className="text-xs font-bold text-foreground">{formatNum(stock.ltp, 2)}</div>
+                      <div className="text-[10px] font-semibold text-green-600">
+                        +{formatNum(stock.changePercent, 2)}%
                       </div>
                     </div>
                   </div>
@@ -264,21 +260,18 @@ export default function Dashboard() {
             </div>
 
             {/* Top Losers */}
-            <div className="rounded-lg border border-border bg-surface p-4">
-              <h3 className="text-sm font-semibold text-foreground mb-3">TOP LOSERS</h3>
-              <div className="space-y-2">
-                {topLosers.map((stock) => (
-                  <div key={stock.symbol} className="flex items-center justify-between p-2 hover:bg-surface-2 rounded transition">
-                    <div>
-                      <div className="font-semibold text-foreground text-sm">{stock.symbol}</div>
-                      <div className="text-[10px] text-muted">
-                        {stock.category || "Listed"}
-                      </div>
+            <div className="rounded-lg border border-border bg-surface p-3">
+              <h3 className="text-xs font-bold text-foreground mb-2 uppercase tracking-wide">📉 Top Losers</h3>
+              <div className="space-y-1.5">
+                {topLosers.slice(0, 5).map((stock) => (
+                  <div key={stock.symbol} className="flex items-center justify-between px-2 py-1.5 hover:bg-surface-2 rounded transition">
+                    <div className="min-w-0 flex-1">
+                      <div className="font-semibold text-foreground text-xs truncate">{stock.symbol}</div>
                     </div>
-                    <div className="text-right">
-                      <div className="text-sm font-semibold text-foreground">{formatNum(stock.ltp, 2)}</div>
-                      <div className="text-xs font-semibold text-red-600">
-                        {formatNum(stock.change, 2)} ({formatNum(stock.changePercent, 2)}%)
+                    <div className="text-right ml-2">
+                      <div className="text-xs font-bold text-foreground">{formatNum(stock.ltp, 2)}</div>
+                      <div className="text-[10px] font-semibold text-red-600">
+                        {formatNum(stock.changePercent, 2)}%
                       </div>
                     </div>
                   </div>
@@ -287,21 +280,19 @@ export default function Dashboard() {
             </div>
 
             {/* Top Volume */}
-            <div className="rounded-lg border border-border bg-surface p-4">
-              <h3 className="text-sm font-semibold text-foreground mb-3">TOP VOLUME</h3>
-              <div className="space-y-2">
-                {topVolume.map((stock) => (
-                  <div key={stock.symbol} className="flex items-center justify-between p-2 hover:bg-surface-2 rounded transition">
-                    <div>
-                      <div className="font-semibold text-foreground text-sm">{stock.symbol}</div>
-                      <div className="text-[10px] text-muted">
-                        Vol: {formatLarge(stock.volume || 0)}
-                      </div>
+            <div className="rounded-lg border border-border bg-surface p-3">
+              <h3 className="text-xs font-bold text-foreground mb-2 uppercase tracking-wide">💹 Top Volume</h3>
+              <div className="space-y-1.5">
+                {topVolume.slice(0, 5).map((stock) => (
+                  <div key={stock.symbol} className="flex items-center justify-between px-2 py-1.5 hover:bg-surface-2 rounded transition">
+                    <div className="min-w-0 flex-1">
+                      <div className="font-semibold text-foreground text-xs truncate">{stock.symbol}</div>
+                      <div className="text-[9px] text-muted">Vol: {formatLarge(stock.volume || 0)}</div>
                     </div>
-                    <div className="text-right">
-                      <div className="text-sm font-semibold text-foreground">{formatNum(stock.ltp, 2)}</div>
-                      <div className={`text-xs font-semibold ${getChangeClass(stock.change)}`}>
-                        {stock.change > 0 ? "+" : ""}{formatNum(stock.change, 2)} ({stock.changePercent > 0 ? "+" : ""}{formatNum(stock.changePercent, 2)}%)
+                    <div className="text-right ml-2">
+                      <div className="text-xs font-bold text-foreground">{formatNum(stock.ltp, 2)}</div>
+                      <div className={`text-[10px] font-semibold ${getChangeClass(stock.change)}`}>
+                        {stock.changePercent > 0 ? "+" : ""}{formatNum(stock.changePercent, 2)}%
                       </div>
                     </div>
                   </div>
