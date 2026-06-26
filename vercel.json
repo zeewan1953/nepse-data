@@ -6,7 +6,7 @@
   "crons": [
     {
       "path": "/api/cron/collect?attempt=1",
-      "schedule": "25 9 * * 0-4"
+      "schedule": "18 9 * * 0-4"
     },
     {
       "path": "/api/cron/collect?attempt=2",
@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/collect?attempt=3",
       "schedule": "45 4 * * 0-4"
+    },
+    {
+      "path": "/api/cron/retention",
+      "schedule": "45 9 * * 0-4"
     }
   ]
 }

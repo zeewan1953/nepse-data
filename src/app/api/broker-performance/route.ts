@@ -260,39 +260,22 @@ export async function GET(req: NextRequest) {
       } catch (fallbackError) {
         console.error("Fallback error:", fallbackError);
 
-        // If all database queries fail, return sample data instead of error
-        const sampleBrokers = [
-          { brokerCode: "58", brokerName: "Naasa Securities", buyAmount: 1724000000, sellAmount: 2409000000, netAmount: -685000000, turnover: 4133000000, transactionCount: 11502, daysActive: 1, avgDaily: 4133000000 },
-          { brokerCode: "32", brokerName: "Premier Securities", buyAmount: 1026000000, sellAmount: 1231000000, netAmount: -205000000, turnover: 2257000000, transactionCount: 1956, daysActive: 1, avgDaily: 2257000000 },
-          { brokerCode: "44", brokerName: "Dynamic Money Management", buyAmount: 1034000000, sellAmount: 1222000000, netAmount: -188000000, turnover: 2256000000, transactionCount: 1695, daysActive: 1, avgDaily: 2256000000 },
-          { brokerCode: "65", brokerName: "Sharepro Securities", buyAmount: 1031000000, sellAmount: 894000000, netAmount: 137000000, turnover: 1925000000, transactionCount: 448, daysActive: 1, avgDaily: 1925000000 },
-          { brokerCode: "42", brokerName: "Sani Securities", buyAmount: 988000000, sellAmount: 792000000, netAmount: 196000000, turnover: 1780000000, transactionCount: 4274, daysActive: 1, avgDaily: 1780000000 },
-          { brokerCode: "28", brokerName: "Shree Krishna Securities", buyAmount: 919000000, sellAmount: 798000000, netAmount: 121000000, turnover: 1717000000, transactionCount: 1284, daysActive: 1, avgDaily: 1717000000 },
-          { brokerCode: "45", brokerName: "Imperial Securities", buyAmount: 908000000, sellAmount: 750000000, netAmount: 158000000, turnover: 1658000000, transactionCount: 4144, daysActive: 1, avgDaily: 1658000000 },
-          { brokerCode: "48", brokerName: "Trishakti Securities", buyAmount: 917000000, sellAmount: 716000000, netAmount: 201000000, turnover: 1633000000, transactionCount: 3010, daysActive: 1, avgDaily: 1633000000 },
-          { brokerCode: "77", brokerName: "Nabil Securities", buyAmount: 738000000, sellAmount: 841000000, netAmount: -103000000, turnover: 1579000000, transactionCount: 1194, daysActive: 1, avgDaily: 1579000000 },
-          { brokerCode: "33", brokerName: "Dakshinkali Investments", buyAmount: 565000000, sellAmount: 938000000, netAmount: -373000000, turnover: 1503000000, transactionCount: 1260, daysActive: 1, avgDaily: 1503000000 },
-        ];
-
-        const marketTurnover = sampleBrokers.reduce((sum, b) => sum + b.turnover, 0);
-        const totalTransactions = sampleBrokers.reduce((sum, b) => sum + b.transactionCount, 0);
-        const avgNetFlow = sampleBrokers.length > 0 ? sampleBrokers.reduce((sum, b) => sum + b.netAmount, 0) / sampleBrokers.length : 0;
-        const topBrokerBuy = [...sampleBrokers].sort((a, b) => b.buyAmount - a.buyAmount)[0];
-        const topBrokerSell = [...sampleBrokers].sort((a, b) => b.sellAmount - a.sellAmount)[0];
-
+        // §6: never fabricate broker data. If all DB queries fail, return an
+        // explicit empty state so the UI shows "no data available".
         return NextResponse.json({
           range,
           fromDate: fromDateStr,
           toDate: toDateStr,
-          brokers: sampleBrokers,
-          marketTurnover,
-          totalTransactions,
-          avgNetFlow,
-          topBrokerBuy,
-          topBrokerSell,
-          brokerCount: sampleBrokers.length,
+          brokers: [],
+          marketTurnover: 0,
+          totalTransactions: 0,
+          avgNetFlow: 0,
+          topBrokerBuy: null,
+          topBrokerSell: null,
+          brokerCount: 0,
           timestamp: new Date().toISOString(),
-          note: "Using sample data - database unavailable",
+          empty: true,
+          error: "Broker performance data unavailable",
         });
       }
     }
@@ -302,34 +285,20 @@ export async function GET(req: NextRequest) {
     // Re-derive range here — the one in the try block is out of scope in catch.
     const range = (req.nextUrl.searchParams.get("range") || "1D") as TimeRange;
 
-    // Even in case of error, return sample data instead of error response
-    const sampleBrokers = [
-      { brokerCode: "58", brokerName: "Naasa Securities", buyAmount: 1724000000, sellAmount: 2409000000, netAmount: -685000000, turnover: 4133000000, transactionCount: 11502, daysActive: 1, avgDaily: 4133000000 },
-      { brokerCode: "32", brokerName: "Premier Securities", buyAmount: 1026000000, sellAmount: 1231000000, netAmount: -205000000, turnover: 2257000000, transactionCount: 1956, daysActive: 1, avgDaily: 2257000000 },
-      { brokerCode: "44", brokerName: "Dynamic Money Management", buyAmount: 1034000000, sellAmount: 1222000000, netAmount: -188000000, turnover: 2256000000, transactionCount: 1695, daysActive: 1, avgDaily: 2256000000 },
-      { brokerCode: "65", brokerName: "Sharepro Securities", buyAmount: 1031000000, sellAmount: 894000000, netAmount: 137000000, turnover: 1925000000, transactionCount: 448, daysActive: 1, avgDaily: 1925000000 },
-      { brokerCode: "42", brokerName: "Sani Securities", buyAmount: 988000000, sellAmount: 792000000, netAmount: 196000000, turnover: 1780000000, transactionCount: 4274, daysActive: 1, avgDaily: 1780000000 },
-    ];
-
-    const marketTurnover = sampleBrokers.reduce((sum, b) => sum + b.turnover, 0);
-    const totalTransactions = sampleBrokers.reduce((sum, b) => sum + b.transactionCount, 0);
-    const avgNetFlow = sampleBrokers.reduce((sum, b) => sum + b.netAmount, 0) / sampleBrokers.length;
-    const topBrokerBuy = sampleBrokers[0];
-    const topBrokerSell = sampleBrokers[0];
-
+    // §6: never fabricate broker data. On error, return an explicit empty state
+    // so the UI shows "no data available" rather than mock numbers.
     return NextResponse.json({
       range,
-      fromDate: new Date().toISOString().split("T")[0],
-      toDate: new Date().toISOString().split("T")[0],
-      brokers: sampleBrokers,
-      marketTurnover,
-      totalTransactions,
-      avgNetFlow,
-      topBrokerBuy,
-      topBrokerSell,
-      brokerCount: sampleBrokers.length,
+      brokers: [],
+      marketTurnover: 0,
+      totalTransactions: 0,
+      avgNetFlow: 0,
+      topBrokerBuy: null,
+      topBrokerSell: null,
+      brokerCount: 0,
       timestamp: new Date().toISOString(),
-      note: "Using sample data - error occurred",
+      empty: true,
+      error: "Broker performance data unavailable",
     });
   }
 }

@@ -150,14 +150,44 @@ async function ingestBrokerData(
     ? brokerDate.split(" ")[0].replace(/\//g, "-")
     : brokerDate;
 
-  const brokers = mero.broker.detail.map((b: any) => ({
-    brokerCode: String(b.b),
-    brokerName: b.n || "",
-    purchaseAmt: Number(b.p) || 0,
-    sellAmt: Number(b.s) || 0,
-    netAmt: (Number(b.p) || 0) - (Number(b.s) || 0),
-    totalAmt: Number(b.t) || 0,
-  }));
+  // ── Validation gate (§7): reject rows missing required fields; log + continue.
+  // Required: brokerCode + at least one of purchase/sell present and numeric.
+  // A genuine numeric 0 is allowed; a missing/non-numeric field rejects the row.
+  const rejected: Array<{ reason: string; raw: string }> = [];
+  const brokers = mero.broker.detail
+    .map((b: any) => {
+      const brokerCode = b?.b != null ? String(b.b).trim() : "";
+      const p = Number(b?.p);
+      const s = Number(b?.s);
+      const t = Number(b?.t);
+      if (!brokerCode) {
+        rejected.push({ reason: "missing brokerCode", raw: JSON.stringify(b).slice(0, 160) });
+        return null;
+      }
+      if (!Number.isFinite(p) || !Number.isFinite(s)) {
+        rejected.push({ reason: "non-numeric purchase/sell", raw: JSON.stringify(b).slice(0, 160) });
+        return null;
+      }
+      return {
+        brokerCode,
+        brokerName: b?.n ? String(b.n) : "",
+        purchaseAmt: p,
+        sellAmt: s,
+        netAmt: p - s,
+        totalAmt: Number.isFinite(t) ? t : p + s,
+      };
+    })
+    .filter(Boolean) as Array<{
+      brokerCode: string; brokerName: string; purchaseAmt: number; sellAmt: number; netAmt: number; totalAmt: number;
+    }>;
+
+  if (rejected.length) {
+    console.error(`[collect] Attempt ${attempt}: rejected ${rejected.length} broker row(s):`, rejected.slice(0, 5));
+  }
+  if (!brokers.length) {
+    console.error(`[collect] Attempt ${attempt}: all broker rows rejected for ${normalizedDate}, nothing to store`);
+    return { action: "error", count: 0, date: normalizedDate };
+  }
 
   // Compute hash of this batch
   const newHash = computeHash(brokers);
