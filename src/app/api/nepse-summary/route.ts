@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { fetchMeroLaganiSummary, calcMeroPercent } from "@/lib/merolagani";
-import { getNepse, safeNepseCall } from "@/lib/nepse";
+import { getNepse, safeNepseCall, cached } from "@/lib/nepse";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -218,67 +218,42 @@ async function analyze(stocks: LiveStock[]): Promise<Summary> {
   // Calculate REAL 14-period RSI from NEPSE Index historical data using Wilder's method
   let realRSI = simulatedRSI; // fallback
   try {
-    const nepse = getNepse();
-    // Fetch 30 data points to calculate proper 14-period RSI
-    const history = await safeNepseCall(
-      () => nepse.requestGETAPI(`/api/nots/market/security/price/58?size=30&page=0`),
-      "NEPSE Index history for RSI"
-    ) as any;
+    const history = await cached("nepse-index-history", 60_000, () =>
+      safeNepseCall(() => getNepse().getNepseIndexDailyGraph(), "NEPSE Index history for RSI"),
+    ) as Array<[number, number]>;
     
-    if (history?.data && Array.isArray(history.data) && history.data.length >= 15) {
-      // Get closing prices (most recent first, then reverse to chronological)
-      const closes = history.data.slice(0, 20).reverse().map((d: any) => {
-        return d.closePrice || d.lastTradedPrice || d.close || d.ltp || 0;
-      }).filter((price: number) => price > 0); // Remove invalid prices
-      
+    if (Array.isArray(history) && history.length >= 15) {
+      const closes = history.slice(-30).map(([, price]) => price).filter((price: number) => price > 0);
       if (closes.length >= 15) {
-        // Wilder's RSI calculation
         let avgGain = 0;
         let avgLoss = 0;
-        
-        // Calculate initial average gain/loss (first 14 periods)
         for (let i = 1; i < 15; i++) {
           const change = closes[i] - closes[i - 1];
-          if (change > 0) {
-            avgGain += change;
-          } else {
-            avgLoss += Math.abs(change);
-          }
+          if (change > 0) avgGain += change;
+          else avgLoss += Math.abs(change);
         }
-        
         avgGain /= 14;
         avgLoss /= 14;
-        
-        // Apply Wilder's smoothing for remaining periods
         for (let i = 15; i < closes.length; i++) {
           const change = closes[i] - closes[i - 1];
           const gain = change > 0 ? change : 0;
           const loss = change < 0 ? Math.abs(change) : 0;
-          
           avgGain = (avgGain * 13 + gain) / 14;
           avgLoss = (avgLoss * 13 + loss) / 14;
         }
-        
-        console.log('RSI Calculation - avgGain:', avgGain.toFixed(2), 'avgLoss:', avgLoss.toFixed(2), 'dataPoints:', closes.length);
-        
-        // Calculate RSI
-        if (avgLoss === 0) {
-          realRSI = avgGain > 0 ? 100 : 50;
-        } else {
+        if (avgLoss === 0) realRSI = avgGain > 0 ? 100 : 50;
+        else {
           const rs = avgGain / avgLoss;
           realRSI = Math.round((100 - (100 / (1 + rs))) * 100) / 100;
         }
-        
-        console.log('Calculated RSI (Wilder):', realRSI);
       } else {
-        console.log('Not enough valid price data, using simulated RSI');
+        console.log('Not enough valid price data points, using simulated RSI');
       }
     } else {
       console.log('NEPSE Index history not available, using simulated RSI:', simulatedRSI);
     }
   } catch (err) {
     console.log('Error fetching NEPSE Index history, using simulated RSI:', err);
-    // Fallback to simulated RSI if historical data unavailable
     realRSI = simulatedRSI;
   }
   
