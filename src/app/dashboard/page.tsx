@@ -301,34 +301,6 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Market Calendar / Timeline */}
-          <div className="rounded-lg border border-border bg-surface p-6">
-            <h3 className="text-sm font-semibold text-foreground mb-4">Market Calendar (2083 Jestha)</h3>
-            <div className="flex gap-2 overflow-x-auto pb-2">
-              {Array.from({ length: 5 }).map((_, i) => {
-                const date = new Date();
-                date.setDate(date.getDate() + i);
-                const day = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][date.getDay()];
-                const dateStr = date.getDate();
-
-                return (
-                  <div
-                    key={i}
-                    className={`flex flex-col items-center gap-2 p-3 rounded-lg border ${
-                      i === 0
-                        ? "border-primary bg-primary/10"
-                        : "border-border hover:border-primary/50"
-                    } min-w-fit cursor-pointer transition`}
-                  >
-                    <div className="text-xs font-semibold text-muted">{day}</div>
-                    <div className="text-lg font-bold text-foreground">{dateStr}</div>
-                    <div className="text-[10px] text-muted">2083</div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
           {/* Footer Info */}
           <div className="rounded-lg border border-border bg-surface-2 p-4 text-center">
             <p className="text-xs text-muted">
