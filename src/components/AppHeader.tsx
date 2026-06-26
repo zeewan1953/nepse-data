@@ -39,11 +39,8 @@ const icons = {
 const NAV: Array<{ href: string; label: string; icon: string; badge?: boolean }> = [
   { href: "/", label: "Dashboard", icon: icons.dashboard },
   { href: "/market", label: "Live Market", icon: icons.trending },
-  { href: "/fundamental", label: "Fundamental", icon: icons.spreadsheet },
   { href: "/broker-analysis", label: "Broker Analysis", icon: icons.exchange },
   { href: "/orderflow", label: "Order Flow", icon: "📊" },
-  { href: "/demo", label: "Demo Trading", icon: "💼" },
-  { href: "/floorsheet", label: "Floorsheet", icon: icons.spreadsheet },
   { href: "/news", label: "News", icon: icons.news },
 ];
 
@@ -316,10 +313,10 @@ export default function AppHeader() {
     <header className="sticky top-0 z-50">
       {/* ── Main Header Bar ──────────────────────────────── */}
       <div className="border-b" style={{ borderColor: "rgba(0,0,0,0.12)", background: "#fff" }}>
-        <div className="mx-auto flex max-w-[1400px] items-center gap-1 sm:gap-3 px-2 sm:px-4 py-1.5 sm:py-2">
-          {/* Logo */}
-          <Link href="/" className="flex shrink-0 items-center gap-1.5 sm:gap-2.5">
-            <Logo size={36} tagline="NEPSE Analytics" />
+        <div className="mx-auto flex max-w-[1400px] items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1 sm:py-1.5">
+          {/* Logo - smaller on mobile */}
+          <Link href="/" className="flex shrink-0 items-center">
+            <Logo size={28} tagline="NEPSE Analytics" />
           </Link>
 
           {/* Mobile Menu Button */}
@@ -331,7 +328,7 @@ export default function AppHeader() {
             <Icon d={mobileMenuOpen ? icons.x : "M3 6h18M3 12h18M3 18h18"} size={18} />
           </button>
 
-          {/* Navigation Pill - Desktop */}
+          {/* Navigation Pill - Desktop only */}
           <nav className="hidden md:flex flex-1 justify-center">
             <div className="flex items-center gap-0.5 rounded-[10px] border p-[3px]" style={{ background: "#F5F5F0", borderColor: "rgba(0,0,0,0.12)" }}>
               {NAV.map((item) => {
@@ -340,7 +337,7 @@ export default function AppHeader() {
                   <Link
                     key={item.href}
                     href={item.href}
-                    className="relative flex items-center gap-1.5 rounded-[7px] px-3 py-1.5 text-[12px] font-medium transition-all"
+                    className="relative flex items-center gap-1 rounded-[7px] px-2.5 py-1 text-[11px] font-medium transition-all"
                     style={active ? { background: "#0F6E56", color: "#fff" } : { background: "transparent", color: "#555" }}
                     onMouseEnter={(e) => {
                       if (!active) {
@@ -355,10 +352,10 @@ export default function AppHeader() {
                       }
                     }}
                   >
-                    <Icon d={item.icon} size={15} />
+                    <Icon d={item.icon} size={13} />
                     <span className="hidden lg:inline">{item.label}</span>
                     {item.badge && (
-                      <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full px-1 text-[9px] font-bold text-white" style={{ background: "#c0392b" }}>
+                      <span className="absolute -right-1 -top-1 grid h-3.5 min-w-3.5 place-items-center rounded-full px-1 text-[8px] font-bold text-white" style={{ background: "#c0392b" }}>
                         {newsCount}
                       </span>
                     )}
@@ -368,10 +365,10 @@ export default function AppHeader() {
             </div>
           </nav>
 
-          {/* ── Right Side Icons ── */}
+          {/* ── Right Side Icons - Mobile optimized ── */}
           <div className="ml-auto flex items-center gap-0.5 sm:gap-1">
-            {/* Search */}
-            <div ref={searchRef} className="relative">
+            {/* Search - hidden on very small screens */}
+            <div ref={searchRef} className="relative hidden xs:block">
               <IconBtn d={icons.search} active={searchOpen} onClick={() => toggleOnly("search")} />
               {searchOpen && (
                 <div className="absolute right-0 top-full mt-2 w-[280px] sm:w-72 overflow-hidden rounded-xl border border-border bg-surface shadow-xl z-50">
@@ -486,7 +483,7 @@ export default function AppHeader() {
               )}
             </div>
 
-            {/* Settings */}
+            {/* Settings - hidden on mobile */}
             <div ref={settingsRef} className="relative hidden sm:block">
               <IconBtn d={icons.settings} active={settingsOpen} onClick={() => toggleOnly("settings")} />
               {settingsOpen && (
