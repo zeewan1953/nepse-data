@@ -47,6 +47,16 @@ export async function GET(req: Request) {
         }
 
         const meroDate = (mero.broker.date || mero.overall?.d || day).slice(0, 10).replace(/\//g, "-");
+
+        // CRITICAL: MeroLagani only ever returns TODAY's data. If the date it
+        // returns is not the day we asked for, saving it would write today's
+        // numbers under an old date = CORRUPT DATA. Skip instead.
+        if (meroDate !== day) {
+          skipped++;
+          results.push({ date: day, status: "no_historical_data", meroReturned: meroDate } as any);
+          continue;
+        }
+
         const brokers = mero.broker.detail.map((b: any) => ({
           brokerCode: b.b,
           brokerName: b.n || "",
