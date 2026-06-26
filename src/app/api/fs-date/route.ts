@@ -64,112 +64,172 @@ async function buildMeroResponse(date: string) {
   };
 }
 
-// Date overview: aggregate broker & stock stats from DB for a given date or date range
+// Aggregate MeroLagani broker data from DB for a date range
+async function buildMeroDbRangeResponse(from: string, to: string) {
+  const rows = await execute(
+    `SELECT brokerCode, SUM(purchaseAmt) as buyAmt, SUM(sellAmt) as sellAmt, SUM(netAmt) as netAmt, SUM(totalAmt) as totalAmt
+     FROM merolagani_broker_daily WHERE tradeDate >= ? AND tradeDate <= ?
+     GROUP BY brokerCode ORDER BY SUM(netAmt) DESC`,
+    [from, to],
+  );
+  if (!rows.rows.length) return null;
+
+  const netFlow = rows.rows.map((r: any) => ({
+    id: String(r.brokerCode),
+    buyQty: 0, sellQty: 0, netQty: 0,
+    buyAmt: Number(r.buyAmt),
+    sellAmt: Number(r.sellAmt),
+    netAmt: Number(r.netAmt),
+  }));
+
+  // Get stock totals from floorsheet_trades (volume only, no broker breakdown)
+  const stockRows = await execute(
+    "SELECT stockSymbol, securityName, SUM(contractQuantity) as qty, SUM(contractAmount) as amount, COUNT(*) as trades FROM floorsheet_trades WHERE tradeDate >= ? AND tradeDate <= ? GROUP BY stockSymbol ORDER BY SUM(contractAmount) DESC",
+    [from, to],
+  );
+
+  const stocks = stockRows.rows.map((r: any) => ({
+    symbol: String(r.stockSymbol),
+    name: String(r.securityName),
+    qty: Number(r.qty),
+    amount: Number(r.amount),
+    trades: Number(r.trades),
+  }));
+
+  const totalQty = stocks.reduce((a: number, s: any) => a + s.qty, 0);
+  const totalAmount = stocks.reduce((a: number, s: any) => a + s.amount, 0);
+
+  return {
+    date: `${from} – ${to}`,
+    source: "merolagani",
+    totals: {
+      trades: stocks.reduce((a: number, s: any) => a + s.trades, 0),
+      qty: totalQty,
+      amount: totalAmount,
+      brokers: netFlow.length,
+      stocks: stocks.length,
+    },
+    netFlow,
+    topBuyers: [...netFlow].sort((a: any, b: any) => b.buyAmt - a.buyAmt).slice(0, 10),
+    topSellers: [...netFlow].sort((a: any, b: any) => b.sellAmt - a.sellAmt).slice(0, 10),
+    stocks,
+    dates: await getAvailableDates(),
+  };
+}
+
+// Build response from MeroLagani DB for a single date
+async function buildMeroDbDateResponse(date: string) {
+  const rows = await execute(
+    "SELECT brokerCode, brokerName, purchaseAmt, sellAmt, netAmt, totalAmt FROM merolagani_broker_daily WHERE tradeDate = ? ORDER BY ABS(netAmt) DESC",
+    [date],
+  );
+  if (!rows.rows.length) return null;
+
+  const netFlow = rows.rows.map((r: any) => ({
+    id: String(r.brokerCode),
+    buyQty: 0, sellQty: 0, netQty: 0,
+    buyAmt: Number(r.purchaseAmt),
+    sellAmt: Number(r.sellAmt),
+    netAmt: Number(r.netAmt),
+  }));
+
+  const stockRows = await execute(
+    "SELECT stockSymbol, securityName, SUM(contractQuantity) as qty, SUM(contractAmount) as amount, COUNT(*) as trades FROM floorsheet_trades WHERE tradeDate = ? GROUP BY stockSymbol ORDER BY SUM(contractAmount) DESC",
+    [date],
+  );
+
+  const stocks = stockRows.rows.map((r: any) => ({
+    symbol: String(r.stockSymbol),
+    name: String(r.securityName),
+    qty: Number(r.qty),
+    amount: Number(r.amount),
+    trades: Number(r.trades),
+  }));
+
+  const totalQty = stocks.reduce((a: number, s: any) => a + s.qty, 0);
+  const totalAmount = stocks.reduce((a: number, s: any) => a + s.amount, 0);
+
+  return {
+    date,
+    source: "merolagani",
+    totals: {
+      trades: stocks.reduce((a: number, s: any) => a + s.trades, 0),
+      qty: totalQty,
+      amount: totalAmount,
+      brokers: netFlow.length,
+      stocks: stocks.length,
+    },
+    netFlow,
+    topBuyers: [...netFlow].sort((a: any, b: any) => b.buyAmt - a.buyAmt).slice(0, 10),
+    topSellers: [...netFlow].sort((a: any, b: any) => b.sellAmt - a.sellAmt).slice(0, 10),
+    stocks,
+    dates: await getAvailableDates(),
+  };
+}
+
 export async function GET(req: NextRequest) {
   try {
     const sp = req.nextUrl.searchParams;
     const dateParam = sp.get("date");
     const fromParam = sp.get("from");
     const toParam = sp.get("to");
-    
-    let date: string;
     let rangeMode = false;
 
+    let date: string;
     if (fromParam && toParam) {
       date = `${fromParam} – ${toParam}`;
       rangeMode = true;
     } else {
-      // Use the explicit date or today — do NOT fallback to latest DB date yet
       date = dateParam || todayStr();
     }
 
-    // Range queries always use DB
+    // Range mode: use MeroLagani DB (has real broker codes)
     if (rangeMode) {
-      const trades = await execute(
-        "SELECT stockSymbol, securityName, buyerMemberId, sellerMemberId, contractQuantity, contractAmount FROM floorsheet_trades WHERE tradeDate >= ? AND tradeDate <= ?",
-        [fromParam!, toParam!],
-      );
-      if (!trades.rows.length) {
-        const dates = await getAvailableDates();
-        return Response.json({ date, totals: { trades: 0, qty: 0, amount: 0, brokers: 0, stocks: 0 }, netFlow: [], topBuyers: [], topSellers: [], stocks: [], dates });
-      }
-      const totals = aggregateTrades(trades.rows, date);
-      return Response.json({ ...totals, dates: await getAvailableDates() });
+      const meroRange = await buildMeroDbRangeResponse(fromParam!, toParam!);
+      if (meroRange) return Response.json(meroRange);
+      const dates = await getAvailableDates();
+      return Response.json({ date, totals: { trades: 0, qty: 0, amount: 0, brokers: 0, stocks: 0 }, netFlow: [], topBuyers: [], topSellers: [], stocks: [], dates });
     }
 
-    // Single date: try DB for this specific date
-    const trades = await execute(
-      "SELECT stockSymbol, securityName, buyerMemberId, sellerMemberId, contractQuantity, contractAmount FROM floorsheet_trades WHERE tradeDate = ?",
-      [date],
-    );
+    // Single date: MeroLagani DB first (real broker codes)
+    const meroDb = await buildMeroDbDateResponse(date);
+    if (meroDb) return Response.json(meroDb);
 
-    if (trades.rows.length) {
-      const totals = aggregateTrades(trades.rows, date);
-      return Response.json({ ...totals, source: "floorsheet", dates: await getAvailableDates() });
-    }
-
-    // DB empty for this date — try MeroLagani live data
+    // Fallback to live MeroLagani (real-time)
     const live = await buildMeroResponse(date);
     if (live) return Response.json(live);
 
-    // MeroLagani also failed — fallback to latest available date in DB
-    const fallback = await getTargetDateWithFallback(date);
-    if (fallback.date !== date) {
-      const fbTrades = await execute(
-        "SELECT stockSymbol, securityName, buyerMemberId, sellerMemberId, contractQuantity, contractAmount FROM floorsheet_trades WHERE tradeDate = ?",
-        [fallback.date],
-      );
-      if (fbTrades.rows.length) {
-        const totals = aggregateTrades(fbTrades.rows, fallback.date);
-        return Response.json({ ...totals, source: "floorsheet", fallbackNote: `No data for ${date}, showing ${fallback.date}`, dates: await getAvailableDates() });
-      }
+    // Fallback to floorsheet_trades (has null brokers but stock data)
+    const ft = await execute(
+      "SELECT stockSymbol, securityName, SUM(contractQuantity) as qty, SUM(contractAmount) as amount, COUNT(*) as trades FROM floorsheet_trades WHERE tradeDate = ? GROUP BY stockSymbol ORDER BY SUM(contractAmount) DESC",
+      [date],
+    );
+    if (ft.rows.length) {
+      const stocks = ft.rows.map((r: any) => ({
+        symbol: String(r.stockSymbol), name: String(r.securityName),
+        qty: Number(r.qty), amount: Number(r.amount), trades: Number(r.trades),
+      }));
+      const totalQty = stocks.reduce((a: number, s: any) => a + s.qty, 0);
+      const totalAmount = stocks.reduce((a: number, s: any) => a + s.amount, 0);
+      const dates = await getAvailableDates();
+      return Response.json({
+        date, source: "floorsheet",
+        totals: { trades: stocks.reduce((a: number, s: any) => a + s.trades, 0), qty: totalQty, amount: totalAmount, brokers: 0, stocks: stocks.length },
+        netFlow: [], topBuyers: [], topSellers: [], stocks, dates,
+        note: "Broker IDs not available from NEPSE, showing stock aggregates only",
+      });
     }
 
-    // Nothing at all
+    // Fallback to latest available date
+    const fallback = await getTargetDateWithFallback(date);
+    if (fallback.date !== date) {
+      const fb = await buildMeroDbDateResponse(fallback.date);
+      if (fb) return Response.json({ ...fb, fallbackNote: `No data for ${date}, showing ${fallback.date}` });
+    }
+
     const dates = await getAvailableDates();
     return Response.json({ date, totals: { trades: 0, qty: 0, amount: 0, brokers: 0, stocks: 0 }, netFlow: [], topBuyers: [], topSellers: [], stocks: [], dates });
   } catch (e) {
     return Response.json({ error: (e as Error)?.message ?? "Query failed" }, { status: 502 });
   }
-}
-
-function aggregateTrades(rows: any[], date: string) {
-  const brokerMap = new Map<string, { id: string; buyQty: number; buyAmt: number; sellQty: number; sellAmt: number }>();
-  const stockMap = new Map<string, { symbol: string; name: string; qty: number; amount: number; trades: number }>();
-  let totalQty = 0, totalAmount = 0;
-
-  const getB = (id: string) => brokerMap.get(id) ?? { id, buyQty: 0, buyAmt: 0, sellQty: 0, sellAmt: 0 };
-
-  for (const r of rows) {
-    const qty = Number(r.contractQuantity);
-    const amt = Number(r.contractAmount);
-    const sym = String(r.stockSymbol);
-    const name = String(r.securityName);
-    const buyer = String(r.buyerMemberId);
-    const seller = String(r.sellerMemberId);
-
-    totalQty += qty;
-    totalAmount += amt;
-
-    const b = getB(buyer); b.buyQty += qty; b.buyAmt += amt; brokerMap.set(buyer, b);
-    const s = getB(seller); s.sellQty += qty; s.sellAmt += amt; brokerMap.set(seller, s);
-
-    const st = stockMap.get(sym) ?? { symbol: sym, name, qty: 0, amount: 0, trades: 0 };
-    st.qty += qty; st.amount += amt; st.trades += 1;
-    stockMap.set(sym, st);
-  }
-
-  const brokerList = [...brokerMap.values()].map((b) => ({
-    ...b, netQty: b.buyQty - b.sellQty, netAmt: b.buyAmt - b.sellAmt,
-  }));
-
-  return {
-    date,
-    source: "floorsheet",
-    totals: { trades: rows.length, qty: totalQty, amount: totalAmount, brokers: brokerMap.size, stocks: stockMap.size },
-    netFlow: [...brokerList].sort((a, b) => b.netAmt - a.netAmt),
-    topBuyers: [...brokerList].sort((a, b) => b.buyAmt - a.buyAmt).slice(0, 10),
-    topSellers: [...brokerList].sort((a, b) => b.sellAmt - a.sellAmt).slice(0, 10),
-    stocks: [...stockMap.values()].sort((a, b) => b.amount - a.amount),
-  };
 }

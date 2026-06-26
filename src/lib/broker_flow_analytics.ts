@@ -431,6 +431,53 @@ export function minMaxNormalize(values: number[]): number[] {
   return values.map((v) => Math.round(((v - min) / range) * 1000) / 1000);
 }
 
+// ─── Net Flow Streak Detection ────────────────────────────────────────────────
+
+export type BrokerDailyRecord = {
+  tradeDate: string;
+  purchaseAmt: number;
+  sellAmt: number;
+  netAmt: number;
+  totalAmt: number;
+};
+
+export type NetFlowStreak = {
+  direction: "buy" | "sell";
+  length: number;
+};
+
+/**
+ * Compute the current net-flow streak for a broker from their daily records.
+ * Records must be sorted ascending by tradeDate.
+ * Returns null if fewer than 2 records.
+ */
+export function computeNetFlowStreak(records: BrokerDailyRecord[]): NetFlowStreak | null {
+  if (records.length < 2) return null;
+
+  const sorted = [...records].sort((a, b) => a.tradeDate.localeCompare(b.tradeDate));
+  const reversed = sorted.reverse();
+
+  let length = 0;
+  let direction: "buy" | "sell" | null = null;
+
+  for (const r of reversed) {
+    if (r.netAmt > 0) {
+      if (direction === null) { direction = "buy"; length = 1; }
+      else if (direction === "buy") length++;
+      else break;
+    } else if (r.netAmt < 0) {
+      if (direction === null) { direction = "sell"; length = 1; }
+      else if (direction === "sell") length++;
+      else break;
+    } else {
+      // net zero day — streak ends
+      break;
+    }
+  }
+
+  return direction ? { direction, length } : null;
+}
+
 // ─── Composite Score (normalized blend) ──────────────────────────────────────
 
 /**

@@ -1,0 +1,42 @@
+name: Daily Broker Data Collection
+
+on:
+  schedule:
+    # 3 PM Nepal time = 9:30 AM UTC (during market hours)
+    - cron: '30 9 * * 1-5'  # Monday to Friday at 3 PM Nepal time
+
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  collect-data:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          cd nepse-pipeline
+          pip install -r requirements.txt
+          pip install requests schedule
+
+      - name: Collect broker data
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          cd nepse-pipeline
+          python -m scraper.daily_data_collector --date $(date +%Y-%m-%d)
+
+      - name: Notify success
+        if: success()
+        run: echo "✓ Daily data collection completed successfully"
+
+      - name: Notify failure
+        if: failure()
+        run: echo "✗ Daily data collection failed"

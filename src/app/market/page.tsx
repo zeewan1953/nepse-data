@@ -11,14 +11,14 @@ export default function MarketPage() {
   const live = usePoll<{ data: LiveMarketData[]; count: number }>("/api/live", 30_000);
 
   return (
-    <main className="mx-auto max-w-[1400px] px-4 py-6">
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-lg font-black text-foreground">Live Market</h1>
-        <span className="text-[11px] text-muted">
+    <div className="mx-auto w-full max-w-[1440px] px-2 sm:px-4 py-3 sm:py-5">
+      <div className="mb-3 sm:mb-4 flex items-center justify-between px-1">
+        <h1 className="text-base sm:text-lg font-black text-foreground">Live Market</h1>
+        <span className="text-[10px] sm:text-xs text-muted font-medium">
           {live.data ? `${live.data.count} stocks` : "Loading..."}
         </span>
       </div>
       <MarketPanel liveData={live.data?.data} mounted={mounted} />
-    </main>
+    </div>
   );
 }

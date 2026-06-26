@@ -1,844 +1,960 @@
 "use client";
-import { useState, useMemo, useEffect, useRef, useCallback } from "react";
-import { usePoll } from "@/lib/useLive";
-import { computeBrokerFootprint, getBestFlowSummary, patternLabel, patternColor } from "@/lib/broker-footprint";
-import "./broker-analysis.css";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { BrokerPerformanceSection } from "./broker-performance";
+import { StockBrokerFlow } from "./StockBrokerFlow";
+import { BrokerStockPanels } from "./BrokerStockPanels";
+import { BrokerStockDetail } from "./BrokerStockDetail";
 
-// Types
-type DateOverview = {
-  date: string;
-  source?: string;
-  totals: { trades: number; qty: number; amount: number; brokers: number; stocks: number };
-  netFlow: Array<{ id: string; buyAmt: number; sellAmt: number; netAmt: number }>;
-  dates: string[];
+// ─── Types ──────────────────────────────────────────────────────────────────
+
+type StockWiseItem = {
+  symbol: string;
+  ltp: number | null;
+  changePercent: number | null;
+  totalVolume: number;
+  totalTurnover: number;
+  tradeCount: number;
+  estBuyVolume: number | null;
+  estSellVolume: number | null;
+  estNetVolume: number | null;
+  cmf: number | null;
+  mfi: number | null;
+  volumeZScore: number | null;
+  estimateMethod: string | null;
 };
 
-type AccDistData = {
+type StockWiseResp = {
   date: string;
-  stocks: Array<{
-    symbol: string;
-    name: string;
-    buyAmt: number;
-    sellAmt: number;
-    netFlow: number;
-    signal: "ACCUMULATION" | "DISTRIBUTION" | "NEUTRAL";
-  }>;
+  stocks: StockWiseItem[];
+  source: "floorsheet";
+  availableDates?: string[];
+};
+
+type BrokerDailyRecord = {
+  tradeDate: string;
+  purchaseAmt: number;
+  sellAmt: number;
+  netAmt: number;
+  totalAmt: number;
+};
+
+type BrokerWiseResp = {
+  brokerCode: string;
+  brokerName: string;
+  daysAvailable: number;
+  history: BrokerDailyRecord[];
   totals: {
-    totalAccumulation: number;
-    totalDistribution: number;
-    accumulated: number;
-    distributed: number;
-    neutral: number;
+    buyAmount: number;
+    sellAmount: number;
+    netAmount: number;
+    turnover: number;
   };
+  currentStreak: { direction: "buy" | "sell"; length: number } | null;
+  rollingNetFlow: number;
+  source: "merolagani";
 };
 
-type BrokerData = {
-  date: string;
+type BrokerOption = {
   broker: string;
-  stocks: Array<{
-    symbol: string;
-    buyQty: number;
-    buyAmt: number;
-    sellQty: number;
-    sellAmt: number;
-    netQty: number;
-    netAmt: number;
-    aggressive: "buy" | "sell" | "mixed";
-  }>;
-  totals: {
-    buyAmt: number;
-    sellAmt: number;
-    netAmt: number;
-  };
+  name: string;
 };
 
-type HoldingData = {
-  date: string;
-  status: "finalized" | "pending" | "empty";
-  brokers: Array<{
-    brokerId: string;
-    buyAmt: number;
-    sellAmt: number;
-    netAmt: number;
-    cumulativeNet: number | null;
-    holdingPct: number | null;
-    note: string | null;
-    rank: number;
-  }>;
-  totalBuyAmt: number;
-  totalSellAmt: number;
-  totalNetAmt: number;
-};
+type SortKey = "turnover" | "netEst" | "cmf";
+type TimeRange = "1D" | "3D" | "1W" | "1M" | "3M";
 
-function formatCr(n: number): string {
-  const abs = Math.abs(n);
-  if (abs >= 1e7) return (n / 1e7).toFixed(2) + " Cr";
-  if (abs >= 1e5) return (n / 1e5).toFixed(1) + " L";
-  if (abs >= 1e3) return (n / 1e3).toFixed(1) + " K";
-  return n.toFixed(0);
+// ─── Helpers ───────────────────────────────────────────────────────────────
+
+const MDASH = "\u2014";
+
+function npr(n: number | null | undefined, dp = 2): string {
+  if (n === null || n === undefined || Number.isNaN(n)) return MDASH;
+  return n.toLocaleString("en-IN", { minimumFractionDigits: dp, maximumFractionDigits: dp });
 }
 
-// Footprint data type
-type FootprintData = {
-  brokerCode: string;
-  symbol: string;
-  windowDays: number;
-  status: string;
-  dailyNet: Array<{ date: string; netQty: number }>;
-  footprint: {
-    cumulativeNet: number;
-    streakLength: number;
-    streakDirection: number | null;
-    flips: number;
-    pattern: string;
-    windowDays: number;
-  } | null;
-  note?: string;
+function compact(n: number | null | undefined): string {
+  if (n === null || n === undefined || Number.isNaN(n)) return MDASH;
+  const abs = Math.abs(n);
+  if (abs >= 1e7) return `${(n / 1e7).toFixed(2)} Cr`;
+  if (abs >= 1e5) return `${(n / 1e5).toFixed(2)} L`;
+  return n.toLocaleString("en-IN");
+}
+
+function pct(n: number | null | undefined): string {
+  if (n === null || n === undefined || Number.isNaN(n)) return MDASH;
+  return `${n > 0 ? "+" : ""}${n.toFixed(2)}%`;
+}
+
+function cls(n: number | null | undefined): string {
+  if (n === null || n === undefined || n === 0) return "text-blue-500";
+  return n > 0 ? "text-up" : "text-down";
+}
+
+const RANGE_LABELS: Record<TimeRange, string> = {
+  "1D": "1D", "3D": "3D", "1W": "1W", "1M": "1M", "3M": "3M",
 };
 
-export default function BrokerAnalysisPage() {
-  const [selectedDate, setSelectedDate] = useState("");
-  const [bootstrapped, setBootstrapped] = useState(false);
-  const [brokerFilter, setBrokerFilter] = useState("");
-  const [stockFilter, setStockFilter] = useState("");
-  const [activeBroker, setActiveBroker] = useState<string | null>(null);
-  const [footprintSymbol, setFootprintSymbol] = useState<string | null>(null);
-  const [brokerFlowFilter, setBrokerFlowFilter] = useState("");
-  const [timeframe, setTimeframe] = useState<"1D" | "3D" | "1W" | "1M" | "3M">("1D");
-  const [nptClock, setNptClock] = useState("");
-  const [syncing, setSyncing] = useState(false);
-  const [syncMsg, setSyncMsg] = useState<string | null>(null);
-  useEffect(() => { setBrokerFlowFilter(""); }, [footprintSymbol]);
+const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+  { key: "turnover", label: "Turnover" },
+  { key: "netEst", label: "Est. Net" },
+  { key: "cmf", label: "CMF" },
+];
 
-  // NPT clock
-  useEffect(() => {
-    const tick = () => {
-      const now = new Date();
-      const npt = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kathmandu" }));
-      setNptClock(npt.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true }));
-    };
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, []);
+// ─── Stock Wise Table ──────────────────────────────────────────────────────
 
-  // Sync floorsheet data from NEPSE
-  const handleSync = useCallback(async () => {
-    setSyncing(true);
-    setSyncMsg(null);
+function StockWiseTab({ dateKey }: { dateKey: string }) {
+  const [data, setData] = useState<StockWiseResp | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [sort, setSort] = useState<SortKey>("turnover");
+  const [query, setQuery] = useState("");
+
+  const fetchWithDate = useCallback(async (date: string) => {
+    setLoading(true);
     try {
-      const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kathmandu" });
-      const res = await fetch(`/api/broker-sync?date=${today}`, { cache: "no-store" });
-      const data = await res.json();
-      if (data.success) {
-        setSyncMsg(`Synced ${data.date}: ${data.sync?.tradeCount ?? "—"} trades`);
-        // Refresh page data by changing a state to trigger re-fetch
-        setBootstrapped(false);
-        setSelectedDate("");
+      const res = await fetch(`/api/stock-wise?date=${date}&sort=${sort}`);
+      const d: StockWiseResp = await res.json();
+      if (d.stocks && d.stocks.length > 0) {
+        setData(d);
+      } else if (d.availableDates && d.availableDates.length > 0 && d.availableDates[0] !== date) {
+        // Retry with the latest available date
+        const res2 = await fetch(`/api/stock-wise?date=${d.availableDates[0]}&sort=${sort}`);
+        const d2: StockWiseResp = await res2.json();
+        setData(d2);
       } else {
-        setSyncMsg(`Sync failed: ${data.message}`);
+        setData(d);
       }
-    } catch (e) {
-      setSyncMsg(`Sync error: ${(e as Error).message}`);
-    } finally {
-      setSyncing(false);
-    }
-  }, []);
+    } catch { setData(null); }
+    setLoading(false);
+  }, [sort]);
 
-  // Bootstrap: fetch latest available date on mount
-  const latestDate = usePoll<{ date: string; dates: string[] }>("/api/fs-date?date=", 0);
-  useEffect(() => {
-    if (!bootstrapped && latestDate.data?.date) {
-      setSelectedDate(latestDate.data.date);
-      setBootstrapped(true);
-    }
-  }, [latestDate.data?.date, bootstrapped]);
+  useEffect(() => { fetchWithDate(dateKey); }, [dateKey, fetchWithDate]);
 
-  // Compute date range from timeframe
-  const dateFrom = useMemo(() => {
-    if (!selectedDate || !latestDate.data?.dates?.length) return selectedDate || "";
-    const dates = latestDate.data.dates;
-    const idx = dates.indexOf(selectedDate);
-    if (idx === -1) return selectedDate;
-    const lookback: Record<string, number> = { "1D": 0, "3D": 2, "1W": 6, "1M": 21, "3M": 63 };
-    return dates[Math.min(dates.length - 1, idx + (lookback[timeframe] ?? 0))];
-  }, [timeframe, selectedDate, latestDate.data?.dates]);
+  const filtered = useMemo(() => {
+    if (!data?.stocks) return [];
+    if (!query.trim()) return data.stocks;
+    const q = query.toLowerCase();
+    return data.stocks.filter((s) => s.symbol.toLowerCase().includes(q));
+  }, [data, query]);
 
-  const isRange = timeframe !== "1D" && dateFrom && selectedDate && dateFrom !== selectedDate;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-primary" />
+        <span className="ml-3 text-sm text-muted">Loading stock data...</span>
+      </div>
+    );
+  }
 
-  // Build API URLs based on timeframe
-  const fsDateUrl = selectedDate
-    ? isRange
-      ? `/api/fs-date?from=${dateFrom}&to=${selectedDate}`
-      : `/api/fs-date?date=${selectedDate}`
-    : "";
-  const accDistUrl = selectedDate
-    ? isRange
-      ? `/api/accumulation?from=${dateFrom}&to=${selectedDate}`
-      : `/api/accumulation?date=${selectedDate}`
-    : "";
-  const brokerUrl = activeBroker && selectedDate
-    ? isRange
-      ? `/api/fs-broker?from=${dateFrom}&to=${selectedDate}&broker=${activeBroker}`
-      : `/api/fs-broker?date=${selectedDate}&broker=${activeBroker}`
-    : "";
-  const holdingUrl = selectedDate
-    ? isRange
-      ? `/api/broker-holding?from=${dateFrom}&to=${selectedDate}`
-      : `/api/broker-holding?date=${selectedDate}`
-    : "";
-
-  // Fetch data — usePoll is always called (rules of hooks), URL changes trigger refetch
-  const dateData = usePoll<DateOverview>(fsDateUrl, 0);
-  const accDistData = usePoll<AccDistData>(accDistUrl, 0);
-  const brokerData = usePoll<BrokerData>(brokerUrl, 0);
-  const holdingData = usePoll<HoldingData>(holdingUrl, 0);
-  const footprintData = usePoll<FootprintData>(
-    footprintSymbol && selectedDate ? `/api/broker-flow/${footprintSymbol}/${selectedDate}` : "",
-    0
-  );
-
-  // Compute best flow summary from footprint data
-  const bestFlowSummary = useMemo(() => {
-    if (!footprintData.data?.dailyNet || footprintData.data.dailyNet.length === 0) return null;
-    return computeBrokerFootprint(footprintData.data.dailyNet);
-  }, [footprintData.data]);
-
-  const availableDates = dateData.data?.dates || [];
-  const hasData = dateData.data && dateData.data.totals.trades > 0;
-
-  // Filtered stocks - signals first, then by buy volume
-  const filteredStocks = useMemo(() => {
-    if (!accDistData.data?.stocks) return [];
-    let items = accDistData.data.stocks;
-    if (stockFilter) {
-      const q = stockFilter.toLowerCase();
-      items = items.filter((s) => s.symbol.toLowerCase().includes(q) || s.name?.toLowerCase().includes(q));
-    }
-    // Signal stocks first, then by total traded value
-    return items.sort((a, b) => {
-      const aSig = a.signal !== "NEUTRAL" ? 1 : 0;
-      const bSig = b.signal !== "NEUTRAL" ? 1 : 0;
-      if (aSig !== bSig) return bSig - aSig;
-      return (b.buyAmt + b.sellAmt) - (a.buyAmt + a.sellAmt);
-    }).slice(0, 24);
-  }, [accDistData.data, stockFilter]);
-
-  const topAccumulation = filteredStocks
-    .filter((s) => s.signal === "ACCUMULATION")
-    .sort((a, b) => b.buyAmt - a.buyAmt)
-    .slice(0, 10);
-  const topDistribution = filteredStocks
-    .filter((s) => s.signal === "DISTRIBUTION")
-    .sort((a, b) => b.sellAmt - a.sellAmt)
-    .slice(0, 10);
-  const topBrokers = dateData.data?.netFlow?.slice(0, 20) || [];
+  if (!data || !data.stocks.length) {
+    return (
+      <div className="py-12 text-center">
+        <div className="text-3xl mb-2">📊</div>
+        <div className="text-sm text-muted">No floorsheet data available for {dateKey}.</div>
+      </div>
+    );
+  }
 
   return (
-    <div className="ba-page">
-      {/* Header */}
-      <header className="ba-header">
-        <div className="ba-logo">
-          <i className="fas fa-chart-line" />
-          NEPSE Market Summary
-        </div>
-        <div className="ba-subtitle">AXION — Institutional Flow Tracker</div>
-        <div className="ba-header-actions">
-          {syncMsg && <span className="ba-sync-msg">{syncMsg}</span>}
-          <button className="ba-sync-btn" onClick={handleSync} disabled={syncing}>
-            <i className={`fas ${syncing ? "fa-spinner fa-spin" : "fa-cloud-arrow-down"}`} />
-            {syncing ? "Syncing…" : "Sync"}
-          </button>
-        </div>
-      </header>
-
-      {/* Market Summary Panel */}
-      <section className="ba-summary-panel">
-        <div className="ba-summary-header">
-          <div className="ba-summary-title">
-            <i className="fas fa-chart-bar" /> {isRange ? `${dateFrom} – ${selectedDate}` : selectedDate || "—"}
-            {isRange && <span className="ba-tf-label">{timeframe}</span>}
-          </div>
-          <span className={`ba-badge ${dateData.data?.source === "merolagani" ? "live" : "finalized"}`}>
-            <i className={`fas ${dateData.data?.source === "merolagani" ? "fa-bolt" : "fa-check-circle"}`} />
-            {dateData.data?.source === "merolagani" ? "MeroLagani Live" : "Floor finalized"}
-          </span>
-        </div>
-
-        {/* Metric Row */}
-        <div className="ba-metric-row">
-          <div className="ba-metric-card">
-            <div className="ba-metric-label">Total Turnover</div>
-            <div className="ba-metric-value">{hasData ? formatCr(dateData.data!.totals.amount) : "—"}</div>
-            <div className="ba-metric-sub muted">{hasData ? dateData.data!.totals.trades.toLocaleString() + " trades" : "—"}</div>
-          </div>
-          <div className="ba-metric-card">
-            <div className="ba-metric-label">Active Brokers</div>
-            <div className="ba-metric-value">{hasData ? dateData.data!.totals.brokers : "—"}</div>
-            <div className="ba-metric-sub muted">participants</div>
-          </div>
-          <div className="ba-metric-card">
-            <div className="ba-metric-label">Stocks Traded</div>
-            <div className="ba-metric-value">{hasData ? dateData.data!.totals.stocks : "—"}</div>
-            <div className="ba-metric-sub muted">symbols</div>
-          </div>
-        </div>
-
-        {/* Quick Stats */}
-        <div className="ba-quick-stats">
-          <div className="ba-stat-box">
-            <div className="label">Accumulated</div>
-            <div className="value green">{(accDistData.data?.totals as any)?.accumulated ?? "—"}</div>
-          </div>
-          <div className="ba-stat-box">
-            <div className="label">Distributed</div>
-            <div className="value red">{(accDistData.data?.totals as any)?.distributed ?? "—"}</div>
-          </div>
-          <div className="ba-stat-box">
-            <div className="label">Status</div>
-            <div className="value muted">Post-market</div>
-          </div>
-        </div>
-      </section>
-
-      {/* Timeframe & Search Bar */}
-      <div className="ba-date-row">
-        <div className="ba-tf-buttons">
-          {(["1D", "3D", "1W", "1M", "3M"] as const).map((t) => (
-            <button key={t} onClick={() => setTimeframe(t)} className={`ba-tf-btn ${timeframe === t ? "active" : ""}`}>{t}</button>
+    <div>
+      {/* Controls */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search symbol..."
+          className="h-8 w-40 rounded-lg border border-border bg-background px-2.5 text-xs outline-none focus:border-primary"
+        />
+        <div className="flex items-center gap-1 rounded-lg border border-border p-0.5">
+          {SORT_OPTIONS.map((o) => (
+            <button
+              key={o.key}
+              onClick={() => setSort(o.key)}
+              className={`rounded-md px-2.5 py-1 text-[10px] font-semibold transition ${
+                sort === o.key ? "bg-primary text-white" : "text-muted hover:text-foreground"
+              }`}
+            >
+              {o.label}
+            </button>
           ))}
         </div>
-        <span className="ba-nepal-clock">{nptClock || "—"} NPT</span>
+        <div className="ml-auto text-[10px] text-muted">
+          {data.stocks.length} stocks &middot; {data.source}
+        </div>
       </div>
 
-      {/* Compact Search Bar */}
-      <div className="ba-search-bar">
-        <div className="ba-search-field">
-          <i className="fas fa-user-tie" />
-          <input
-            type="text"
-            placeholder="Broker number (e.g. 49)"
-            value={brokerFilter}
-            onChange={(e) => setBrokerFilter(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && brokerFilter && setActiveBroker(brokerFilter === activeBroker ? null : brokerFilter)}
-          />
-        </div>
-        <div className="ba-search-field">
-          <i className="fas fa-chart-line" />
-          <input
-            type="text"
-            placeholder="Stock symbol (e.g. NABIL)"
-            value={stockFilter}
-            onChange={(e) => setStockFilter(e.target.value.toUpperCase())}
-            onKeyDown={(e) => { if (e.key === "Enter" && stockFilter) setFootprintSymbol(footprintSymbol === stockFilter ? null : stockFilter); }}
-          />
-        </div>
-        {activeBroker && (
-          <span className="ba-search-badge broker">
-            Broker #{activeBroker}
-            <i className="fas fa-times" onClick={() => { setActiveBroker(null); setBrokerFilter(""); }} />
-          </span>
-        )}
-        {footprintSymbol && !stockFilter && (
-          <span className="ba-search-badge stock">
-            {footprintSymbol}
-            <i className="fas fa-times" onClick={() => setFootprintSymbol(null)} />
-          </span>
-        )}
+      {/* Table */}
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[700px] border-collapse">
+          <thead>
+            <tr className="border-b border-border text-[10px] font-semibold uppercase tracking-wider text-muted">
+              <th className="sticky left-0 bg-surface px-2 py-2 text-left">Symbol</th>
+              <th className="px-2 py-2 text-right">LTP</th>
+              <th className="px-2 py-2 text-right">Chg%</th>
+              <th className="px-2 py-2 text-right">Volume</th>
+              <th className="px-2 py-2 text-right">Turnover</th>
+              <th className="px-2 py-2 text-right italic text-gray-400" title="Estimated via tick-rule">Est. Buy (est.)</th>
+              <th className="px-2 py-2 text-right italic text-gray-400" title="Estimated via tick-rule">Est. Sell (est.)</th>
+              <th className="px-2 py-2 text-right italic text-gray-400" title="Estimated via tick-rule">Est. Net (est.)</th>
+              <th className="px-2 py-2 text-right">CMF</th>
+              <th className="px-2 py-2 text-right">MFI</th>
+              <th className="px-2 py-2 text-right">Vol Z</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((s) => (
+              <tr key={s.symbol} className="border-b border-border/50 text-xs hover:bg-surface-2/50 transition-colors">
+                <td className="sticky left-0 bg-surface px-2 py-1.5 font-bold text-foreground">{s.symbol}</td>
+                <td className={`px-2 py-1.5 text-right tabular-nums ${cls(s.changePercent)}`}>
+                  {npr(s.ltp)}
+                </td>
+                <td className={`px-2 py-1.5 text-right tabular-nums font-semibold ${cls(s.changePercent)}`}>
+                  {pct(s.changePercent)}
+                </td>
+                <td className="px-2 py-1.5 text-right tabular-nums text-foreground">
+                  {s.totalVolume.toLocaleString("en-IN")}
+                </td>
+                <td className="px-2 py-1.5 text-right tabular-nums text-foreground">
+                  {compact(s.totalTurnover)}
+                </td>
+                <td className="px-2 py-1.5 text-right tabular-nums text-up">
+                  {s.estimateMethod ? npr(s.estBuyVolume) : MDASH}
+                </td>
+                <td className="px-2 py-1.5 text-right tabular-nums text-down">
+                  {s.estimateMethod ? npr(s.estSellVolume) : MDASH}
+                </td>
+                <td className={`px-2 py-1.5 text-right tabular-nums font-semibold ${
+                  s.estimateMethod ? cls(s.estNetVolume) : ""
+                }`}>
+                  {s.estimateMethod ? npr(s.estNetVolume) : MDASH}
+                </td>
+                <td className={`px-2 py-1.5 text-right tabular-nums ${cls(s.cmf)}`}>
+                  {s.cmf !== null && s.cmf !== undefined ? (s.cmf >= 0 ? "+" : "") + s.cmf.toFixed(3) : MDASH}
+                </td>
+                <td className="px-2 py-1.5 text-right tabular-nums text-foreground">
+                  {s.mfi !== null && s.mfi !== undefined ? (s.mfi >= 0 ? "+" : "") + s.mfi.toFixed(1) : MDASH}
+                </td>
+                <td className={`px-2 py-1.5 text-right tabular-nums ${
+                  s.volumeZScore !== null && s.volumeZScore !== undefined
+                    ? Math.abs(s.volumeZScore) > 2 ? "text-up font-bold" : "text-foreground"
+                    : ""
+                }`}>
+                  {s.volumeZScore !== null && s.volumeZScore !== undefined
+                    ? (s.volumeZScore >= 0 ? "+" : "") + s.volumeZScore.toFixed(2)
+                    : MDASH}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
+    </div>
+  );
+}
 
-      {/* Loading */}
-      {dateData.loading && !dateData.data && (
-        <div className="ba-loading">
-          <div className="ba-spinner" />
-          <div>Loading floorsheet data...</div>
-        </div>
-      )}
+// ─── Bar Chart (Inline SVG) ─────────────────────────────────────────────────
 
-      {/* Empty State */}
-      {!dateData.loading && !hasData && (
-        <div className="ba-empty">
-          <i className="fas fa-calendar-xmark" />
-          <div className="empty-title">No data available for {selectedDate}</div>
-          <div className="empty-sub">Try selecting a different date or sync floorsheet data first</div>
-        </div>
-      )}
+function BrokerBarChart({ history }: { history: BrokerDailyRecord[] }) {
+  if (!history.length) return null;
 
-      {/* Main Content */}
-      {hasData && (
-        <>
-          {/* Top Accumulation / Distribution */}
-          <section className="ba-acc-dist-grid">
-            <div className="ba-acc-card">
-              <div className="title">
-                <i className="fas fa-arrow-trend-up" /> Top Accumulation
-              </div>
-              {topAccumulation.length > 0 ? (
-                topAccumulation.map((s, i) => (
-                  <div key={i} className="ba-acc-item">
-                    <span className="symbol">{s.symbol}</span>
-                    <span className="amount">+{formatCr(s.buyAmt)}</span>
-                  </div>
-                ))
-              ) : (
-                <div style={{ color: "var(--ba-text-muted)", textAlign: "center", padding: 20 }}>
-                  No accumulation data
-                </div>
-              )}
-            </div>
+  const maxVal = Math.max(...history.map((h) => Math.max(h.purchaseAmt, h.sellAmt)), 1);
+  const W = 600, H = 220, PAD = { top: 20, bottom: 40, left: 55, right: 20 };
+  const chartW = W - PAD.left - PAD.right;
+  const chartH = H - PAD.top - PAD.bottom;
+  const barGap = 4;
+  const groupW = chartW / history.length;
+  const barW = Math.max((groupW - barGap * 2) / 2, 2);
 
-            <div className="ba-dist-card">
-              <div className="title">
-                <i className="fas fa-arrow-trend-down" /> Top Distribution
-              </div>
-              {topDistribution.length > 0 ? (
-                topDistribution.map((s, i) => (
-                  <div key={i} className="ba-dist-item">
-                    <span className="symbol">{s.symbol}</span>
-                    <span className="amount">-{formatCr(s.sellAmt)}</span>
-                  </div>
-                ))
-              ) : (
-                <div style={{ color: "var(--ba-text-muted)", textAlign: "center", padding: 20 }}>
-                  No distribution data
-                </div>
-              )}
-            </div>
-          </section>
+  const yTicks = 5;
+  const yStep = maxVal / yTicks;
 
-          {/* Broker Flow Table */}
-          <div className="ba-table-wrap">
-            <div className="ba-section-title">
-              <i className="fas fa-building" /> Broker Flow Analysis
-              <span style={{ fontSize: 12, color: "var(--ba-text-secondary)", marginLeft: "auto", fontWeight: 400 }}>
-                Click broker to view details
-              </span>
-            </div>
-            <table className="ba-table">
-              <thead>
-                <tr>
-                  <th>Broker</th>
-                  <th className="num">Buy Amount</th>
-                  <th className="num">Sell Amount</th>
-                  <th className="num">Net Position</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {topBrokers.map((b) => (
-                  <tr
-                    key={b.id}
-                    className={activeBroker === b.id ? "selected" : ""}
-                    onClick={() => setActiveBroker(b.id === activeBroker ? null : b.id)}
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full max-w-full" style={{ height: "auto", maxHeight: 150 }}>
+      {/* Grid lines */}
+      {Array.from({ length: yTicks + 1 }).map((_, i) => {
+        const y = PAD.top + chartH - (i / yTicks) * chartH;
+        const val = (i / yTicks) * maxVal;
+        return (
+          <g key={i}>
+            <line x1={PAD.left} y1={y} x2={W - PAD.right} y2={y} stroke="#e5e7eb" strokeWidth={0.5} />
+            <text x={PAD.left - 8} y={y + 3} textAnchor="end" className="fill-gray-400" fontSize="9">
+              {compact(val)}
+            </text>
+          </g>
+        );
+      })}
+
+      {/* Bars */}
+      {history.map((h, i) => {
+        const x = PAD.left + i * groupW + barGap;
+        const buyH = (h.purchaseAmt / maxVal) * chartH;
+        const sellH = (h.sellAmt / maxVal) * chartH;
+        const baseY = PAD.top + chartH;
+        return (
+          <g key={h.tradeDate}>
+            {/* Purchase bar (green) */}
+            <rect
+              x={x} y={baseY - buyH} width={barW} height={buyH}
+              fill="#00cc44" rx={2}
+            >
+              <title>{`${h.tradeDate} · Buy: ${compact(h.purchaseAmt)}`}</title>
+            </rect>
+            {/* Sell bar (red) */}
+            <rect
+              x={x + barW + barGap} y={baseY - sellH} width={barW} height={sellH}
+              fill="#e60000" rx={2}
+            >
+              <title>{`${h.tradeDate} · Sell: ${compact(h.sellAmt)}`}</title>
+            </rect>
+            {/* Date label below */}
+            <text x={x + groupW / 2} y={baseY + 16} textAnchor="middle" className="fill-gray-500" fontSize="9">
+              {h.tradeDate.slice(5)}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+// ─── Favorites ──────────────────────────────────────────────────────────────
+
+const FAVS_KEY = "broker-favorites";
+
+function loadFavs(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(FAVS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveFavs(codes: string[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(FAVS_KEY, JSON.stringify(codes));
+  } catch {
+    /* ignore quota / serialization errors */
+  }
+}
+
+// ─── Broker Wise Tab ────────────────────────────────────────────────────────
+
+function BrokerWiseTab({ range }: { range: TimeRange }) {
+  const [brokers, setBrokers] = useState<BrokerOption[]>([]);
+  const [selected, setSelected] = useState<BrokerOption | null>(null);
+  const [data, setData] = useState<BrokerWiseResp | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState("");
+  const [open, setOpen] = useState(false);
+  const [favs, setFavs] = useState<string[]>([]);
+
+  // Load favorites on mount
+  useEffect(() => {
+    setFavs(loadFavs());
+  }, []);
+
+  const toggleFav = useCallback((code: string) => {
+    setFavs((prev) => {
+      const next = prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code];
+      saveFavs(next);
+      return next;
+    });
+  }, []);
+
+  // Load brokers on mount
+  useEffect(() => {
+    fetch("/api/merolagani-broker")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.brokers) {
+          setBrokers(d.brokers.map((b: { broker: string; name: string }) => ({ broker: b.broker, name: b.name })));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Fetch broker-wise data when selection or range changes
+  useEffect(() => {
+    if (!selected) { setData(null); return; }
+    setLoading(true);
+    fetch(`/api/broker-wise/${selected.broker}?range=${range}`)
+      .then((r) => r.json())
+      .then((d) => { setData(d); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [selected, range]);
+
+  const filteredBrokers = useMemo(() => {
+    if (!search.trim()) return [];
+    const q = search.toLowerCase();
+    return brokers.filter(
+      (b) => b.broker.includes(q) || b.name.toLowerCase().includes(q)
+    ).slice(0, 50);
+  }, [brokers, search]);
+
+  const handleSelect = useCallback((b: BrokerOption) => {
+    setSelected(b);
+    setSearch("");
+    setOpen(false);
+  }, []);
+
+  return (
+    <div>
+      {/* Broker Search */}
+      <div className="relative mb-4">
+        <label className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted">
+          Broker
+        </label>
+        <div className="relative">
+          <input
+            type="text"
+            value={open ? search : (selected ? `${selected.broker} · ${selected.name}` : "")}
+            onFocus={() => { setOpen(true); setSearch(""); }}
+            onChange={(e) => { setSearch(e.target.value); setOpen(true); }}
+            onBlur={() => setTimeout(() => setOpen(false), 200)}
+            placeholder="Search broker by code or name..."
+            className="h-9 w-full max-w-md rounded-lg border border-border bg-background px-3 text-xs outline-none focus:border-primary"
+          />
+          {open && filteredBrokers.length > 0 && (
+            <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded-lg border border-border bg-surface shadow-xl">
+              {filteredBrokers.map((b) => {
+                const isFav = favs.includes(b.broker);
+                return (
+                  <div
+                    key={b.broker}
+                    className={`flex items-center px-3 py-2 text-xs transition hover:bg-surface-2 cursor-pointer ${
+                      selected?.broker === b.broker ? "bg-primary/10 font-semibold" : ""
+                    }`}
+                    onMouseDown={() => handleSelect(b)}
                   >
-                    <td className="broker-id">#{b.id}</td>
-                    <td className="num">{formatCr(b.buyAmt)}</td>
-                    <td className="num">{formatCr(b.sellAmt)}</td>
-                    <td className={`num ${b.netAmt >= 0 ? "positive" : "negative"}`}>
-                      {b.netAmt >= 0 ? "+" : ""}{formatCr(b.netAmt)}
-                    </td>
-                    <td className="text">
-                      {b.netAmt > 0 ? (
-                        <span style={{ color: "var(--ba-green)" }}><i className="fas fa-arrow-up" /> Buying</span>
-                      ) : b.netAmt < 0 ? (
-                        <span style={{ color: "var(--ba-red)" }}><i className="fas fa-arrow-down" /> Selling</span>
-                      ) : (
-                        <span style={{ color: "var(--ba-blue)" }}><i className="fas fa-minus" /> Neutral</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-bold text-gray-600">{b.broker}</span>
+                    <span className="ml-2 flex-1 text-foreground">{b.name}</span>
+                    <button
+                      onMouseDown={(e) => { e.stopPropagation(); toggleFav(b.broker); }}
+                      className={`ml-auto text-sm transition ${isFav ? "text-amber-400" : "text-gray-300 hover:text-amber-300"}`}
+                      title={isFav ? "Remove from favorites" : "Add to favorites"}
+                    >
+                      {isFav ? "\u2605" : "\u2606"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {open && search.trim() && filteredBrokers.length === 0 && (
+            <div className="absolute left-0 right-0 top-full z-50 mt-1 rounded-lg border border-border bg-surface p-3 text-center text-xs text-muted shadow-xl">
+              No brokers match &quot;{search}&quot;
+            </div>
+          )}
+        </div>
+      </div>
+
+      {!selected && (
+        <div className="py-12 text-center">
+          <div className="text-3xl mb-2">🏢</div>
+          <div className="text-sm text-muted">Select a broker to see their daily net-flow history.</div>
+        </div>
+      )}
+
+      {loading && (
+        <div className="flex items-center justify-center py-12">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-primary" />
+          <span className="ml-3 text-sm text-muted">Loading broker data...</span>
+        </div>
+      )}
+
+      {selected && !loading && data && (
+        <div className="rounded-lg border border-border bg-surface p-3">
+          {/* Compact header + inline stats */}
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+            <div className="min-w-0">
+              <span className="text-xs font-bold text-foreground">{data.brokerName}</span>
+              <span className="ml-2 text-[10px] text-muted">#{data.brokerCode} · {data.source} · {data.daysAvailable}d</span>
+            </div>
+            <div className="flex items-center gap-3 text-[11px] tabular-nums">
+              <span className="text-muted">Buy <b className="text-up">{compact(data.totals.buyAmount)}</b></span>
+              <span className="text-muted">Sell <b className="text-down">{compact(data.totals.sellAmount)}</b></span>
+              <span className="text-muted">Net <b className={cls(data.totals.netAmount)}>{data.totals.netAmount >= 0 ? "+" : ""}{compact(data.totals.netAmount)}</b></span>
+              <span className="text-muted">Turnover <b className="text-foreground">{compact(data.totals.turnover)}</b></span>
+            </div>
           </div>
 
-          {/* Active Broker Details */}
-          {activeBroker && brokerData.data && brokerData.data.stocks.length > 0 && (
-            <section className="ba-broker-section">
-              <div className="ba-section-title">
-                <i className="fas fa-user-tie" /> Broker #{activeBroker}
-                {(() => {
-                  const bh = holdingData.data?.brokers?.find((b: any) => String(b.brokerId) === activeBroker);
-                  return bh ? (
-                    <span style={{ fontSize: 12, color: "var(--ba-text-secondary)", marginLeft: "auto", fontFamily: "var(--ba-font-mono)" }}>
-                      Buy {formatCr(brokerData.data.totals.buyAmt)} · Sell {formatCr(brokerData.data.totals.sellAmt)} · Net {formatCr(brokerData.data.totals.netAmt)}
-                      <span style={{ margin: "0 8px", opacity: 0.3 }}>|</span>
-                      <span style={{ color: bh.netAmt >= 0 ? "var(--ba-green)" : "var(--ba-red)" }}>
-                        Holding {bh.holdingPct !== null ? `${bh.holdingPct}%` : bh.note ?? "—"}
-                      </span>
-                    </span>
-                  ) : (
-                    <span style={{ fontSize: 12, color: "var(--ba-text-secondary)", marginLeft: "auto", fontFamily: "var(--ba-font-mono)" }}>
-                      Buy {formatCr(brokerData.data.totals.buyAmt)} · Sell {formatCr(brokerData.data.totals.sellAmt)} · Net {formatCr(brokerData.data.totals.netAmt)}
-                    </span>
-                  );
-                })()}
+          {/* Compact bar chart */}
+          <div className="mt-2 border-t border-border/60 pt-2">
+            <div className="mb-1 flex items-center justify-between">
+              <span className="text-[10px] font-semibold text-muted">Daily Buy/Sell</span>
+              <div className="flex items-center gap-2 text-[9px]">
+                <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-sm bg-[#00cc44]" /><span className="text-muted">Buy</span></span>
+                <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-sm bg-[#e60000]" /><span className="text-muted">Sell</span></span>
               </div>
-              <table className="ba-table">
-                <thead>
-                  <tr>
-                    <th>Stock</th>
-                    <th className="num">Buy Qty</th>
-                    <th className="num">Buy Amt</th>
-                    <th className="num">Sell Qty</th>
-                    <th className="num">Sell Amt</th>
-                    <th className="num">Net</th>
-                    <th>Type</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {brokerData.data.stocks.map((s, i) => {
-                    const si = accDistData.data?.stocks?.find((x: any) => x.symbol === s.symbol);
-                    return (
-                      <tr key={i}>
-                        <td className="text" style={{ fontWeight: 500 }}>{s.symbol}</td>
-                        <td className="num">{s.buyQty.toLocaleString()}</td>
-                        <td className="num">{formatCr(s.buyAmt)}</td>
-                        <td className="num">{s.sellQty.toLocaleString()}</td>
-                        <td className="num">{formatCr(s.sellAmt)}</td>
-                        <td className={`num ${s.netAmt >= 0 ? "positive" : "negative"}`}>
-                          {s.netAmt >= 0 ? "+" : ""}{formatCr(s.netAmt)}
-                        </td>
-                        <td className="text">
-                          {s.aggressive === "buy" ? (
-                            <span style={{ color: "var(--ba-green)", fontSize: 11, fontWeight: 700 }}>AGGRESSIVE BUY</span>
-                          ) : s.aggressive === "sell" ? (
-                            <span style={{ color: "var(--ba-red)", fontSize: 11, fontWeight: 700 }}>AGGRESSIVE SELL</span>
-                          ) : (
-                            <span style={{ color: "var(--ba-blue)", fontSize: 11, fontWeight: 700 }}>MIXED</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </section>
-          )}
-
-          {/* Stock Acc/Dist Grid */}
-          <section className="ba-stock-section">
-            <div className="ba-section-title">
-              <i className="fas fa-chart-bar" /> Stock Accumulation / Distribution
             </div>
-            <div className="ba-stock-grid">
-              {filteredStocks.slice(0, 12).map((s, i) => (
-                <div
-                  key={i}
-                  className={`ba-stock-card ${footprintSymbol === s.symbol ? "active" : ""}`}
-                  onClick={() => setFootprintSymbol(footprintSymbol === s.symbol ? null : s.symbol)}
-                  style={{ cursor: "pointer" }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                    <div className="symbol">{s.symbol}</div>
-                    <span className={`signal ${s.signal.toLowerCase()}`}>
-                      {s.signal}
-                    </span>
-                  </div>
-                  <div className="details">
-                    <div>
-                      <div className="label">Buy Amt</div>
-                      <div className="value" style={{ color: "var(--ba-green)" }}>{formatCr(s.buyAmt)}</div>
-                    </div>
-                    <div>
-                      <div className="label">Sell Amt</div>
-                      <div className="value" style={{ color: "var(--ba-red)" }}>{formatCr(s.sellAmt)}</div>
-                    </div>
-                    <div>
-                      <div className="label">Top Buyer</div>
-                      <div className="value" style={{ color: "var(--ba-green)", fontSize: 11 }}>{(s as any).topBuyer ? `#${(s as any).topBuyer}` : "—"}</div>
-                    </div>
-                    <div>
-                      <div className="label">Top Seller</div>
-                      <div className="value" style={{ color: "var(--ba-red)", fontSize: 11 }}>{(s as any).topSeller ? `#${(s as any).topSeller}` : "—"}</div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
+            <BrokerBarChart history={data.history} />
+          </div>
 
-          {/* Broker Buy/Sell Holding Widget */}
-          <section className="ba-holding-section">
-            <div className="ba-section-title">
-              <i className="fas fa-scale-balanced" /> Broker Buy/Sell Holding
-              <span className="ba-holding-status">
-                {holdingData.loading ? (
-                  <span className="badge badge-loading">Loading...</span>
-                ) : holdingData.data?.status === "finalized" ? (
-                  <span className="badge badge-finalized"><i className="fas fa-check-circle" /> Finalized</span>
-                ) : holdingData.data?.status === "pending" ? (
-                  <span className="badge badge-pending"><i className="fas fa-clock" /> Awaiting finalization (post-market)</span>
-                ) : (
-                  <span className="badge badge-empty"><i className="fas fa-circle" /> No Data</span>
-                )}
-              </span>
-            </div>
-
-            {holdingData.data?.status === "finalized" && holdingData.data.brokers.length > 0 && (
-              <div className="ba-holding-grid">
-                {/* Table */}
-                <table className="ba-table ba-holding-table">
-                  <thead>
-                    <tr>
-                      <th>Broker</th>
-                      <th className="num">Buy Amt</th>
-                      <th className="num">Sell Amt</th>
-                      <th className="num">Net Amt</th>
-                      <th>Holding (est.)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {holdingData.data.brokers.slice(0, 15).map((b) => (
-                      <tr key={b.brokerId}>
-                        <td className="broker-id">#{b.brokerId}</td>
-                        <td className="num">{formatCr(b.buyAmt)}</td>
-                        <td className="num">{formatCr(b.sellAmt)}</td>
-                        <td className={`num ${b.netAmt >= 0 ? "positive" : "negative"}`}>
-                          {b.netAmt >= 0 ? "+" : ""}{formatCr(b.netAmt)}
-                        </td>
-                        <td className="num">
-                          {b.holdingPct !== null && b.note === null ? (
-                            <div className="holding-bar-container">
-                              <div className="holding-bar" style={{ width: `${Math.abs(b.holdingPct)}%`, background: b.netAmt >= 0 ? "var(--ba-green)" : "var(--ba-red)" }} />
-                              <span className="holding-pct">{b.holdingPct}%</span>
-                            </div>
-                          ) : (
-                            <span style={{ color: "var(--ba-text-tertiary)", fontFamily: "var(--ba-font-mono)", fontSize: 12 }}>{b.note ?? "—"}</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr>
-                      <td className="text"><strong>TOTAL</strong></td>
-                      <td className="num"><strong>{formatCr(holdingData.data.totalBuyAmt)}</strong></td>
-                      <td className="num"><strong>{formatCr(holdingData.data.totalSellAmt)}</strong></td>
-                      <td className={`num ${holdingData.data.totalNetAmt >= 0 ? "positive" : "negative"}`}>
-                        <strong>{holdingData.data.totalNetAmt >= 0 ? "+" : ""}{formatCr(holdingData.data.totalNetAmt)}</strong>
-                      </td>
-                      <td />
-                    </tr>
-                  </tfoot>
-                </table>
-
-                {/* Diverging Bar Chart */}
-                <div className="ba-holding-chart">
-                  <div className="chart-title">Net Position by Broker</div>
-                  <div className="diverging-bar-chart">
-                    {(() => {
-                      const d = holdingData.data!;
-                      const top10 = d.brokers.slice(0, 10);
-                      const maxAbs = Math.max(...top10.map((x) => Math.abs(x.netAmt)), 1);
-                      return top10.map((b) => {
-                        const pct = (Math.abs(b.netAmt) / maxAbs) * 100;
-                        return (
-                          <div key={b.brokerId} className="diverging-bar-row">
-                            <div className="bar-label">#{b.brokerId}</div>
-                            <div className="bar-track">
-                              {b.netAmt >= 0 ? (
-                                <>
-                                  <div className="bar-fill positive" style={{ width: `${pct}%` }} />
-                                  <div className="bar-spacer" />
-                                </>
-                              ) : (
-                                <>
-                                  <div className="bar-spacer" />
-                                  <div className="bar-fill negative" style={{ width: `${pct}%` }} />
-                                </>
-                              )}
-                            </div>
-                            <div className="bar-value">{formatCr(b.netAmt)}</div>
-                          </div>
-                        );
-                      });
-                    })()}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {holdingData.data?.status === "pending" && (
-              <div className="ba-empty" style={{ padding: 20 }}>
-                <i className="fas fa-clock" />
-                <div className="empty-title">Awaiting Finalization</div>
-                <div className="empty-sub">Broker buy/sell data will appear after market close once the floorsheet has stabilized</div>
-              </div>
-            )}
-
-            {holdingData.data?.status === "empty" && (
-              <div className="ba-empty" style={{ padding: 20 }}>
-                <i className="fas fa-database" />
-                <div className="empty-title">No broker data for {selectedDate}</div>
-                <div className="empty-sub">No finalized floorsheet data available for this date</div>
-              </div>
-            )}
-
-            {holdingData.loading && !holdingData.data && (
-              <div className="ba-loading" style={{ padding: 20 }}>
-                <div className="ba-spinner" />
-                <div style={{ fontSize: 13 }}>Loading holding data...</div>
-              </div>
-            )}
-          </section>
-
-          {/* Symbol Broker Flow / Footprint — at bottom */}
-          {footprintSymbol && footprintData.data && (
-            <section className="ba-footprint-section">
-              <div className="ba-section-title">
-                <i className="fas fa-shoe-prints" /> Broker Flow — {footprintSymbol}
-                <button className="ba-close-btn" onClick={() => setFootprintSymbol(null)}>
-                  <i className="fas fa-times" />
-                </button>
-              </div>
-
-              {/* MeroLagani data note */}
-              {footprintData.data?.note && (
-                <div className="ba-empty" style={{ padding: 12, marginBottom: 8, fontSize: 12 }}>
-                  <i className="fas fa-info-circle" /> {footprintData.data.note}
-                </div>
-              )}
-
-              {/* Best Flow Summary Cards */}
-              {(() => {
-                const flow = footprintData.data as any;
-                if (!flow.brokers || flow.brokers.length === 0) return null;
-                const brokers = flow.brokers;
-                const topBuyer = brokers.reduce((a: any, b: any) => (a.buyAmt > b.buyAmt ? a : b));
-                const topSeller = brokers.reduce((a: any, b: any) => (a.sellAmt > b.sellAmt ? a : b));
-                const mostActive = brokers.reduce((a: any, b: any) => (a.buyAmt + a.sellAmt > b.buyAmt + b.sellAmt ? a : b));
-
-                return (
-                  <div className="ba-flow-summary">
-                    <div className="ba-flow-card accumulator">
-                      <div className="card-label">Top Accumulator</div>
-                       <div className="card-value">#{topBuyer.brokerCode || topBuyer.brokerId}</div>
-                      <div className="card-detail">Buy: {formatCr(topBuyer.buyAmt)}</div>
-                    </div>
-                    <div className="ba-flow-card distributor">
-                      <div className="card-label">Top Distributor</div>
-                       <div className="card-value">#{topSeller.brokerCode || topSeller.brokerId}</div>
-                      <div className="card-detail">Sell: {formatCr(topSeller.sellAmt)}</div>
-                    </div>
-                    <div className="ba-flow-card most-active">
-                      <div className="card-label">Most Active</div>
-                       <div className="card-value">#{mostActive.brokerCode || mostActive.brokerId}</div>
-                      <div className="card-detail">Volume: {formatCr(mostActive.buyAmt + mostActive.sellAmt)}</div>
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* Broker Flow Search */}
-              <div className="ba-flow-search">
-                <i className="fas fa-search" />
-                <input
-                  type="text"
-                  placeholder="Search broker by number..."
-                  value={brokerFlowFilter}
-                  onChange={(e) => setBrokerFlowFilter(e.target.value)}
-                />
-              </div>
-
-              {/* Mini Bar Chart — Top Brokers by Net */}
-              {(() => {
-                const flow = footprintData.data as any;
-                const allBrokers: any[] = flow.brokers ?? [];
-                if (allBrokers.length === 0) return null;
-                const top5 = [...allBrokers].sort((a: any, b: any) => Math.abs(b.netAmt) - Math.abs(a.netAmt)).slice(0, 5);
-                const maxAbs = Math.max(...top5.map((b: any) => Math.abs(b.netAmt)), 1);
-                return (
-                  <div className="ba-flow-chart">
-                    <div className="chart-title">Top Brokers — {footprintSymbol}</div>
-                    <div className="diverging-bar-chart">
-                      {top5.map((b: any) => {
-                        const pct = (Math.abs(b.netAmt) / maxAbs) * 100;
-                        return (
-                          <div key={b.brokerCode || b.brokerId} className="diverging-bar-row" onClick={() => setActiveBroker(String(b.brokerCode || b.brokerId))} style={{ cursor: "pointer" }}>
-                            <div className="bar-label">#{b.brokerCode || b.brokerId}</div>
-                            <div className="bar-track">
-                              {b.netAmt >= 0 ? (
-                                <>
-                                  <div className="bar-fill positive" style={{ width: `${pct}%` }} />
-                                  <div className="bar-spacer" />
-                                </>
-                              ) : (
-                                <>
-                                  <div className="bar-spacer" />
-                                  <div className="bar-fill negative" style={{ width: `${pct}%` }} />
-                                </>
-                              )}
-                            </div>
-                            <div className="bar-value">{formatCr(b.netAmt)}</div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* Broker Flow Table */}
-              {(() => {
-                const flow = footprintData.data as any;
-                const allBrokers: any[] = flow.brokers ?? [];
-                const filtered = brokerFlowFilter
-                  ? allBrokers.filter((b: any) => String(b.brokerId).includes(brokerFlowFilter))
-                  : allBrokers;
-                return (
-                  <table className="ba-table">
-                    <thead>
-                      <tr>
-                        <th className="num">#</th>
-                        <th>Broker</th>
-                        <th className="num">Buy Qty</th>
-                        <th className="num">Buy Amt</th>
-                        <th className="num">Sell Qty</th>
-                        <th className="num">Sell Amt</th>
-                        <th className="num">Net Amt</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                        {filtered.map((b: any, i: number) => (
-                        <tr key={i} onClick={() => setActiveBroker(String(b.brokerCode || b.brokerId))}>
-                          <td className="num" style={{ color: "var(--ba-text-tertiary)" }}>{i + 1}</td>
-                          <td className="broker-id">#{b.brokerCode || b.brokerId}</td>
-                          <td className="num">{b.buyQty?.toLocaleString() ?? "—"}</td>
-                          <td className="num">{formatCr(b.buyAmt)}</td>
-                          <td className="num">{b.sellQty?.toLocaleString() ?? "—"}</td>
-                          <td className="num">{formatCr(b.sellAmt)}</td>
-                          <td className={`num ${b.netAmt >= 0 ? "positive" : "negative"}`}>
-                            {b.netAmt >= 0 ? "+" : ""}{formatCr(b.netAmt)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                        {(() => {
-                        if (!allBrokers.length) return null;
-                        const tb = allBrokers.reduce((a: any, b: any) => ({ buyAmt: a.buyAmt + b.buyAmt, sellAmt: a.sellAmt + b.sellAmt, netAmt: a.netAmt + b.netAmt }));
-                        return (
-                          <tr>
-                            <td colSpan={2} className="text"><strong>TOTAL</strong></td>
-                            <td className="num"><strong>—</strong></td>
-                            <td className="num"><strong>{formatCr(tb.buyAmt)}</strong></td>
-                            <td className="num"><strong>—</strong></td>
-                            <td className="num"><strong>{formatCr(tb.sellAmt)}</strong></td>
-                            <td className={`num ${tb.netAmt >= 0 ? "positive" : "negative"}`}>
-                              <strong>{tb.netAmt >= 0 ? "+" : ""}{formatCr(tb.netAmt)}</strong>
-                            </td>
-                          </tr>
-                        );
-                      })()}
-                    </tfoot>
-                  </table>
-                );
-              })()}
-            </section>
-          )}
-        </>
+          {/* Full stock-wise detail for this broker (floorsheet): kun stock kati kitta */}
+          <div className="mt-3 border-t border-border pt-3">
+            <BrokerStockDetail brokerCode={data.brokerCode} brokerName={data.brokerName} />
+          </div>
+        </div>
       )}
+
+      {selected && !loading && !data && (
+        <div className="py-12 text-center">
+          <div className="text-sm text-muted">No broker data available for this selection.</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Summary Tab ───────────────────────────────────────────────────────────
+
+function SummaryTab({ range }: { range: TimeRange }) {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch("/api/merolagani-broker")
+      .then((r) => r.json())
+      .then((d) => {
+        setData(d);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [range]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-primary" />
+        <span className="ml-3 text-sm text-muted">Loading market summary...</span>
+      </div>
+    );
+  }
+
+  const summary = data?.marketSummary || {};
+
+  return (
+    <div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div className="rounded-lg border border-border bg-surface p-3">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">Total Turnover</div>
+          <div className="mt-2 text-base font-bold text-foreground tabular-nums">
+            {compact(summary.totalTurnover)}
+          </div>
+        </div>
+        <div className="rounded-lg border border-border bg-surface p-3">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">Total Quantity</div>
+          <div className="mt-2 text-base font-bold text-foreground tabular-nums">
+            {summary.totalQuantity?.toLocaleString("en-IN") || "—"}
+          </div>
+        </div>
+        <div className="rounded-lg border border-border bg-surface p-3">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">Transactions</div>
+          <div className="mt-2 text-base font-bold text-foreground tabular-nums">
+            {summary.totalTransactions?.toLocaleString("en-IN") || "—"}
+          </div>
+        </div>
+        <div className="rounded-lg border border-border bg-surface p-3">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">Scrips Traded</div>
+          <div className="mt-2 text-base font-bold text-foreground tabular-nums">
+            {summary.scripsTraded || "—"}
+          </div>
+        </div>
+        <div className="rounded-lg border border-border bg-surface p-3">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">Brokers Active</div>
+          <div className="mt-2 text-base font-bold text-foreground tabular-nums">
+            {data?.brokerCount || "—"}
+          </div>
+        </div>
+      </div>
+
+      {/* All Brokers */}
+      <div className="mt-6">
+        <h3 className="mb-3 text-sm font-semibold text-foreground">
+          All Brokers by Net Flow{data?.brokers?.length ? ` (${data.brokers.length})` : ""}
+        </h3>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[500px] border-collapse">
+            <thead>
+              <tr className="border-b border-border text-[10px] font-semibold uppercase tracking-wider text-muted">
+                <th className="px-2 py-2 text-left">#</th>
+                <th className="px-2 py-2 text-left">Broker</th>
+                <th className="px-2 py-2 text-right">Buy Amount</th>
+                <th className="px-2 py-2 text-right">Sell Amount</th>
+                <th className="px-2 py-2 text-right">Net Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data?.brokers?.map((b: any, i: number) => (
+                <tr key={b.broker} className="border-b border-border/50 text-xs hover:bg-surface-2/50">
+                  <td className="px-2 py-2 text-muted tabular-nums">{i + 1}</td>
+                  <td className="px-2 py-2 font-semibold text-foreground">{b.broker} {b.name}</td>
+                  <td className="px-2 py-2 text-right tabular-nums text-up">{compact(b.purchase)}</td>
+                  <td className="px-2 py-2 text-right tabular-nums text-down">{compact(b.sell)}</td>
+                  <td className={`px-2 py-2 text-right tabular-nums font-semibold ${b.net >= 0 ? "text-up" : "text-down"}`}>
+                    {b.net >= 0 ? "+" : ""}{compact(b.net)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Broker Favorite Tab ────────────────────────────────────────────────────
+
+function BrokerFavoriteTab({ brokers, range }: { brokers: BrokerOption[]; range: TimeRange }) {
+  const [favs, setFavs] = useState<string[]>([]);
+  const [cards, setCards] = useState<Record<string, any>>({});
+  const [stocks, setStocks] = useState<Record<string, any[]>>({});
+  const [expandedBroker, setExpandedBroker] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setFavs(loadFavs());
+  }, []);
+
+  useEffect(() => {
+    if (!favs.length) {
+      setCards({});
+      setStocks({});
+      return;
+    }
+    setLoading(true);
+    Promise.all(
+      favs.map((code) =>
+        Promise.all([
+          fetch(`/api/broker-wise/${code}?range=${range}`)
+            .then((r) => (r.ok ? r.json() : null))
+            .catch(() => null),
+          fetch(`/api/broker/${code}`)
+            .then((r) => (r.ok ? r.json() : null))
+            .catch(() => null),
+        ])
+      )
+    ).then((results) => {
+      const brokerCards: Record<string, any> = {};
+      const brokerStocks: Record<string, any[]> = {};
+      favs.forEach((code, i) => {
+        brokerCards[code] = results[i][0];
+        const apiStocks = results[i][1]?.stocks || [];
+        brokerStocks[code] = apiStocks
+          .map((stock: any) => ({
+            symbol: stock.symbol || stock.name || 'UNKNOWN',
+            buyAmt: stock.buyAmt || 0,
+            sellAmt: stock.sellAmt || 0,
+            buyQty: stock.buyQty || 0,
+            sellQty: stock.sellQty || 0,
+            netAmt: stock.netAmt || 0,
+          }))
+          .sort((a: any, b: any) => (b.netAmt || 0) - (a.netAmt || 0))
+          .slice(0, 25);
+      });
+      setCards(brokerCards);
+      setStocks(brokerStocks);
+      setLoading(false);
+    });
+  }, [favs, range]);
+
+  const addAllBrokers = () => {
+    const allCodes = brokers.map((b) => b.broker);
+    setFavs(allCodes);
+    saveFavs(allCodes);
+  };
+
+  const removeFav = (code: string) => {
+    const next = favs.filter((c) => c !== code);
+    setFavs(next);
+    saveFavs(next);
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Controls */}
+      <div className="flex items-center justify-between">
+        <label className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted">
+          ⭐ My Favorites ({favs.length})
+          {loading && <span className="ml-1 inline-block h-3 w-3 animate-spin rounded-full border-2 border-gray-300 border-t-primary" />}
+        </label>
+        <button
+          onClick={addAllBrokers}
+          className="rounded-md bg-primary px-3 py-1.5 text-[11px] font-semibold text-white transition hover:bg-primary/90"
+        >
+          + Add All Brokers
+        </button>
+      </div>
+
+      {/* Favorite brokers — top 5 buy & top 5 sell stocks (aggressive activity) */}
+      <div>
+        <h3 className="mb-1 text-xs font-bold text-foreground">⭐ Favorite Brokers — top 5 buy &amp; top 5 sell stocks</h3>
+        <p className="mb-2 text-[10px] text-muted">Kun stock favorite broker le aggressive kinyo/bechyo (kitta le rank)</p>
+        <BrokerStockPanels onlyBrokers={favs} />
+      </div>
+
+      {!favs.length ? (
+        <div className="py-12 text-center">
+          <div className="text-3xl mb-2">⭐</div>
+          <div className="text-sm text-muted">Click "Add All Brokers" or star brokers in Broker Wise tab to add favorites.</div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {favs.map((code) => {
+            const c = cards[code];
+            const b = brokers.find((x) => x.broker === code);
+            const brokerStockList = stocks[code] || [];
+            const isExpanded = expandedBroker === code;
+
+            return (
+              <div key={code} className="rounded-lg border border-border bg-surface overflow-hidden">
+                {/* Header */}
+                <div className="p-3 relative group border-b border-border">
+                  <button
+                    onClick={() => removeFav(code)}
+                    className="absolute top-2 right-2 rounded text-xs px-2 py-1 bg-red-500/20 text-red-600 opacity-0 group-hover:opacity-100 transition"
+                  >
+                    Remove
+                  </button>
+                  <div className="mb-3">
+                    <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-bold text-gray-600">{code}</span>
+                    <span className="ml-2 text-[10px] font-semibold text-foreground">{b?.name || code}</span>
+                  </div>
+                  {c ? (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-2 gap-2 text-[9px]">
+                        <div>
+                          <span className="text-muted">Buy</span>
+                          <div className="text-right tabular-nums text-up font-semibold">{compact(c.totals.buyAmount)}</div>
+                        </div>
+                        <div>
+                          <span className="text-muted">Sell</span>
+                          <div className="text-right tabular-nums text-down font-semibold">{compact(c.totals.sellAmount)}</div>
+                        </div>
+                        <div>
+                          <span className="text-muted">Net</span>
+                          <div className={`text-right tabular-nums font-semibold ${c.totals.netAmount >= 0 ? "text-up" : "text-down"}`}>
+                            {c.totals.netAmount >= 0 ? "+" : ""}{compact(c.totals.netAmount)}
+                          </div>
+                        </div>
+                        <div>
+                          <span className="text-muted">Days</span>
+                          <div className="text-right tabular-nums font-semibold">{c.daysAvailable}</div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-[9px] text-muted">{loading ? "Loading..." : "No data"}</div>
+                  )}
+                </div>
+
+                {/* Stocks Grid Toggle */}
+                <button
+                  onClick={() => setExpandedBroker(isExpanded ? null : code)}
+                  className="w-full px-3 py-2 text-[9px] font-semibold text-muted hover:text-foreground hover:bg-surface-2 transition border-t border-border flex items-center justify-between"
+                >
+                  <span>📊 Stocks ({brokerStockList.length})</span>
+                  <span>{isExpanded ? "▼" : "▶"}</span>
+                </button>
+
+                {/* Stocks Grid (5 columns × 5 rows max) */}
+                {isExpanded && brokerStockList.length > 0 && (
+                  <div className="p-2 bg-surface-2 border-t border-border">
+                    <div className="grid grid-cols-5 gap-1">
+                      {brokerStockList.map((stock: any, idx: number) => (
+                        <div
+                          key={idx}
+                          className="rounded border border-border bg-surface p-1.5 text-center hover:border-primary/50 transition"
+                          title={`${stock.symbol}: Buy ${compact(stock.buyAmt)} | Sell ${compact(stock.sellAmt)}`}
+                        >
+                          <div className="text-[8px] font-bold text-foreground truncate">{stock.symbol}</div>
+                          <div className="text-[7px] text-up font-semibold">B: {compact(stock.buyAmt || 0).replace("Rs. ", "")}</div>
+                          <div className="text-[7px] text-down font-semibold">S: {compact(stock.sellAmt || 0).replace("Rs. ", "")}</div>
+                          <div className={`text-[7px] font-semibold ${stock.netAmt >= 0 ? "text-up" : "text-down"}`}>
+                            {stock.netAmt >= 0 ? "+" : ""}{compact(stock.netAmt || 0).replace("Rs. ", "")}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {isExpanded && brokerStockList.length === 0 && (
+                  <div className="p-2 text-center text-[9px] text-muted">No stocks data</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main Page ──────────────────────────────────────────────────────────────
+
+function getRangeDate(range: TimeRange): string {
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kathmandu" });
+  // We only have floorsheet data for known dates; use today as the single-date param
+  // For multi-day ranges, the API now accepts from/to
+  return today;
+}
+
+export default function BrokerAnalysisPage() {
+  const [tab, setTab] = useState<"stock" | "broker" | "flow" | "summary" | "favorite" | "performance">("stock");
+  const [range, setRange] = useState<TimeRange>("1D");
+  const [mounted, setMounted] = useState(false);
+  const [brokers, setBrokers] = useState<BrokerOption[]>([]);
+  const [coverage, setCoverage] = useState<{ days: number; firstDate: string | null; lastDate: string | null; targetDays: number } | null>(null);
+
+  useEffect(() => setMounted(true), []);
+
+  useEffect(() => {
+    fetch("/api/broker-coverage")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d && !d.error) setCoverage(d); })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/merolagani-broker")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.brokers) {
+          setBrokers(d.brokers.map((b: { broker: string; name: string }) => ({ broker: b.broker, name: b.name })));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  return (
+    <div className="mx-auto max-w-[1200px]">
+      {/* Header */}
+      <div className="mb-4">
+        <h1 className="text-lg font-bold text-foreground">Broker Analysis</h1>
+        <p className="text-xs text-muted">
+          {tab === "stock"
+            ? "Stock-level floorsheet activity with tick-rule estimated buy/sell pressure"
+            : tab === "broker"
+            ? "Real broker performance with stock-level buy/sell activity from NEPSE"
+            : tab === "flow"
+            ? "Stock-wise broker flow — kun broker le kati kitta uthayo (BUY / SELL / HOLD)"
+            : tab === "summary"
+            ? "Market overview and broker performance summary"
+            : tab === "favorite"
+            ? "Your favorite brokers and holdings"
+            : "All brokers performance with correct time-range aggregation (1D, 3D, 1W, 1M, 3M)"}
+        </p>
+        {mounted && coverage && coverage.days > 0 && (
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px]">
+            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-surface px-2 py-0.5 font-semibold text-foreground">
+              📅 {coverage.days} {coverage.days === 1 ? "day" : "days"} stored
+              {coverage.firstDate && coverage.lastDate && (
+                <span className="font-normal text-muted">
+                  · {coverage.firstDate} → {coverage.lastDate}
+                </span>
+              )}
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-surface px-2 py-0.5 text-muted">
+              {Math.min(100, Math.round((coverage.days / coverage.targetDays) * 100))}% toward 1 year
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 font-semibold text-emerald-500">
+              ✓ Real data
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Tab Bar + Time Range */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        {/* Tabs */}
+        <div className="flex items-center gap-1 rounded-lg border border-border p-0.5 overflow-x-auto">
+          <button
+            onClick={() => setTab("stock")}
+            className={`rounded-md px-3 py-1.5 text-xs font-semibold transition whitespace-nowrap ${
+              tab === "stock" ? "bg-primary text-white shadow-sm" : "text-muted hover:text-foreground"
+            }`}
+          >
+            Stock Wise
+          </button>
+          <button
+            onClick={() => setTab("broker")}
+            className={`rounded-md px-3 py-1.5 text-xs font-semibold transition whitespace-nowrap ${
+              tab === "broker" ? "bg-primary text-white shadow-sm" : "text-muted hover:text-foreground"
+            }`}
+          >
+            Broker Wise
+          </button>
+          <button
+            onClick={() => setTab("flow")}
+            className={`rounded-md px-3 py-1.5 text-xs font-semibold transition whitespace-nowrap ${
+              tab === "flow" ? "bg-primary text-white shadow-sm" : "text-muted hover:text-foreground"
+            }`}
+          >
+            📊 Flow
+          </button>
+          <button
+            onClick={() => setTab("summary")}
+            className={`rounded-md px-3 py-1.5 text-xs font-semibold transition whitespace-nowrap ${
+              tab === "summary" ? "bg-primary text-white shadow-sm" : "text-muted hover:text-foreground"
+            }`}
+          >
+            Summary
+          </button>
+          <button
+            onClick={() => setTab("favorite")}
+            className={`rounded-md px-3 py-1.5 text-xs font-semibold transition whitespace-nowrap ${
+              tab === "favorite" ? "bg-primary text-white shadow-sm" : "text-muted hover:text-foreground"
+            }`}
+          >
+            Broker Favorite
+          </button>
+          <button
+            onClick={() => setTab("performance")}
+            className={`rounded-md px-3 py-1.5 text-xs font-semibold transition whitespace-nowrap ${
+              tab === "performance" ? "bg-primary text-white shadow-sm" : "text-muted hover:text-foreground"
+            }`}
+          >
+            📊 Performance
+          </button>
+        </div>
+
+        {/* Time Range Pills */}
+        <div className="flex items-center gap-1 rounded-lg border border-border p-0.5">
+          {(Object.keys(RANGE_LABELS) as TimeRange[]).map((r) => (
+            <button
+              key={r}
+              onClick={() => setRange(r)}
+              className={`rounded-md px-2.5 py-1 text-[10px] font-semibold transition ${
+                range === r ? "bg-primary text-white" : "text-muted hover:text-foreground"
+              }`}
+            >
+              {RANGE_LABELS[r]}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Tab Content */}
+      <div className="rounded-xl border border-border bg-surface p-3 shadow-sm">
+        {mounted && tab === "stock" && <StockWiseTab dateKey={getRangeDate(range)} />}
+        {mounted && tab === "broker" && <BrokerWiseTab range={range} />}
+        {mounted && tab === "flow" && <StockBrokerFlow />}
+        {mounted && tab === "summary" && <SummaryTab range={range} />}
+        {mounted && tab === "favorite" && <BrokerFavoriteTab brokers={brokers} range={range} />}
+        {mounted && tab === "performance" && <BrokerPerformanceSection />}
+      </div>
+
+      {/* Footer note */}
+      <div className="mt-3 text-[10px] text-muted text-center">
+        Est. values via tick-rule classification &middot; Stock-wise broker kitta from floorsheet data
+      </div>
     </div>
   );
 }

@@ -1,0 +1,141 @@
+================================================================================
+ShareHubNepal Broker Scraper — Deliverables
+================================================================================
+
+📦 DELIVERED FILES:
+
+1. nepse-pipeline/scraper/sharehub_broker_adapter.py
+   ✅ Syntax validated
+   ✅ Ready for TODO completion
+   ✅ Two adapters: JSON API (recommended) + HTML fallback
+   ✅ Follows existing adapter pattern (nepse_scraper.py)
+
+2. Documentation Files:
+   ✅ SHAREHUB_SCRAPING_GUIDE.md         — Step-by-step verification guide
+   ✅ SHAREHUB_NEXT_STEPS.md             — Integration checklist & troubleshooting
+   ✅ SHAREHUB_TODO_CHECKLIST.md         — Line-by-line TODO reference
+   ✅ SHAREHUB_IMPLEMENTATION_SUMMARY.md — Architecture & data flow
+
+================================================================================
+YOUR NEXT STEPS (User's Turn):
+================================================================================
+
+Step 1: Verify Source Structure (5–10 minutes)
+  □ Go to https://www.sharehubnepal.com/broker
+  □ Open DevTools (F12) → Network tab
+  □ Reload page
+  □ Identify: JSON API or HTML table?
+  □ Capture: URL, headers, response format
+
+Step 2: Fill in TODO Values (5 minutes)
+  □ Open: nepse-pipeline/scraper/sharehub_broker_adapter.py
+  □ Find each TODO marker (listed in SHAREHUB_TODO_CHECKLIST.md)
+  □ Update with actual values from Step 1
+
+Step 3: Test Locally (2 minutes)
+  □ cd nepse-pipeline
+  □ python -m scraper.sharehub_broker_adapter --once
+  □ Check output (should show "Scraped N broker records")
+
+Step 4: Integrate into Pipeline (varies)
+  □ Create daily scheduler task
+  □ Point to: scrape_broker_data(trade_date)
+  □ Insert results into DB
+  □ Add .env variables
+
+================================================================================
+WHAT THE ADAPTER DOES:
+================================================================================
+
+Input:
+  • Date (YYYY-MM-DD)
+  • Optional: ShareHubNepal page URL or API endpoint (from .env)
+
+Processing:
+  • ShareHubNepalAPIAdapter: httpx fetch + JSON parse (lightweight)
+  • OR ShareHubNepalHTMLAdapter: Playwright + CSS selectors (fallback)
+
+Output:
+  • List of BrokerFlowRecord objects:
+    - source: "sharehubnepal"
+    - trade_date, broker_code, broker_name
+    - buy_qty, sell_qty, net_qty, turnover
+    - scraped_at (ISO timestamp)
+
+Data Destination:
+  • Your database (merolagani_broker_daily table)
+  • Used by: /api/broker-wise endpoint
+  • Displayed in: Broker Analysis dashboard
+
+================================================================================
+KEY FEATURES:
+================================================================================
+
+✅ Adapter Pattern
+   - Swap implementations via env var (BROKER_SCRAPE_SOURCE)
+   - No code changes needed, just change config
+
+✅ Retry Logic
+   - Exponential backoff (tenacity library)
+   - Max 3 attempts per request
+
+✅ Pagination Support
+   - HTML adapter handles multi-page tables
+   - Polite delays between requests
+
+✅ Debug Mode
+   - --debug flag saves HTML/screenshots on failure
+   - Makes selector fixing trivial
+
+✅ No External Dependencies
+   - Uses existing libs: httpx, playwright, beautifulsoup
+   - (Same as current nepse_scraper.py)
+
+================================================================================
+TROUBLESHOOTING:
+================================================================================
+
+If adapter fails during testing:
+  1. Run with --debug flag
+     python -m scraper.sharehub_broker_adapter --once --debug
+  
+  2. Check debug_output/ directory
+     cat debug_output/failure_<date>.html
+  
+  3. Use browser DevTools to inspect actual structure
+  
+  4. Update selectors/endpoint and try again
+
+If page is behind Cloudflare:
+  - Note: May fail like NepseAlpha (pre-emptively blocked)
+  - Solution: Stealth plugin or paid anti-bot service
+  - (See nepse_scraper.py for reference)
+
+If authentication required:
+  - Add login step to _fetch_raw_html()
+  - Or capture cookies and add to headers
+  - Let us know if needed
+
+================================================================================
+REFERENCES:
+================================================================================
+
+• SHAREHUB_SCRAPING_GUIDE.md  ← Read this first! (detailed DevTools walkthrough)
+• SHAREHUB_TODO_CHECKLIST.md  ← Use this as a reference while editing
+• nepse_scraper.py             ← Existing adapter pattern (for reference)
+
+================================================================================
+SUPPORT:
+================================================================================
+
+1. All code validated (Python syntax ✓)
+2. Full inline documentation with examples
+3. TODO markers explicitly marked with expected values
+4. Fallback strategy if primary approach doesn't work
+
+Once you verify the ShareHubNepal structure and fill in TODOs:
+→ Send us the actual JSON response or HTML structure
+→ We adjust parsing immediately if needed
+
+Happy scraping! 🚀
+================================================================================

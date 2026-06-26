@@ -5,12 +5,16 @@
   ],
   "crons": [
     {
-      "path": "/api/cron/collect",
-      "schedule": "0 0 * * *"
+      "path": "/api/cron/collect?attempt=1",
+      "schedule": "25 9 * * 0-4"
     },
     {
-      "path": "/api/cron/broker-sync",
-      "schedule": "25 9 * * 1-5"
+      "path": "/api/cron/collect?attempt=2",
+      "schedule": "25 11 * * 0-4"
+    },
+    {
+      "path": "/api/cron/collect?attempt=3",
+      "schedule": "45 4 * * 0-4"
     }
   ]
 }

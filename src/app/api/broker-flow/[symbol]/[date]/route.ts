@@ -58,7 +58,6 @@ export async function GET(req: Request, { params }: { params: Promise<{ symbol: 
     // Fallback: MeroLagani overall broker activity (per-broker totals, not per-stock)
     const mero = await fetchMeroLaganiSummary();
     if (mero?.broker?.detail?.length) {
-      const meroDate = (mero.broker.date || mero.overall?.d || date).slice(0, 10).replace(/\//g, "-");
       const brokers = mero.broker.detail.map((b) => ({
         brokerCode: b.b,
         buyQty: 0,
@@ -76,7 +75,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ symbol: 
       };
       return Response.json({
         symbol: sym,
-        date: meroDate,
+        date,
         source: "merolagani",
         status: "live",
         finalizedAt: null,

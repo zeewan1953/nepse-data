@@ -24,22 +24,28 @@ export async function GET(req: Request) {
     effectiveDate = date || todayStr();
   }
 
-  // Range mode — only DB
+  // Range mode — use MeroLagani DB
   if (rangeMode) {
-    return Response.json(await handleDb(effectiveDate, fromParam!, toParam!, true));
+    const meroResult = await handleMeroDbRange(fromParam!, toParam!);
+    if (meroResult) return Response.json({ ...meroResult, date: effectiveDate });
+    const dbResult = await handleDb(effectiveDate, fromParam!, toParam!, true);
+    return Response.json(dbResult);
   }
 
-  // Try DB first
+  // Single date: MeroLagani DB first
+  const meroResult = await handleMeroDb(effectiveDate);
+  if (meroResult) return Response.json(meroResult);
+
+  // DB fallback
   const dbResult = await handleDb(effectiveDate, effectiveDate, effectiveDate, false);
   if (dbResult.status === "finalized" || dbResult.status === "pending") {
     return Response.json(dbResult);
   }
 
-  // DB empty — try MeroLagani live
+  // Live MeroLagani
   const mero = await fetchMeroLaganiSummary();
   if (mero?.broker?.detail?.length) {
-    const meroDate = (mero.broker.date || mero.overall?.d || effectiveDate).slice(0, 10).replace(/\//g, "-");
-    const brokers = mero.broker.detail.map((b, idx) => {
+    const brokers = mero.broker.detail.map((b: any, idx: number) => {
       const buyAmt = Number(b.p) || 0;
       const sellAmt = Number(b.s) || 0;
       const netAmt = Number(b.m) || 0;
@@ -48,29 +54,85 @@ export async function GET(req: Request) {
         buyAmt: Math.round(buyAmt * 100) / 100,
         sellAmt: Math.round(sellAmt * 100) / 100,
         netAmt: Math.round(netAmt * 100) / 100,
-        cumulativeNet: null,
-        holdingPct: null,
-        note: null,
-        rank: idx + 1,
+        cumulativeNet: null, holdingPct: null, note: null, rank: idx + 1,
       };
     });
 
-    const totalBuyAmt = Math.round(brokers.reduce((a, b) => a + b.buyAmt, 0) * 100) / 100;
-    const totalSellAmt = Math.round(brokers.reduce((a, b) => a + b.sellAmt, 0) * 100) / 100;
-    const totalNetAmt = Math.round(brokers.reduce((a, b) => a + b.netAmt, 0) * 100) / 100;
+    const totalBuyAmt = Math.round(brokers.reduce((a: number, b: any) => a + b.buyAmt, 0) * 100) / 100;
+    const totalSellAmt = Math.round(brokers.reduce((a: number, b: any) => a + b.sellAmt, 0) * 100) / 100;
+    const totalNetAmt = Math.round(brokers.reduce((a: number, b: any) => a + b.netAmt, 0) * 100) / 100;
 
     return Response.json({
-      date: meroDate,
-      status: "finalized",
-      source: "merolagani",
-      brokers,
-      totalBuyAmt,
-      totalSellAmt,
-      totalNetAmt,
+      date: effectiveDate, status: "finalized", source: "merolagani",
+      brokers, totalBuyAmt, totalSellAmt, totalNetAmt,
     });
   }
 
   return Response.json(dbResult);
+}
+
+// MeroLagani DB for single date
+async function handleMeroDb(date: string) {
+  const rows = await db.execute({
+    sql: "SELECT brokerCode, purchaseAmt, sellAmt, netAmt FROM merolagani_broker_daily WHERE tradeDate = ? ORDER BY ABS(netAmt) DESC",
+    args: [date],
+  });
+  if (!rows.rows.length) return null;
+
+  let totalBuyAmt = 0, totalSellAmt = 0, totalNetAmt = 0;
+  const brokers = rows.rows.map((r: any, idx: number) => {
+    const buyAmt = Number(r.purchaseAmt);
+    const sellAmt = Number(r.sellAmt);
+    const netAmt = Number(r.netAmt);
+    totalBuyAmt += buyAmt; totalSellAmt += sellAmt; totalNetAmt += netAmt;
+    return {
+      brokerId: String(r.brokerCode),
+      buyAmt: Math.round(buyAmt * 100) / 100,
+      sellAmt: Math.round(sellAmt * 100) / 100,
+      netAmt: Math.round(netAmt * 100) / 100,
+      cumulativeNet: null, holdingPct: null, note: null, rank: idx + 1,
+    };
+  });
+
+  return {
+    date, status: "finalized", source: "merolagani",
+    brokers,
+    totalBuyAmt: Math.round(totalBuyAmt * 100) / 100,
+    totalSellAmt: Math.round(totalSellAmt * 100) / 100,
+    totalNetAmt: Math.round(totalNetAmt * 100) / 100,
+  };
+}
+
+// MeroLagani DB for date range
+async function handleMeroDbRange(from: string, to: string) {
+  const rows = await db.execute({
+    sql: "SELECT brokerCode, SUM(purchaseAmt) as buyAmt, SUM(sellAmt) as sellAmt, SUM(netAmt) as netAmt FROM merolagani_broker_daily WHERE tradeDate >= ? AND tradeDate <= ? GROUP BY brokerCode ORDER BY ABS(SUM(netAmt)) DESC",
+    args: [from, to],
+  });
+  if (!rows.rows.length) return null;
+
+  let totalBuyAmt = 0, totalSellAmt = 0, totalNetAmt = 0;
+  const brokers = rows.rows.map((r: any, idx: number) => {
+    const buyAmt = Number(r.buyAmt);
+    const sellAmt = Number(r.sellAmt);
+    const netAmt = Number(r.netAmt);
+    totalBuyAmt += buyAmt; totalSellAmt += sellAmt; totalNetAmt += netAmt;
+    return {
+      brokerId: String(r.brokerCode),
+      buyAmt: Math.round(buyAmt * 100) / 100,
+      sellAmt: Math.round(sellAmt * 100) / 100,
+      netAmt: Math.round(netAmt * 100) / 100,
+      cumulativeNet: null, holdingPct: null, note: null, rank: idx + 1,
+    };
+  });
+
+  return {
+    status: "finalized", source: "merolagani",
+    brokers,
+    totalBuyAmt: Math.round(totalBuyAmt * 100) / 100,
+    totalSellAmt: Math.round(totalSellAmt * 100) / 100,
+    totalNetAmt: Math.round(totalNetAmt * 100) / 100,
+  };
 }
 
 async function handleDb(effectiveDate: string, dateFrom: string, dateTo: string, rangeMode: boolean) {
@@ -106,7 +168,7 @@ async function handleDb(effectiveDate: string, dateFrom: string, dateTo: string,
   const maxAbsNet = Math.max(...aggResult.rows.map((r) => Math.abs(Number(r.netAmt))), 1);
   let totalBuyAmt = 0, totalSellAmt = 0, totalNetAmt = 0;
 
-  const brokers = aggResult.rows.map((row, idx) => {
+  const brokers = aggResult.rows.map((row: any, idx: number) => {
     const brokerId = String(row.brokerId), buyAmt = Number(row.buyAmt), sellAmt = Number(row.sellAmt), netAmt = Number(row.netAmt);
     const cumulativeNet = cumMap.get(brokerId) ?? null;
     totalBuyAmt += buyAmt; totalSellAmt += sellAmt; totalNetAmt += netAmt;

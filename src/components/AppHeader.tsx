@@ -85,71 +85,71 @@ function LiveHeaderBar({
   const chgNeg = (idxChg ?? 0) < 0;
 
   return (
-    <div className="flex items-center gap-0 border-b" style={{ height: 28, background: "#fafaf7", borderColor: "rgba(0,0,0,0.10)" }}>
+    <div className="flex items-center gap-0 border-b overflow-x-auto" style={{ height: 28, background: "#fafaf7", borderColor: "rgba(0,0,0,0.10)" }}>
       {/* NEPSE Index OHLC */}
-      <div className="flex items-center gap-2 border-r px-3" style={{ borderColor: "rgba(0,0,0,0.10)" }}>
-        <span className="text-[10px] font-bold" style={{ color: "#1a1a1a" }}>NEPSE</span>
-        <span className={`text-[11px] font-black tabular-nums ${chgPos ? "text-up" : chgNeg ? "text-down" : ""}`}>
+      <div className="flex items-center gap-1.5 border-r px-2 sm:px-3 shrink-0" style={{ borderColor: "rgba(0,0,0,0.10)" }}>
+        <span className="text-[9px] sm:text-[10px] font-bold" style={{ color: "#1a1a1a" }}>NEPSE</span>
+        <span className={`text-[10px] sm:text-[11px] font-black tabular-nums ${chgPos ? "text-up" : chgNeg ? "text-down" : ""}`}>
           {(idxVal ?? 0)?.toFixed(2)}
         </span>
-        <span className={`text-[9px] font-semibold tabular-nums ${chgPos ? "text-up" : chgNeg ? "text-down" : "text-gray-400"}`}>
-          {(idxChg ?? 0) >= 0 ? "+" : ""}{(idxChg ?? 0)?.toFixed(2)} ({(idxPct ?? 0)?.toFixed(2)}%)
+        <span className={`text-[8px] sm:text-[9px] font-semibold tabular-nums ${chgPos ? "text-up" : chgNeg ? "text-down" : "text-gray-400"}`}>
+          {(idxChg ?? 0) >= 0 ? "+" : ""}{(idxChg ?? 0)?.toFixed(2)}
         </span>
       </div>
 
-      {/* OHLC mini */}
-      <div className="flex items-center gap-2.5 border-r px-3 text-[9px]" style={{ borderColor: "rgba(0,0,0,0.10)" }}>
+      {/* OHLC mini — desktop only */}
+      <div className="hidden md:flex items-center gap-2 border-r px-3 text-[9px] shrink-0" style={{ borderColor: "rgba(0,0,0,0.10)" }}>
         <span className="tabular-nums"><span className="text-gray-400">O:</span> {(idxOpen ?? 0)?.toFixed(2)}</span>
         <span className="tabular-nums text-up"><span className="text-gray-400">H:</span> {(idxHigh ?? 0)?.toFixed(2)}</span>
         <span className="tabular-nums text-down"><span className="text-gray-400">L:</span> {(idxLow ?? 0)?.toFixed(2)}</span>
       </div>
 
       {/* Turnover */}
-      <div className="flex items-center gap-1 border-r px-3 text-[9px]" style={{ borderColor: "rgba(0,0,0,0.10)" }}>
-        <span className="text-gray-400">Turnover</span>
+      <div className="flex items-center gap-1 border-r px-2 sm:px-3 text-[8px] sm:text-[9px] shrink-0" style={{ borderColor: "rgba(0,0,0,0.10)" }}>
+        <span className="text-gray-400 hidden sm:inline">Turnover</span>
         <span className="font-bold tabular-nums" style={{ color: "#1a1a1a" }}>
           {(stats.turnover / 1e8).toFixed(2)}Cr
         </span>
       </div>
 
-      {/* Volume */}
-      <div className="flex items-center gap-1 border-r px-3 text-[9px]" style={{ borderColor: "rgba(0,0,0,0.10)" }}>
+      {/* Volume — tablet+ */}
+      <div className="hidden sm:flex items-center gap-1 border-r px-3 text-[9px] shrink-0" style={{ borderColor: "rgba(0,0,0,0.10)" }}>
         <span className="text-gray-400">Volume</span>
         <span className="font-bold tabular-nums" style={{ color: "#1a1a1a" }}>
           {(stats.volume / 1e6).toFixed(2)}M
         </span>
       </div>
 
-      {/* Trades */}
-      <div className="flex items-center gap-1 border-r px-3 text-[9px]" style={{ borderColor: "rgba(0,0,0,0.10)" }}>
+      {/* Trades — desktop only */}
+      <div className="hidden md:flex items-center gap-1 border-r px-3 text-[9px] shrink-0" style={{ borderColor: "rgba(0,0,0,0.10)" }}>
         <span className="text-gray-400">Trades</span>
         <span className="font-bold tabular-nums" style={{ color: "#1a1a1a" }}>{stats.trades.toLocaleString()}</span>
       </div>
 
       {/* Breadth */}
-      <div className="flex items-center gap-1.5 px-3 text-[9px]">
+      <div className="flex items-center gap-1 px-2 sm:px-3 text-[8px] sm:text-[9px] shrink-0">
         <span className="text-up font-semibold">▲{stats.advancers}</span>
-        <span className="text-gray-300">|</span>
+        <span className="text-gray-300 hidden sm:inline">|</span>
         <span className="text-down font-semibold">▼{stats.decliners}</span>
-        <span className="text-gray-300">|</span>
-        <span className="text-gray-400 font-semibold">—{stats.unchanged}</span>
+        <span className="text-gray-300 hidden sm:inline">|</span>
+        <span className="text-gray-400 font-semibold hidden sm:inline">—{stats.unchanged}</span>
       </div>
 
       {/* Spacer */}
-      <div className="flex-1" />
+      <div className="flex-1 min-w-2" />
 
       {/* Session badge */}
-      <div className="flex items-center gap-1.5 border-l px-3" style={{ borderColor: "rgba(0,0,0,0.10)" }}>
+      <div className="flex items-center gap-1 border-l px-2 sm:px-3 shrink-0" style={{ borderColor: "rgba(0,0,0,0.10)" }}>
         {mkt.session !== "closed" ? (
           <>
-            <span className="relative flex h-1.5 w-1.5">
+            <span className="relative flex h-1.5 w-1.5 sm:h-2 sm:w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-75" style={{ background: mkt.color }} />
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full" style={{ background: mkt.color }} />
+              <span className="relative inline-flex h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full" style={{ background: mkt.color }} />
             </span>
-            <span className="text-[9px] font-semibold" style={{ color: mkt.color }}>{mkt.label}</span>
+            <span className="text-[8px] sm:text-[9px] font-semibold" style={{ color: mkt.color }}>{mkt.label}</span>
           </>
         ) : (
-          <span className="text-[9px] font-semibold text-gray-400">Closed</span>
+          <span className="text-[8px] sm:text-[9px] font-semibold text-gray-400">Closed</span>
         )}
       </div>
     </div>
@@ -221,11 +221,11 @@ function IconBtn({ d, size = 17, onClick, active, badge, cls = "" }: { d: string
   return (
     <button
       onClick={onClick}
-      className={`relative grid h-8 w-8 place-items-center rounded-lg transition ${cls}`}
+      className={`relative grid h-7 w-7 sm:h-8 sm:w-8 place-items-center rounded-lg transition ${cls}`}
       style={{ background: active ? "#0F6E56" : "transparent", color: active ? "#fff" : "#555" }}
     >
       <Icon d={d} size={size} />
-      {badge && <span className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full" style={{ background: "#c0392b" }} />}
+      {badge && <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full" style={{ background: "#c0392b" }} />}
     </button>
   );
 }
@@ -315,18 +315,18 @@ export default function AppHeader() {
     <header className="sticky top-0 z-50">
       {/* ── Main Header Bar ──────────────────────────────── */}
       <div className="border-b" style={{ borderColor: "rgba(0,0,0,0.12)", background: "#fff" }}>
-        <div className="mx-auto flex max-w-[1400px] items-center gap-3 px-4 py-2">
+        <div className="mx-auto flex max-w-[1400px] items-center gap-1 sm:gap-3 px-2 sm:px-4 py-1.5 sm:py-2">
           {/* Logo */}
-          <Link href="/" className="flex shrink-0 items-center gap-2.5">
-            <div className="grid h-9 w-9 place-items-center rounded-lg" style={{ background: "#0F6E56" }}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <Link href="/" className="flex shrink-0 items-center gap-1.5 sm:gap-2.5">
+            <div className="grid h-7 w-7 sm:h-9 sm:w-9 place-items-center rounded-lg" style={{ background: "#0F6E56" }}>
+              <svg width="16" height="16" className="sm:w-5 sm:h-5" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M3 17l6-6 4 4 8-8" />
                 <path d="M17 7h4v4" />
               </svg>
             </div>
             <div className="leading-tight">
-              <div className="text-[15px] font-semibold" style={{ color: "#1a1a1a" }}>AXION</div>
-              <div className="text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: "#1D9E75" }}>NEPSE ANALYTICS</div>
+              <div className="text-[13px] sm:text-[15px] font-semibold" style={{ color: "#1a1a1a" }}>AXION</div>
+              <div className="hidden sm:block text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: "#1D9E75" }}>NEPSE ANALYTICS</div>
             </div>
           </Link>
 
@@ -377,12 +377,12 @@ export default function AppHeader() {
           </nav>
 
           {/* ── Right Side Icons ── */}
-          <div className="ml-auto flex items-center gap-1">
+          <div className="ml-auto flex items-center gap-0.5 sm:gap-1">
             {/* Search */}
             <div ref={searchRef} className="relative">
               <IconBtn d={icons.search} active={searchOpen} onClick={() => toggleOnly("search")} />
               {searchOpen && (
-                <div className="absolute right-0 top-full mt-2 w-72 overflow-hidden rounded-xl border border-border bg-surface shadow-xl z-50">
+                <div className="absolute right-0 top-full mt-2 w-[280px] sm:w-72 overflow-hidden rounded-xl border border-border bg-surface shadow-xl z-50">
                   <div className="relative border-b border-border">
                     <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                       <circle cx="11" cy="11" r="8" />
@@ -434,7 +434,7 @@ export default function AppHeader() {
             <div ref={bellRef} className="relative">
               <IconBtn d={icons.bell} active={bellOpen} badge={notif.unread > 0} onClick={() => toggleOnly("bell")} />
               {bellOpen && (
-                <div className="absolute right-0 top-full mt-2 w-80 overflow-hidden rounded-xl border border-border bg-surface shadow-xl z-50">
+                <div className="absolute right-0 top-full mt-2 w-[300px] sm:w-80 overflow-hidden rounded-xl border border-border bg-surface shadow-xl z-50">
                   <div className="flex items-center justify-between border-b border-border px-3 py-2">
                     <span className="text-sm font-bold text-foreground">Notifications</span>
                     {notif.toasts.length > 0 && (
@@ -498,7 +498,7 @@ export default function AppHeader() {
             <div ref={settingsRef} className="relative hidden sm:block">
               <IconBtn d={icons.settings} active={settingsOpen} onClick={() => toggleOnly("settings")} />
               {settingsOpen && (
-                <div className="absolute right-0 top-full mt-2 w-72 max-h-[80vh] overflow-y-auto rounded-xl border border-border bg-surface shadow-xl z-50">
+                <div className="absolute right-0 top-full mt-2 w-[280px] sm:w-72 max-h-[80vh] overflow-y-auto rounded-xl border border-border bg-surface shadow-xl z-50">
                   <div className="sticky top-0 border-b border-border bg-surface px-3 py-2">
                     <span className="text-sm font-bold text-foreground">Settings</span>
                   </div>
@@ -721,27 +721,27 @@ export default function AppHeader() {
       )}
 
       {/* ── Live Ticker Bar ──────────────────────────────── */}
-      <div className="flex items-center overflow-hidden border-b" style={{ height: 30, background: "#F5F5F0", borderColor: "rgba(0,0,0,0.12)" }}>
-        <div className="flex shrink-0 items-center gap-1.5 border-r px-3" style={{ borderColor: "rgba(0,0,0,0.12)" }}>
+      <div className="flex items-center overflow-hidden border-b" style={{ height: 26, background: "#F5F5F0", borderColor: "rgba(0,0,0,0.12)" }}>
+        <div className="flex shrink-0 items-center gap-1 border-r px-2 sm:px-3" style={{ borderColor: "rgba(0,0,0,0.12)" }}>
           {mkt.session !== "closed" ? (
             <>
-              <span className="relative flex h-2 w-2">
+              <span className="relative flex h-1.5 w-1.5 sm:h-2 sm:w-2">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-75" style={{ background: mkt.color }} />
-                <span className="relative inline-flex h-2 w-2 rounded-full" style={{ background: mkt.color }} />
+                <span className="relative inline-flex h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full" style={{ background: mkt.color }} />
               </span>
-              <span className="text-[11px] font-semibold" style={{ color: mkt.color }}>{mkt.label}</span>
+              <span className="text-[9px] sm:text-[11px] font-semibold" style={{ color: mkt.color }}>{mkt.label}</span>
             </>
           ) : (
             <>
-              <span className="h-2 w-2 rounded-full" style={{ background: "#999" }} />
-              <span className="text-[11px] font-semibold" style={{ color: "#999" }}>Closed</span>
+              <span className="h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full" style={{ background: "#999" }} />
+              <span className="text-[9px] sm:text-[11px] font-semibold" style={{ color: "#999" }}>Closed</span>
             </>
           )}
         </div>
         <div className="flex-1 overflow-hidden">
           <div className="ticker-scroll flex whitespace-nowrap">
             {[...ticks, ...ticks].map((t, i) => (
-              <span key={i} className="inline-flex items-center gap-1 px-3 text-[11px] font-medium">
+              <span key={i} className="inline-flex items-center gap-1 px-2 sm:px-3 text-[9px] sm:text-[11px] font-medium">
                 <span style={{ color: "#333" }}>{t.s}</span>
                 <span className="font-semibold tabular-nums" style={{ color: "#333" }}>{t.v}</span>
                 <span className="font-semibold tabular-nums" style={{ color: t.ch >= 0 ? "#1a8a3a" : "#c0392b" }}>
@@ -752,14 +752,14 @@ export default function AppHeader() {
             ))}
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-1.5 border-l px-3" style={{ borderColor: "rgba(0,0,0,0.12)" }}>
+        <div className="hidden sm:flex shrink-0 items-center gap-1.5 border-l px-3" style={{ borderColor: "rgba(0,0,0,0.12)" }}>
           <Icon d={icons.clock} size={13} cls="text-gray-500" />
           <span className="text-[11px] font-semibold tabular-nums text-gray-600">{clock} NPT</span>
         </div>
       </div>
 
       {/* ── Toast Overlay ── */}
-      <div className="fixed right-4 top-20 z-[999] flex flex-col gap-2 pointer-events-none max-w-xs">
+      <div className="fixed right-2 sm:right-4 top-16 sm:top-20 z-[999] flex flex-col gap-2 pointer-events-none max-w-[260px] sm:max-w-xs">
         {notif.toasts.slice(0, 3).map((t) => (
           <div
             key={t.id}
@@ -846,7 +846,7 @@ function AvatarDropdown({
   };
 
   return (
-    <div className="absolute right-0 top-full mt-2 w-64 rounded-xl border border-border bg-surface shadow-xl z-50">
+    <div className="absolute right-0 top-full mt-2 w-[260px] sm:w-64 rounded-xl border border-border bg-surface shadow-xl z-50">
       {/* User info */}
       <div className="border-b border-border px-4 py-3">
         <div className="text-sm font-bold text-foreground">{user.name}</div>
@@ -911,7 +911,7 @@ function LoginModal({ mode, setMode, onClose }: { mode: "login" | "signup"; setM
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div className="relative mx-4 w-full max-w-sm rounded-2xl border border-border bg-surface p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="relative mx-3 w-full max-w-[360px] sm:max-w-sm rounded-2xl border border-border bg-surface p-4 sm:p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <button onClick={onClose} className="absolute right-3 top-3 text-muted hover:text-foreground">
           <Icon d={icons.x} size={18} />
         </button>

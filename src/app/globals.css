@@ -7,6 +7,11 @@
    WCAG AA compliant (4.5:1 min for text)
    ============================================================ */
 
+html, body {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
 :root {
   /* ── 1. CORE COLORS ────────────────────────────────────── */
   --color-primary: #1a4d8f;    /* Trust blue — buttons, active nav, links */
@@ -396,6 +401,149 @@ body {
   .ba-header-row {
     flex-direction: column;
     align-items: stretch;
+  }
+}
+
+/* Mobile Responsive - Global Fixes */
+@media (max-width: 768px) {
+  /* Main layout padding */
+  main {
+    padding-left: 0.5rem !important;
+    padding-right: 0.5rem !important;
+  }
+
+  /* Dashboard sidebar - hide on mobile */
+  aside {
+    display: none !important;
+  }
+
+  /* Dashboard main content - full width */
+  .flex.h-screen {
+    flex-direction: column !important;
+    height: auto !important;
+  }
+
+  .flex.h-screen > main {
+    overflow-x: hidden !important;
+  }
+
+  /* Header titles - smaller on mobile */
+  h1.text-3xl {
+    font-size: 1.25rem !important;
+  }
+
+  /* Search bar - full width on mobile */
+  input[type="text"] {
+    max-width: 100% !important;
+  }
+
+  /* Grid layouts - single column on mobile */
+  .grid.grid-cols-1.md\:grid-cols-4,
+  .grid.grid-cols-1.md\:grid-cols-2,
+  .grid.grid-cols-3 {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Cards - tighter padding on mobile */
+  .rounded-lg.border.bg-surface.p-6 {
+    padding: 0.75rem !important;
+  }
+
+  /* Font sizes - scale down on mobile */
+  .text-4xl {
+    font-size: 1.5rem !important;
+  }
+
+  .text-2xl {
+    font-size: 1.125rem !important;
+  }
+
+  .text-xl {
+    font-size: 1rem !important;
+  }
+
+  /* Tables - enable horizontal scroll */
+  table {
+    display: block !important;
+    overflow-x: auto !important;
+    white-space: nowrap !important;
+  }
+
+  /* Market stats - stack vertically */
+  .ba-stats-grid-compact {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Mini stats grid - 2 columns on mobile */
+  .ba-stats-grid-mini {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  /* Live market panel - compact on mobile */
+  .overflow-x-auto {
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  /* Broker analysis - stack columns */
+  .ba-layout-2col {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Charts - responsive width */
+  [class*="chart"],
+  [class*="Chart"] {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* Buttons - full width on mobile */
+  button,
+  .btn {
+    width: 100% !important;
+  }
+
+  /* Navigation - horizontal scroll */
+  nav,
+  .nav {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+}
+
+/* Extra small screens (phones) */
+@media (max-width: 480px) {
+  /* Even tighter spacing */
+  main {
+    padding-left: 0.25rem !important;
+    padding-right: 0.25rem !important;
+  }
+
+  /* Smaller fonts */
+  h1.text-3xl {
+    font-size: 1.125rem !important;
+  }
+
+  p.text-sm {
+    font-size: 0.75rem !important;
+  }
+
+  /* Card padding */
+  .rounded-lg.border {
+    padding: 0.5rem !important;
+  }
+
+  /* Stats - very compact */
+  .text-4xl {
+    font-size: 1.25rem !important;
+  }
+
+  .text-2xl {
+    font-size: 1rem !important;
+  }
+
+  /* Hide less important elements */
+  .hidden-xs {
+    display: none !important;
   }
 }
 
@@ -900,4 +1048,19 @@ body {
   font-size: 8px;
   font-weight: 600;
   color: var(--gold);
+}
+
+/* ============================================================
+   Hide third-party browser-extension injected "remove" overlays.
+   These elements are not part of the app DOM; they are added by a
+   browser extension on top of images/elements. Target the common
+   injection patterns by attribute/class without affecting our UI.
+   ============================================================ */
+[id^="remove" i],
+[class*="remove-element" i],
+[class*="image-remove" i],
+[class*="ext-remove" i],
+[aria-label="remove" i],
+button[title="remove" i] {
+  display: none !important;
 }

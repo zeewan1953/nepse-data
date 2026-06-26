@@ -1,0 +1,734 @@
+{
+  "date": "2026-06-26",
+  "source": "merolagani",
+  "brokers": [
+    {
+      "brokerCode": "58",
+      "brokerName": "Naasa Securities Co. Ltd.",
+      "purchaseAmt": 172483102.4,
+      "sellAmt": 240997839.2,
+      "netAmt": -68514736.79999998,
+      "totalAmt": 413480941.6
+    },
+    {
+      "brokerCode": "32",
+      "brokerName": "Premier Securities Company Ltd.",
+      "purchaseAmt": 102686402.95,
+      "sellAmt": 123136725.9,
+      "netAmt": -20450322.950000003,
+      "totalAmt": 225823128.85
+    },
+    {
+      "brokerCode": "44",
+      "brokerName": "Dynamic Money Managers Securities Pvt. Ltd.",
+      "purchaseAmt": 103419899.6,
+      "sellAmt": 122240817.5,
+      "netAmt": -18820917.900000006,
+      "totalAmt": 225660717.1
+    },
+    {
+      "brokerCode": "65",
+      "brokerName": "Sharepro Securities Private Limited",
+      "purchaseAmt": 103121023.9,
+      "sellAmt": 89430687.7,
+      "netAmt": 13690336.200000003,
+      "totalAmt": 192551711.6
+    },
+    {
+      "brokerCode": "42",
+      "brokerName": "Sani Securities Company Ltd.",
+      "purchaseAmt": 98887557.9,
+      "sellAmt": 79284224.34,
+      "netAmt": 19603333.560000002,
+      "totalAmt": 178171782.24
+    },
+    {
+      "brokerCode": "28",
+      "brokerName": "Shree Krishna Securities Ltd.",
+      "purchaseAmt": 91987292.9,
+      "sellAmt": 79825630.2,
+      "netAmt": 12161662.700000003,
+      "totalAmt": 171812923.1
+    },
+    {
+      "brokerCode": "45",
+      "brokerName": "Imperial Securities Company Pvt. Ltd.",
+      "purchaseAmt": 90842101.6,
+      "sellAmt": 75096345,
+      "netAmt": 15745756.599999994,
+      "totalAmt": 165938446.6
+    },
+    {
+      "brokerCode": "48",
+      "brokerName": "Trishakti Securities Public Limited",
+      "purchaseAmt": 91761334.94,
+      "sellAmt": 71684357.4,
+      "netAmt": 20076977.53999999,
+      "totalAmt": 163445692.34
+    },
+    {
+      "brokerCode": "77",
+      "brokerName": "Nabil Securities Ltd",
+      "purchaseAmt": 73870758,
+      "sellAmt": 84140365.1,
+      "netAmt": -10269607.099999994,
+      "totalAmt": 158011123.1
+    },
+    {
+      "brokerCode": "33",
+      "brokerName": "Dakshinkali Investment & Securities Pvt. Ltd.",
+      "purchaseAmt": 56574910.5,
+      "sellAmt": 93803258,
+      "netAmt": -37228347.5,
+      "totalAmt": 150378168.5
+    },
+    {
+      "brokerCode": "34",
+      "brokerName": "Vision Securities Pvt. Ltd",
+      "purchaseAmt": 53418034.9,
+      "sellAmt": 81599222.21,
+      "netAmt": -28181187.309999995,
+      "totalAmt": 135017257.11
+    },
+    {
+      "brokerCode": "62",
+      "brokerName": "Capital Max Securities Ltd",
+      "purchaseAmt": 71574325.5,
+      "sellAmt": 62752971,
+      "netAmt": 8821354.5,
+      "totalAmt": 134327296.5
+    },
+    {
+      "brokerCode": "41",
+      "brokerName": "Linch Stock Market Ltd.",
+      "purchaseAmt": 72690607.43,
+      "sellAmt": 60303246.7,
+      "netAmt": 12387360.730000004,
+      "totalAmt": 132993854.13
+    },
+    {
+      "brokerCode": "57",
+      "brokerName": "Aryatara Investment & Securities",
+      "purchaseAmt": 62692867.55,
+      "sellAmt": 67588185.45,
+      "netAmt": -4895317.900000006,
+      "totalAmt": 130281053
+    },
+    {
+      "brokerCode": "49",
+      "brokerName": "Online Securities Pvt. Ltd.",
+      "purchaseAmt": 61418415.1,
+      "sellAmt": 65334954.3,
+      "netAmt": -3916539.1999999955,
+      "totalAmt": 126753369.4
+    },
+    {
+      "brokerCode": "17",
+      "brokerName": "ABC Securities Pvt. Ltd.",
+      "purchaseAmt": 50452518.5,
+      "sellAmt": 70275462.4,
+      "netAmt": -19822943.900000006,
+      "totalAmt": 120727980.9
+    },
+    {
+      "brokerCode": "56",
+      "brokerName": "Sri Hari Securities Pvt. Ltd.",
+      "purchaseAmt": 69442396.6,
+      "sellAmt": 48115967.8,
+      "netAmt": 21326428.799999997,
+      "totalAmt": 117558364.4
+    },
+    {
+      "brokerCode": "38",
+      "brokerName": "Dipshikha Dhitopatra Karobar Co. Pvt Ltd.",
+      "purchaseAmt": 47149186.1,
+      "sellAmt": 52739335,
+      "netAmt": -5590148.8999999985,
+      "totalAmt": 99888521.1
+    },
+    {
+      "brokerCode": "74",
+      "brokerName": "KALASH STOCK MARKET PVT. LTD.",
+      "purchaseAmt": 62810284.8,
+      "sellAmt": 36922025,
+      "netAmt": 25888259.799999997,
+      "totalAmt": 99732309.8
+    },
+    {
+      "brokerCode": "14",
+      "brokerName": "Nepal Stock House Pvt. Ltd.",
+      "purchaseAmt": 46491271,
+      "sellAmt": 46975598.2,
+      "netAmt": -484327.200000003,
+      "totalAmt": 93466869.2
+    },
+    {
+      "brokerCode": "35",
+      "brokerName": "Kohinoor Investment & Securities Pvt. Ltd.",
+      "purchaseAmt": 43145332,
+      "sellAmt": 42963758.4,
+      "netAmt": 181573.6000000015,
+      "totalAmt": 86109090.4
+    },
+    {
+      "brokerCode": "6",
+      "brokerName": "Agrawal Securities  (PVT) Ltd.",
+      "purchaseAmt": 49480754.3,
+      "sellAmt": 34671596.4,
+      "netAmt": 14809157.899999999,
+      "totalAmt": 84152350.7
+    },
+    {
+      "brokerCode": "36",
+      "brokerName": "Secured Securities Ltd.",
+      "purchaseAmt": 31981700.6,
+      "sellAmt": 50760516.7,
+      "netAmt": -18778816.1,
+      "totalAmt": 82742217.3
+    },
+    {
+      "brokerCode": "4",
+      "brokerName": "Opal Securities Investment  (PVT) Ltd.",
+      "purchaseAmt": 60768337.4,
+      "sellAmt": 21608416,
+      "netAmt": 39159921.4,
+      "totalAmt": 82376753.4
+    },
+    {
+      "brokerCode": "39",
+      "brokerName": "Sumeru Securities Pvt. Ltd.",
+      "purchaseAmt": 43043343.1,
+      "sellAmt": 28700114.25,
+      "netAmt": 14343228.850000001,
+      "totalAmt": 71743457.35
+    },
+    {
+      "brokerCode": "16",
+      "brokerName": "Primo Securities Pvt. Ltd.",
+      "purchaseAmt": 29030742.7,
+      "sellAmt": 41396856.7,
+      "netAmt": -12366114.000000004,
+      "totalAmt": 70427599.4
+    },
+    {
+      "brokerCode": "75",
+      "brokerName": "Mega Stock Markets Limited",
+      "purchaseAmt": 54880263.8,
+      "sellAmt": 12792476.3,
+      "netAmt": 42087787.5,
+      "totalAmt": 67672740.1
+    },
+    {
+      "brokerCode": "25",
+      "brokerName": "Sweta Securities Private Limited",
+      "purchaseAmt": 25844856.1,
+      "sellAmt": 41348931,
+      "netAmt": -15504074.899999999,
+      "totalAmt": 67193787.1
+    },
+    {
+      "brokerCode": "21",
+      "brokerName": "Midas Stock Broking Company Pvt. Ltd.",
+      "purchaseAmt": 39092910.65,
+      "sellAmt": 27722368,
+      "netAmt": 11370542.649999999,
+      "totalAmt": 66815278.65
+    },
+    {
+      "brokerCode": "60",
+      "brokerName": "Nagarik Stock Dealer",
+      "purchaseAmt": 31563047.6,
+      "sellAmt": 32263583.3,
+      "netAmt": -700535.6999999993,
+      "totalAmt": 63826630.9
+    },
+    {
+      "brokerCode": "26",
+      "brokerName": "Asian Securities Private Ltd.",
+      "purchaseAmt": 30691903.8,
+      "sellAmt": 31994897.6,
+      "netAmt": -1302993.8000000007,
+      "totalAmt": 62686801.4
+    },
+    {
+      "brokerCode": "64",
+      "brokerName": "Sun Securities Pvt Ltd",
+      "purchaseAmt": 28521585.2,
+      "sellAmt": 33799869.6,
+      "netAmt": -5278284.400000002,
+      "totalAmt": 62321454.8
+    },
+    {
+      "brokerCode": "63",
+      "brokerName": "Himalayan Brokerage Company Limited",
+      "purchaseAmt": 33053816.6,
+      "sellAmt": 28224884.5,
+      "netAmt": 4828932.1000000015,
+      "totalAmt": 61278701.1
+    },
+    {
+      "brokerCode": "59",
+      "brokerName": "Deevyaa Securities & Stock House Pvt. Ltd",
+      "purchaseAmt": 22253531.8,
+      "sellAmt": 37708260.5,
+      "netAmt": -15454728.7,
+      "totalAmt": 59961792.3
+    },
+    {
+      "brokerCode": "70",
+      "brokerName": "Infinity Securities Limited",
+      "purchaseAmt": 24533021.3,
+      "sellAmt": 33991551.5,
+      "netAmt": -9458530.2,
+      "totalAmt": 58524572.8
+    },
+    {
+      "brokerCode": "22",
+      "brokerName": "Siprabi Securities Pvt. Ltd.",
+      "purchaseAmt": 40886373.6,
+      "sellAmt": 16349809.1,
+      "netAmt": 24536564.5,
+      "totalAmt": 57236182.7
+    },
+    {
+      "brokerCode": "52",
+      "brokerName": "Sundhara Securities Limited",
+      "purchaseAmt": 32958024,
+      "sellAmt": 22263463.1,
+      "netAmt": 10694560.899999999,
+      "totalAmt": 55221487.1
+    },
+    {
+      "brokerCode": "50",
+      "brokerName": "Crystal Kanchanjanga Securites Pvt. Ltd.",
+      "purchaseAmt": 36861700.4,
+      "sellAmt": 18122539,
+      "netAmt": 18739161.4,
+      "totalAmt": 54984239.4
+    },
+    {
+      "brokerCode": "13",
+      "brokerName": "Thrive Brokerage House Pvt. Ltd.",
+      "purchaseAmt": 26965982.2,
+      "sellAmt": 26193519.1,
+      "netAmt": 772463.0999999978,
+      "totalAmt": 53159501.3
+    },
+    {
+      "brokerCode": "47",
+      "brokerName": "Neev Securities Pvt. Ltd.",
+      "purchaseAmt": 16681300.7,
+      "sellAmt": 35876617.1,
+      "netAmt": -19195316.400000002,
+      "totalAmt": 52557917.8
+    },
+    {
+      "brokerCode": "29",
+      "brokerName": "Trisul Securities & Invt. Ltd.",
+      "purchaseAmt": 23266814.6,
+      "sellAmt": 26546602.1,
+      "netAmt": -3279787.5,
+      "totalAmt": 49813416.7
+    },
+    {
+      "brokerCode": "1",
+      "brokerName": "Kumari Securities Private Limited",
+      "purchaseAmt": 22985653.2,
+      "sellAmt": 20376296.7,
+      "netAmt": 2609356.5,
+      "totalAmt": 43361949.9
+    },
+    {
+      "brokerCode": "101",
+      "brokerName": "APPLE SECURITIES PRIVATE LIMITED",
+      "purchaseAmt": 23961758.5,
+      "sellAmt": 17502758,
+      "netAmt": 6459000.5,
+      "totalAmt": 41464516.5
+    },
+    {
+      "brokerCode": "19",
+      "brokerName": "Nepal Investment & Securities Trading Pvt. Ltd.",
+      "purchaseAmt": 16498199.9,
+      "sellAmt": 22633026.2,
+      "netAmt": -6134826.299999999,
+      "totalAmt": 39131226.1
+    },
+    {
+      "brokerCode": "53",
+      "brokerName": "Investment Management Nepal Pvt. Ltd.",
+      "purchaseAmt": 23089266.5,
+      "sellAmt": 15814363.9,
+      "netAmt": 7274902.6,
+      "totalAmt": 38903630.4
+    },
+    {
+      "brokerCode": "43",
+      "brokerName": "South Asian Bulls Pvt. Ltd.",
+      "purchaseAmt": 19785202.8,
+      "sellAmt": 19099985.4,
+      "netAmt": 685217.4000000022,
+      "totalAmt": 38885188.2
+    },
+    {
+      "brokerCode": "7",
+      "brokerName": "J.F. Securites  (PVT) Ltd.",
+      "purchaseAmt": 18911030.4,
+      "sellAmt": 19970721.7,
+      "netAmt": -1059691.3000000007,
+      "totalAmt": 38881752.1
+    },
+    {
+      "brokerCode": "8",
+      "brokerName": "Ashutosh Brokerage & Securities  (PVT) Ltd.",
+      "purchaseAmt": 14076154.7,
+      "sellAmt": 24583567.8,
+      "netAmt": -10507413.100000001,
+      "totalAmt": 38659722.5
+    },
+    {
+      "brokerCode": "94",
+      "brokerName": "KBL Securities Limited",
+      "purchaseAmt": 12943276.7,
+      "sellAmt": 24115753.3,
+      "netAmt": -11172476.600000001,
+      "totalAmt": 37059030
+    },
+    {
+      "brokerCode": "51",
+      "brokerName": "Oxford Securities Pvt. Ltd.",
+      "purchaseAmt": 19960184.1,
+      "sellAmt": 16981098,
+      "netAmt": 2979086.1000000015,
+      "totalAmt": 36941282.1
+    },
+    {
+      "brokerCode": "91",
+      "brokerName": "C.B.I.L. Securities Limited",
+      "purchaseAmt": 11169604,
+      "sellAmt": 20656700.1,
+      "netAmt": -9487096.100000001,
+      "totalAmt": 31826304.1
+    },
+    {
+      "brokerCode": "84",
+      "brokerName": "MILKY WAY SHARE BROKER COMPANY LTD",
+      "purchaseAmt": 19003108.3,
+      "sellAmt": 11768130.4,
+      "netAmt": 7234977.9,
+      "totalAmt": 30771238.7
+    },
+    {
+      "brokerCode": "10",
+      "brokerName": "Pragyan Securities Pvt. Ltd.",
+      "purchaseAmt": 21919604.4,
+      "sellAmt": 8574009.3,
+      "netAmt": 13345595.099999998,
+      "totalAmt": 30493613.7
+    },
+    {
+      "brokerCode": "88",
+      "brokerName": "Blue Chip Securities Ltd",
+      "purchaseAmt": 12807437.6,
+      "sellAmt": 17078757.1,
+      "netAmt": -4271319.500000002,
+      "totalAmt": 29886194.7
+    },
+    {
+      "brokerCode": "5",
+      "brokerName": "Market Securities & Exchange  (PVT) Ltd.",
+      "purchaseAmt": 12824938.2,
+      "sellAmt": 16595610.4,
+      "netAmt": -3770672.200000001,
+      "totalAmt": 29420548.6
+    },
+    {
+      "brokerCode": "3",
+      "brokerName": "Arun Securities  (PVT) Ltd.",
+      "purchaseAmt": 15076069.7,
+      "sellAmt": 13613165.2,
+      "netAmt": 1462904.5,
+      "totalAmt": 28689234.9
+    },
+    {
+      "brokerCode": "81",
+      "brokerName": "Aakashbhairab Securities Ltd.",
+      "purchaseAmt": 15376493.3,
+      "sellAmt": 12670572.7,
+      "netAmt": 2705920.6000000015,
+      "totalAmt": 28047066
+    },
+    {
+      "brokerCode": "11",
+      "brokerName": "Malla & Malla Stock Broking Company Pvt. Ltd.",
+      "purchaseAmt": 14151649.6,
+      "sellAmt": 13304640.6,
+      "netAmt": 847009,
+      "totalAmt": 27456290.2
+    },
+    {
+      "brokerCode": "96",
+      "brokerName": "Himalayan Securities Limited",
+      "purchaseAmt": 7003285,
+      "sellAmt": 19693039.1,
+      "netAmt": -12689754.100000001,
+      "totalAmt": 26696324.1
+    },
+    {
+      "brokerCode": "85",
+      "brokerName": "Capital Hub P. Ltd",
+      "purchaseAmt": 15386689.8,
+      "sellAmt": 11253104.5,
+      "netAmt": 4133585.3000000007,
+      "totalAmt": 26639794.3
+    },
+    {
+      "brokerCode": "69",
+      "brokerName": "INDEX SECURITIES LIMITED",
+      "purchaseAmt": 6941285.9,
+      "sellAmt": 19171836.2,
+      "netAmt": -12230550.299999999,
+      "totalAmt": 26113122.1
+    },
+    {
+      "brokerCode": "92",
+      "brokerName": "Roadshow securities limited",
+      "purchaseAmt": 22898879.1,
+      "sellAmt": 2297815.4,
+      "netAmt": 20601063.700000003,
+      "totalAmt": 25196694.5
+    },
+    {
+      "brokerCode": "40",
+      "brokerName": "Creative Securities Pvt Ltd",
+      "purchaseAmt": 14112632.2,
+      "sellAmt": 10152321,
+      "netAmt": 3960311.1999999993,
+      "totalAmt": 24264953.2
+    },
+    {
+      "brokerCode": "80",
+      "brokerName": "Indira securities pvt. ltd",
+      "purchaseAmt": 18532062.45,
+      "sellAmt": 4957490.6,
+      "netAmt": 13574571.85,
+      "totalAmt": 23489553.05
+    },
+    {
+      "brokerCode": "46",
+      "brokerName": "Kalika Securities Pvt. Ltd.",
+      "purchaseAmt": 10375441.5,
+      "sellAmt": 12643704.4,
+      "netAmt": -2268262.9000000004,
+      "totalAmt": 23019145.9
+    },
+    {
+      "brokerCode": "82",
+      "brokerName": "N.M.B. SECURITIES LIMITED",
+      "purchaseAmt": 6612709,
+      "sellAmt": 16367454.8,
+      "netAmt": -9754745.8,
+      "totalAmt": 22980163.8
+    },
+    {
+      "brokerCode": "66",
+      "brokerName": "Miyo Securities Pvt Ltd",
+      "purchaseAmt": 9555483.4,
+      "sellAmt": 13231779.2,
+      "netAmt": -3676295.799999999,
+      "totalAmt": 22787262.6
+    },
+    {
+      "brokerCode": "67",
+      "brokerName": "Property Wiard Limited",
+      "purchaseAmt": 8804969.4,
+      "sellAmt": 13433544.7,
+      "netAmt": -4628575.299999999,
+      "totalAmt": 22238514.1
+    },
+    {
+      "brokerCode": "71",
+      "brokerName": "SHUBHAKAMANA SECURITIES PVT. LTD",
+      "purchaseAmt": 9653374.3,
+      "sellAmt": 12555799.2,
+      "netAmt": -2902424.8999999985,
+      "totalAmt": 22209173.5
+    },
+    {
+      "brokerCode": "54",
+      "brokerName": "Sewa Securities Pvt. Ltd.",
+      "purchaseAmt": 8138710.3,
+      "sellAmt": 12302695.2,
+      "netAmt": -4163984.8999999994,
+      "totalAmt": 20441405.5
+    },
+    {
+      "brokerCode": "83",
+      "brokerName": "Sanima Securities Limited",
+      "purchaseAmt": 11566499.6,
+      "sellAmt": 8752181.4,
+      "netAmt": 2814318.1999999993,
+      "totalAmt": 20318681
+    },
+    {
+      "brokerCode": "86",
+      "brokerName": "Stoxkarts Securities Limited",
+      "purchaseAmt": 10196461.7,
+      "sellAmt": 8437706.3,
+      "netAmt": 1758755.3999999985,
+      "totalAmt": 18634168
+    },
+    {
+      "brokerCode": "72",
+      "brokerName": "Hatemalo Financial Services Private Limited",
+      "purchaseAmt": 6165124.3,
+      "sellAmt": 9742827.2,
+      "netAmt": -3577702.8999999994,
+      "totalAmt": 15907951.5
+    },
+    {
+      "brokerCode": "95",
+      "brokerName": "Magnet Securities and Investment Company Private Limited",
+      "purchaseAmt": 6652502.8,
+      "sellAmt": 9066846.7,
+      "netAmt": -2414343.8999999994,
+      "totalAmt": 15719349.5
+    },
+    {
+      "brokerCode": "100",
+      "brokerName": "Sunrise Securities Limited",
+      "purchaseAmt": 11022737.5,
+      "sellAmt": 4471239.2,
+      "netAmt": 6551498.3,
+      "totalAmt": 15493976.7
+    },
+    {
+      "brokerCode": "37",
+      "brokerName": "Swarna Laxmi Securities Pvt. Ltd.",
+      "purchaseAmt": 7513231.7,
+      "sellAmt": 6893723.4,
+      "netAmt": 619508.2999999998,
+      "totalAmt": 14406955.1
+    },
+    {
+      "brokerCode": "18",
+      "brokerName": "Sagarmatha Securities Pvt. Ltd.",
+      "purchaseAmt": 3312631.1,
+      "sellAmt": 9035095.2,
+      "netAmt": -5722464.1,
+      "totalAmt": 12347726.3
+    },
+    {
+      "brokerCode": "90",
+      "brokerName": "Sajilo Broker Limited",
+      "purchaseAmt": 5992812.7,
+      "sellAmt": 5770701.6,
+      "netAmt": 222111.10000000056,
+      "totalAmt": 11763514.3
+    },
+    {
+      "brokerCode": "68",
+      "brokerName": "Elite Stock House Limited",
+      "purchaseAmt": 6157931.8,
+      "sellAmt": 5504464.5,
+      "netAmt": 653467.2999999998,
+      "totalAmt": 11662396.3
+    },
+    {
+      "brokerCode": "99",
+      "brokerName": "Prabhu Stock Market Limited",
+      "purchaseAmt": 5060352.7,
+      "sellAmt": 3703579.5,
+      "netAmt": 1356773.2000000002,
+      "totalAmt": 8763932.2
+    },
+    {
+      "brokerCode": "61",
+      "brokerName": "Bhole Ganesh Securities Ltd",
+      "purchaseAmt": 4589207.2,
+      "sellAmt": 3033957.1,
+      "netAmt": 1555250.1,
+      "totalAmt": 7623164.3
+    },
+    {
+      "brokerCode": "76",
+      "brokerName": "Machhapuchchhre Securities Limited",
+      "purchaseAmt": 4875318.5,
+      "sellAmt": 2726118.43,
+      "netAmt": 2149200.07,
+      "totalAmt": 7601436.93
+    },
+    {
+      "brokerCode": "97",
+      "brokerName": "R.B.B. Securities Company Ltd",
+      "purchaseAmt": 258418,
+      "sellAmt": 6493521.5,
+      "netAmt": -6235103.5,
+      "totalAmt": 6751939.5
+    },
+    {
+      "brokerCode": "89",
+      "brokerName": "JBNL Securities ltd",
+      "purchaseAmt": 2503902.7,
+      "sellAmt": 4096700.4,
+      "netAmt": -1592797.6999999997,
+      "totalAmt": 6600603.1
+    },
+    {
+      "brokerCode": "20",
+      "brokerName": "Sipla Securities Pvt. Ltd.",
+      "purchaseAmt": 3159489.5,
+      "sellAmt": 3358381.8,
+      "netAmt": -198892.2999999998,
+      "totalAmt": 6517871.3
+    },
+    {
+      "brokerCode": "78",
+      "brokerName": "Garima Securities Limited",
+      "purchaseAmt": 3328748.95,
+      "sellAmt": 2027946.84,
+      "netAmt": 1300802.11,
+      "totalAmt": 5356695.79
+    },
+    {
+      "brokerCode": "87",
+      "brokerName": "S.P.S.A. Securities Limited",
+      "purchaseAmt": 2351002.9,
+      "sellAmt": 2860935.8,
+      "netAmt": -509932.8999999999,
+      "totalAmt": 5211938.7
+    },
+    {
+      "brokerCode": "98",
+      "brokerName": "Trademow Securities Private Limited",
+      "purchaseAmt": 703720,
+      "sellAmt": 1079529,
+      "netAmt": -375809,
+      "totalAmt": 1783249
+    },
+    {
+      "brokerCode": "79",
+      "brokerName": "Pahi Investment Pvt. Ltd.",
+      "purchaseAmt": 643877.1,
+      "sellAmt": 257226,
+      "netAmt": 386651.1,
+      "totalAmt": 901103.1
+    },
+    {
+      "brokerCode": "93",
+      "brokerName": "Beni Securities Pvt.Ltd.",
+      "purchaseAmt": 386636,
+      "sellAmt": 9510,
+      "netAmt": 377126,
+      "totalAmt": 396146
+    },
+    {
+      "brokerCode": "73",
+      "brokerName": "Money World Share Exchange PVT Ltd",
+      "purchaseAmt": 4016,
+      "sellAmt": 9630,
+      "netAmt": -5614,
+      "totalAmt": 13646
+    }
+  ]
+}

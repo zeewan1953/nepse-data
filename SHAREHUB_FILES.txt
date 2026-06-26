@@ -1,0 +1,129 @@
+ShareHubNepal Broker Scraper — File Structure
+===============================================
+
+Project Root (c:\nepali bajar 2\)
+│
+├── 📄 SHAREHUB_DELIVERY.txt ........................ You are here
+├── 📄 SHAREHUB_SCRAPING_GUIDE.md .................. 👈 Start here! (DevTools inspection guide)
+├── 📄 SHAREHUB_NEXT_STEPS.md ....................... Integration checklist & troubleshooting
+├── 📄 SHAREHUB_TODO_CHECKLIST.md ................... Line-by-line TODO locations
+├── 📄 SHAREHUB_IMPLEMENTATION_SUMMARY.md .......... Architecture & data flow
+│
+└── nepse-pipeline/
+    └── scraper/
+        ├── nepse_scraper.py ........................ Existing adapter pattern (reference)
+        └── 🆕 sharehub_broker_adapter.py .......... NEW: ShareHubNepal adapter (TODO-filled)
+
+===============================================
+Quick Start Sequence
+===============================================
+
+1️⃣  Read: SHAREHUB_SCRAPING_GUIDE.md
+    → How to verify ShareHubNepal source structure via DevTools
+    → Takes ~10 minutes
+
+2️⃣  Open: nepse-pipeline/scraper/sharehub_broker_adapter.py
+    → Look for TODO markers (28 of them)
+    → Reference: SHAREHUB_TODO_CHECKLIST.md for line numbers
+
+3️⃣  Fill in: TODO values based on what you found in step 1
+    → Either JSON API path OR HTML table path (not both)
+
+4️⃣  Test: python -m scraper.sharehub_broker_adapter --once
+    → Should output: "Scraped N broker records for YYYY-MM-DD"
+
+5️⃣  Integrate: Wire into your daily scheduler
+    → See SHAREHUB_NEXT_STEPS.md → Step 4
+
+===============================================
+Key Files & Their Purpose
+===============================================
+
+📋 Documentation (Read in Order)
+  1. SHAREHUB_SCRAPING_GUIDE.md
+     ↳ How to inspect ShareHubNepal with browser DevTools
+     ↳ Shows: Network tab, API vs HTML detection, selector inspection
+  
+  2. SHAREHUB_TODO_CHECKLIST.md
+     ↳ Reference: Every TODO location + examples
+     ↳ Use while editing sharehub_broker_adapter.py
+  
+  3. SHAREHUB_NEXT_STEPS.md
+     ↳ Integration: How to wire into your pipeline
+     ↳ Troubleshooting: Common issues & solutions
+
+💻 Code
+  nepse-pipeline/scraper/sharehub_broker_adapter.py
+  ↳ Main adapter implementation
+  ↳ Two classes: ShareHubNepalAPIAdapter (JSON) + ShareHubNepalHTMLAdapter (HTML)
+  ↳ Select via BROKER_SCRAPE_SOURCE env var
+
+📐 Reference
+  nepse-pipeline/scraper/nepse_scraper.py
+  ↳ Existing pattern: How adapters are structured
+  ↳ Shows: FloorsheetSource ABC, retry logic, factory function
+
+===============================================
+What's Filled In vs What's TODO
+===============================================
+
+✅ Already Done (You Don't Need to Change)
+  • Class structure & methods
+  • Retry logic (exponential backoff)
+  • Pagination handling
+  • Helper functions (_safe_int, _safe_float, etc.)
+  • Debug mode (--debug flag, HTML/screenshot saving)
+  • Logging & error handling
+  • Tests & validation framework
+
+❌ Still TODO (You Must Fill In)
+  
+  For JSON API Path (~5-6 fields):
+    • Line 109: BASE_URL (actual endpoint)
+    • Line 123: Referer header (if different)
+    • Line 125: Auth headers (if needed)
+    • Line 138: Query param name (if not "date")
+    • Line 174: JSON response shape detection
+    • Lines 197-205: Field name mapping (brokerCode → actual key)
+  
+  For HTML Table Path (~5-6 fields):
+    • Line 247: PAGE_URL (actual page)
+    • Line 256: ROW_SELECTOR (table.class tbody tr)
+    • Lines 262-266: Column selectors (td:nth-child(N))
+    • Line 275: Next page button selector (if paginated)
+    • Line 282: Date picker selector (if exists)
+
+===============================================
+Testing Checklist
+===============================================
+
+After filling in TODOs:
+
+  □ python -m scraper.sharehub_broker_adapter --once
+    Expected: "Scraped N broker records for YYYY-MM-DD"
+    
+  □ python -m scraper.sharehub_broker_adapter --once --debug
+    Expected: Creates debug_output/ directory with HTML/errors
+    
+  □ python -m scraper.sharehub_broker_adapter --once --date 2026-06-22
+    Expected: Works with past dates too
+
+If any fail:
+  → Check debug_output/ for saved HTML
+  → Verify selectors against actual page
+  → Update and retry
+
+===============================================
+Next: Communication Handoff
+===============================================
+
+Once you've filled in TODOs and tested locally:
+
+1. Share the actual JSON response or HTML snippet
+2. Let us know if any selectors don't work
+3. We'll adjust parsing immediately
+4. Then you wire into your daily scheduler
+
+That's it! 🚀
+
+Questions? See SHAREHUB_NEXT_STEPS.md section on troubleshooting.

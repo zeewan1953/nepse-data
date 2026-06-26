@@ -1,0 +1,212 @@
+BROKER HOLDINGS DATA - QUICK REFERENCE FIX GUIDE
+================================================
+
+PROBLEM SUMMARY
+---------------
+Broker holdings table (stock ACLBSL) shows incorrect data:
+- Sell Vol/Sell Amt always 0 for all brokers (CRITICAL)
+- No transaction counts (Buy/Sell contracts)
+- No matching volume/ratio calculations
+- Time-range aggregation uses wrong calculation method (not VWAP)
+- Cumulative net holdings incorrect
+
+
+QUICK FIX SEQUENCE
+------------------
+
+1. IMMEDIATE: Run validator to confirm issues
+   > npx ts-node scripts/broker-holdings-validator.ts
+
+2. APPLY FIXES (5 minutes)
+   > npx ts-node scripts/broker-holdings-fixer.ts
+
+3. VERIFY: Check data consistency
+   > sqlite3 data/darisir.db < scripts/broker-holdings-verify.sql
+
+4. DEPLOY: Update API route
+   > cp src/app/api/broker-stocks/route-fixed.ts src/app/api/broker-stocks/route.ts
+
+5. TEST: Clear cache and reload UI
+   > Browser: F5 refresh
+
+
+KEY CHANGES
+-----------
+
+Database (broker_daily_agg):
+  Added columns: buyContracts, sellContracts, matchingVolume, matchingAmt
+  Action: Fixer script will add and backfill these
+
+API Route (/api/broker-stocks):
+  - Now returns sell data correctly (was missing before)
+  - Returns transaction counts (buyContracts, sellContracts)
+  - Calculates matching volume (MIN(buyQty, sellQty))
+  - Proper VWAP for time ranges (not simple SUM)
+  - Includes range metadata for multi-day queries
+
+UI (holding/page.tsx):
+  - Can now display Buy/Sell contract counts
+  - Can show Matching Volume and Ratio
+  - Can show Average prices for ranges
+
+
+DATA ISSUES - DETAILED
+----------------------
+
+Issue 1: Missing Sell Data (ALL zeros)
+  Root: Incomplete sync from floorsheet_trades
+  Fix: Backfill from floorsheet_trades table
+  SQL: UPDATE broker_daily_agg SET sellQty = (SELECT SUM(...))
+
+Issue 2: No Transaction Counts
+  Root: Database missing buyContracts/sellContracts columns
+  Fix: ALTER TABLE + backfill from floorsheet_trades
+  Impact: Cannot see trade concentration (1 big order vs 100 small)
+
+Issue 3: No Matching Volume
+  Root: Not calculated in aggregation
+  Fix: Calculate MIN(buyQty, sellQty) per record
+  Impact: Cannot identify internal/matched trades
+
+Issue 4: Wrong Time Range Aggregation
+  Root: Uses SUM for prices (should use VWAP)
+  Problem:
+    Day 1: 100 shares @ 50 = 5000
+    Day 2: 100 shares @ 60 = 6000
+    Wrong: 50 + 60 / 2 = 55 ✗ (if using daily avgs)
+    Right: 11000 / 200 = 55 ✓ (VWAP)
+  Fix: Use SUM(amount) / SUM(qty) for ranges
+
+Issue 5: Cumulative Net Wrong
+  Root: Assumes continuous daily records (they're not)
+  Problem: If broker doesn't trade on Day 2, cumulative breaks
+  Fix: Ensure all dates 1-to-target in query, fill zeros
+
+
+SQL QUERIES FOR VERIFICATION
+-----------------------------
+
+Check for missing sells:
+  SELECT brokerId, COUNT(*) FROM broker_daily_agg
+  WHERE sellQty = 0 AND buyQty > 0
+  GROUP BY brokerId;
+
+Verify floorsheet consistency:
+  SELECT bda.brokerId, bda.buyQty as agg, fs.actual_qty
+  FROM broker_daily_agg bda
+  LEFT JOIN (
+    SELECT buyerMemberId, SUM(contractQuantity) as actual_qty
+    FROM floorsheet_trades
+    WHERE tradeDate = '2026-06-26' AND stockSymbol = 'ACLBSL'
+    GROUP BY buyerMemberId
+  ) fs ON bda.brokerId = fs.buyerMemberId
+  WHERE bda.tradeDate = '2026-06-26' AND bda.stockSymbol = 'ACLBSL';
+
+Test VWAP calculation:
+  SELECT
+    brokerId,
+    SUM(buyQty) as totalQty,
+    SUM(buyAmt) as totalAmt,
+    ROUND(SUM(buyAmt) * 1.0 / SUM(buyQty), 2) as vwapPrice
+  FROM broker_daily_agg
+  WHERE tradeDate >= '2026-06-24' AND tradeDate <= '2026-06-26'
+  GROUP BY brokerId;
+
+
+FILES CREATED
+-------------
+1. broker-holdings-fix.md
+   - Detailed problem analysis
+   - SQL queries for verification
+   - Schema changes needed
+   - Expected table schema
+
+2. scripts/broker-holdings-validator.ts
+   - Run this first to identify issues
+   - Outputs: affected brokers, dates, stocks
+
+3. scripts/broker-holdings-fixer.ts
+   - Run after validator confirms issues
+   - Adds columns + backfills data
+   - Auto-verifies fixes applied
+
+4. scripts/broker-holdings-verify.sql
+   - 9 verification query groups
+   - Run individually to check each aspect
+
+5. src/app/api/broker-stocks/route-fixed.ts
+   - Fixed API implementation
+   - Proper VWAP calculation
+   - Transaction counts
+   - Matching volume
+
+6. BROKER_HOLDINGS_IMPLEMENTATION.md
+   - Complete step-by-step guide
+   - Before/after examples
+   - Testing checklist
+   - Rollback procedure
+
+7. BROKER_HOLDINGS_QUICK_FIX.txt
+   - This file
+
+
+EXPECTED RESULTS AFTER FIX
+--------------------------
+
+For ACLBSL stock, broker #1:
+  BEFORE:
+    Buy Vol: 1000, Buy Amt: 50,000
+    Sell Vol: 0, Sell Amt: 0
+    Net: 1000 / 50,000
+    Matching: 0
+
+  AFTER:
+    Buy Vol: 1000, Buy Amt: 50,000, Contracts: 15
+    Sell Vol: 800, Sell Amt: 40,000, Contracts: 12
+    Net: 200 / 10,000
+    Matching Vol: 800 (80% of total volume)
+    Avg Buy: 50/share, Avg Sell: 50/share
+
+
+TROUBLESHOOTING
+---------------
+
+Q: Fixer still shows zero sells for some brokers after running?
+A: Some brokers may have one-sided trades (only buy OR only sell).
+   This is legitimate. Check with SQL query to verify against floorsheet_trades.
+
+Q: Performance degraded after running fixer?
+A: Add index on (tradeDate, brokerId, stockSymbol) if missing
+   > CREATE INDEX idx_bda_lookup ON broker_daily_agg(tradeDate, brokerId, stockSymbol);
+
+Q: Cumulative net still looks wrong?
+A: Run this verification query:
+   > SELECT MIN(tradeDate) FROM broker_daily_agg WHERE stockSymbol = 'ACLBSL';
+   Then manually sum netQty from that date to target date.
+
+Q: API returns null/missing fields?
+A: Ensure all columns were added and backfilled:
+   > SELECT * FROM broker_daily_agg LIMIT 1;
+   Should show: buyContracts, sellContracts, matchingVolume, matchingAmt
+
+
+PERFORMANCE NOTES
+-----------------
+- Validator: ~5-10 seconds (reads entire table)
+- Fixer: ~30-60 seconds (updates all records)
+- Verify queries: <1 second each
+- API response: <500ms typical
+
+If queries timeout:
+1. Run fixer in smaller batches
+2. Add indexes for common filter columns
+3. Consider archiving old data (>1 year)
+
+
+SUPPORT CONTACTS
+----------------
+Issues with:
+- Database: Check db.ts and migrations
+- API: Check /api/broker-stocks route
+- UI: Check src/app/holding/page.tsx
+- Floorsheet data: Check sync in cron/broker-sync

@@ -252,6 +252,85 @@ async function migrateSchema(): Promise<void> {
   try {
     await db.execute("ALTER TABLE merolagani_broker_daily ADD COLUMN sellQty REAL DEFAULT 0");
   } catch { /* already exists */ }
+
+  // Health check runs log
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS health_check_runs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      timestamp TEXT NOT NULL,
+      payload TEXT NOT NULL
+    )
+  `);
+
+  // Trade decision log
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS trade_decision_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      timestamp TEXT NOT NULL,
+      stock_symbol TEXT NOT NULL,
+      cmf REAL,
+      mfi REAL,
+      vol_zscore REAL,
+      smart_money_score REAL,
+      signal TEXT NOT NULL,
+      confidence REAL NOT NULL,
+      data_source TEXT NOT NULL
+    )
+  `);
+
+  // Self-healer action log
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS healer_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      timestamp TEXT NOT NULL,
+      payload TEXT NOT NULL
+    )
+  `);
+
+  // Company fundamentals — EPS, PE, paid-up capital, quarterly growth, etc.
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS company_fundamentals (
+      symbol TEXT PRIMARY KEY,
+      company_name TEXT NOT NULL,
+      sector TEXT,
+      eps NUMERIC,
+      pe_ratio NUMERIC,
+      paid_up_capital NUMERIC,
+      net_profit NUMERIC,
+      q1_growth_pct NUMERIC,
+      q2_growth_pct NUMERIC,
+      q3_growth_pct NUMERIC,
+      q4_growth_pct NUMERIC,
+      book_value NUMERIC,
+      dividend_pct NUMERIC,
+      market_cap NUMERIC,
+      shares_outstanding NUMERIC,
+      roe NUMERIC,
+      pbv NUMERIC,
+      debt_equity NUMERIC,
+      fifty_two_week_range TEXT,
+      last_updated DATE NOT NULL,
+      source TEXT NOT NULL
+    )
+  `);
+
+  // Company news headlines
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS company_news (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      symbol TEXT NOT NULL,
+      headline TEXT NOT NULL,
+      published_at TEXT NOT NULL,
+      url TEXT,
+      source TEXT NOT NULL DEFAULT 'merolagani',
+      FOREIGN KEY (symbol) REFERENCES company_fundamentals(symbol)
+    )
+  `);
+
+  // Index for news lookups
+  try {
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_company_news_symbol ON company_news(symbol)");
+  } catch {}
 }
 migrateSchema().catch(console.error);
 
@@ -713,7 +792,7 @@ export type BrokerHistoryRow = {
   netAmt: number | null;
 };
 
-function computeHash(data: unknown): string {
+export function computeHash(data: unknown): string {
   const s = JSON.stringify(data);
   let h = 0;
   for (let i = 0; i < s.length; i++) {
