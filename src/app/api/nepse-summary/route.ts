@@ -56,18 +56,31 @@ async function fetchLive(): Promise<LiveStock[]> {
   } catch {
     // fallback
   }
-  try {
-    const stats = await cached("daily-trade-stats", 10_000, () => getDailyTradeStats());
-    if (stats.length) {
-      return stats.map((s) => ({
+  const nepse = getNepse();
+  const [securities, stats] = await Promise.all([
+    cached("seclist", 3_600_000, () => safeNepseCall(() => nepse.getSecurityList(), "Security list")).catch(() => []),
+    getDailyTradeStats().catch(() => []),
+  ]);
+  const statMap = new Map(stats.map((s) => [s.symbol, s]));
+  const active = (securities ?? []).filter((s: any) => s.activeStatus === "A");
+  if (active.length) {
+    return active.map((s: any) => {
+      const st = statMap.get(s.symbol);
+      return {
         symbol: s.symbol,
-        percentageChange: s.percentageChange,
-        totalTradeValue: (s.totalTradeQuantity ?? 0) * (s.lastTradedPrice ?? s.closePrice ?? 0),
-        totalTradeQuantity: s.totalTradeQuantity,
-      }));
-    }
-  } catch {
-    // give up
+        percentageChange: st?.percentageChange ?? 0,
+        totalTradeValue: (st?.totalTradeQuantity ?? 0) * (st?.lastTradedPrice ?? st?.closePrice ?? 0),
+        totalTradeQuantity: st?.totalTradeQuantity ?? 0,
+      };
+    });
+  }
+  if (stats.length) {
+    return stats.map((s) => ({
+      symbol: s.symbol,
+      percentageChange: s.percentageChange,
+      totalTradeValue: (s.totalTradeQuantity ?? 0) * (s.lastTradedPrice ?? s.closePrice ?? 0),
+      totalTradeQuantity: s.totalTradeQuantity,
+    }));
   }
   return [];
 }
