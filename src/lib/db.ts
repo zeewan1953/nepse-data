@@ -26,9 +26,16 @@ function getDbUrl(): string {
   return pathToFileURL(path.join(DB_DIR, "darisir.db")).href;
 }
 
-const localDbUrl = getDbUrl();
+// ─── Client: Turso (remote libsql) when configured, else local file ────────
+// Set TURSO_DATABASE_URL (libsql://...) + TURSO_AUTH_TOKEN to use a shared
+// remote DB that BOTH Vercel and GitHub Actions can read/write. Without them,
+// fall back to the local SQLite file (dev / current behavior).
+const tursoUrl = process.env.TURSO_DATABASE_URL;
+const tursoToken = process.env.TURSO_AUTH_TOKEN;
 
-export const db = createClient({ url: localDbUrl });
+export const db = tursoUrl
+  ? createClient({ url: tursoUrl, authToken: tursoToken })
+  : createClient({ url: getDbUrl() });
 
 type SqlArgs = InArgs;
 
