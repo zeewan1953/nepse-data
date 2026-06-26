@@ -237,20 +237,22 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* Top Gainers, Losers, Volume - Compact Panels */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
+          {/* Top Gainers, Losers, Volume - Ultra Compact Panels */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 md:gap-3">
             {/* Top Gainers */}
-            <div className="rounded-lg border border-border bg-surface p-3">
-              <h3 className="text-xs font-bold text-foreground mb-2 uppercase tracking-wide">📈 Top Gainers</h3>
-              <div className="space-y-1.5">
+            <div className="rounded-lg border border-border bg-surface p-2">
+              <h3 className="text-[10px] font-bold text-foreground mb-1.5 uppercase tracking-wide flex items-center gap-1">
+                <span className="text-green-600">📈</span> TOP GAINERS
+              </h3>
+              <div className="space-y-1">
                 {topGainers.slice(0, 5).map((stock) => (
-                  <div key={stock.symbol} className="flex items-center justify-between px-2 py-1.5 hover:bg-surface-2 rounded transition">
+                  <div key={stock.symbol} className="flex items-center justify-between px-1.5 py-1 hover:bg-surface-2 rounded transition">
                     <div className="min-w-0 flex-1">
-                      <div className="font-semibold text-foreground text-xs truncate">{stock.symbol}</div>
+                      <div className="font-semibold text-foreground text-[10px] truncate">{stock.symbol}</div>
                     </div>
-                    <div className="text-right ml-2">
-                      <div className="text-xs font-bold text-foreground">{formatNum(stock.ltp, 2)}</div>
-                      <div className="text-[10px] font-semibold text-green-600">
+                    <div className="text-right ml-1.5">
+                      <div className="text-[10px] font-bold text-foreground">{formatNum(stock.ltp, 2)}</div>
+                      <div className="text-[9px] font-bold text-green-600">
                         +{formatNum(stock.changePercent, 2)}%
                       </div>
                     </div>
@@ -260,17 +262,19 @@ export default function Dashboard() {
             </div>
 
             {/* Top Losers */}
-            <div className="rounded-lg border border-border bg-surface p-3">
-              <h3 className="text-xs font-bold text-foreground mb-2 uppercase tracking-wide">📉 Top Losers</h3>
-              <div className="space-y-1.5">
+            <div className="rounded-lg border border-border bg-surface p-2">
+              <h3 className="text-[10px] font-bold text-foreground mb-1.5 uppercase tracking-wide flex items-center gap-1">
+                <span className="text-red-600">📉</span> TOP LOSERS
+              </h3>
+              <div className="space-y-1">
                 {topLosers.slice(0, 5).map((stock) => (
-                  <div key={stock.symbol} className="flex items-center justify-between px-2 py-1.5 hover:bg-surface-2 rounded transition">
+                  <div key={stock.symbol} className="flex items-center justify-between px-1.5 py-1 hover:bg-surface-2 rounded transition">
                     <div className="min-w-0 flex-1">
-                      <div className="font-semibold text-foreground text-xs truncate">{stock.symbol}</div>
+                      <div className="font-semibold text-foreground text-[10px] truncate">{stock.symbol}</div>
                     </div>
-                    <div className="text-right ml-2">
-                      <div className="text-xs font-bold text-foreground">{formatNum(stock.ltp, 2)}</div>
-                      <div className="text-[10px] font-semibold text-red-600">
+                    <div className="text-right ml-1.5">
+                      <div className="text-[10px] font-bold text-foreground">{formatNum(stock.ltp, 2)}</div>
+                      <div className="text-[9px] font-bold text-red-600">
                         {formatNum(stock.changePercent, 2)}%
                       </div>
                     </div>
@@ -280,18 +284,20 @@ export default function Dashboard() {
             </div>
 
             {/* Top Volume */}
-            <div className="rounded-lg border border-border bg-surface p-3">
-              <h3 className="text-xs font-bold text-foreground mb-2 uppercase tracking-wide">💹 Top Volume</h3>
-              <div className="space-y-1.5">
+            <div className="rounded-lg border border-border bg-surface p-2">
+              <h3 className="text-[10px] font-bold text-foreground mb-1.5 uppercase tracking-wide flex items-center gap-1">
+                <span className="text-blue-600">💹</span> TOP VOLUME
+              </h3>
+              <div className="space-y-1">
                 {topVolume.slice(0, 5).map((stock) => (
-                  <div key={stock.symbol} className="flex items-center justify-between px-2 py-1.5 hover:bg-surface-2 rounded transition">
+                  <div key={stock.symbol} className="flex items-center justify-between px-1.5 py-1 hover:bg-surface-2 rounded transition">
                     <div className="min-w-0 flex-1">
-                      <div className="font-semibold text-foreground text-xs truncate">{stock.symbol}</div>
-                      <div className="text-[9px] text-muted">Vol: {formatLarge(stock.volume || 0)}</div>
+                      <div className="font-semibold text-foreground text-[10px] truncate">{stock.symbol}</div>
+                      <div className="text-[8px] text-muted">{formatLarge(stock.volume || 0)}</div>
                     </div>
-                    <div className="text-right ml-2">
-                      <div className="text-xs font-bold text-foreground">{formatNum(stock.ltp, 2)}</div>
-                      <div className={`text-[10px] font-semibold ${getChangeClass(stock.change)}`}>
+                    <div className="text-right ml-1.5">
+                      <div className="text-[10px] font-bold text-foreground">{formatNum(stock.ltp, 2)}</div>
+                      <div className={`text-[9px] font-bold ${getChangeClass(stock.change)}`}>
                         {stock.changePercent > 0 ? "+" : ""}{formatNum(stock.changePercent, 2)}%
                       </div>
                     </div>
