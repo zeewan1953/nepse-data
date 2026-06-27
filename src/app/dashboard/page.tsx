@@ -216,6 +216,63 @@ export default function Dashboard() {
   const s = summary.data;
   const tickerStocks = live.data?.data ?? [];
 
+  // Compute Signal Leaderboard from live data
+  const signalLeaderboard = useMemo(() => {
+    if (!tickerStocks.length) return [];
+    
+    return tickerStocks
+      .filter((stock) => {
+        const symbol = stock.symbol;
+        // Filter: must contain letters, max 10 chars, NOT start with number, exclude MF
+        return /\D/.test(symbol) && 
+               symbol.length <= 10 && 
+               !/^\d/.test(symbol) &&
+               !symbol.toUpperCase().includes('MF');
+      })
+      .map((stock) => {
+        const pct = stock.percentageChange ?? 0;
+        const volume = stock.totalTradeQuantity ?? 0;
+        const price = stock.lastTradedPrice ?? 0;
+        
+        // Simple momentum based on % change
+        const momentumScore = Math.min(100, Math.max(-100, pct * 10));
+        
+        // Volume signal (high volume = accumulation/distribution)
+        const avgVolume = tickerStocks.reduce((sum, s) => sum + (s.totalTradeQuantity ?? 0), 0) / tickerStocks.length;
+        const volumeRatio = avgVolume > 0 ? volume / avgVolume : 1;
+        const volumeZScore = (volumeRatio - 1) * 2;
+        
+        // Smart money: positive change + high volume = smart buying
+        const smartMoneyScore = pct > 0 && volumeRatio > 1.5 
+          ? Math.min(100, pct * 5 + volumeRatio * 10) 
+          : pct < 0 && volumeRatio > 1.5 
+            ? Math.max(-100, pct * 5 - volumeRatio * 10)
+            : 0;
+        
+        // Order flow classification
+        const orderFlow = pct > 2 ? "Buy Pressure" : pct < -2 ? "Sell Pressure" : "Neutral";
+        
+        // Confidence level based on data quality and signal strength
+        const dataCompleteness = tickerStocks.length > 0 ? 100 : 0;
+        const signalStrength = Math.abs(momentumScore) + Math.abs(smartMoneyScore);
+        const confidenceLevel = signalStrength > 50 ? "High" : signalStrength > 25 ? "Medium" : "Low";
+        
+        return {
+          symbol: stock.symbol,
+          ltp: price,
+          momentumScore,
+          volumeZScore,
+          smartMoneyScore,
+          orderFlow,
+          changePercent: pct,
+          volume,
+          confidenceLevel,
+        };
+      })
+      .sort((a, b) => b.momentumScore - a.momentumScore)
+      .slice(0, 12); // Top 12 signals
+  }, [tickerStocks]);
+
   // Sentiment styling
   const isBear = (s?.recommendation ?? "").toUpperCase().includes("SELL") || (s?.sentiment ?? "").toLowerCase().includes("bear") || (s?.changePct ?? 0) < 0;
   const action = (s?.recommendation ?? "HOLD").split(" ")[0].toUpperCase();
@@ -299,13 +356,10 @@ export default function Dashboard() {
         </div>
 
         {/* ── Body ── */}
-        <main className="grid flex-1 grid-cols-1 gap-4 p-4 lg:grid-cols-[minmax(360px,420px)_1fr]">
-          {/* Left: movers */}
-          <MoversPanel movers={movers} />
-
-          {/* Right: index + AI summary + day chips */}
-          <div className="space-y-4">
-            {/* Index header card */}
+        <main className="grid flex-1 grid-cols-1 gap-4 p-4">
+          {/* Row 1: NEPSE INDEX + AI Summary (TOP) */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            {/* Left: NEPSE INDEX */}
             <div className="rounded-xl border border-border bg-surface p-5">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-xs text-muted">
@@ -347,7 +401,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* AI summary card */}
+            {/* Right: AI Summary */}
             <div className="rounded-xl border border-border bg-surface p-5">
               <div className="flex items-center gap-2 text-sm font-bold text-primary">🧠 बजार सारांश</div>
 
@@ -390,44 +444,9 @@ export default function Dashboard() {
                 </div>
               )}
             </div>
-
-          </div>
-        </main>
-
-        {/* ── Top Analysis + Breakout / Accumulation / Distribution ── */}
-        <section className="space-y-4 px-4 pb-6">
-          {/* Top Analysis strip */}
-          <div className="rounded-xl border border-border bg-surface p-4">
-            <h3 className="mb-3 flex items-center gap-1.5 text-sm font-bold text-foreground">📊 Top Analysis</h3>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
-              <div className="rounded-lg border border-border bg-surface-2 p-3">
-                <div className="text-[10px] font-semibold uppercase text-muted">Recommendation</div>
-                <div className={`mt-1 text-sm font-bold ${actionCls.split(" ")[0]}`}>{s?.recommendation ?? "—"}</div>
-              </div>
-              <div className="rounded-lg border border-border bg-surface-2 p-3">
-                <div className="text-[10px] font-semibold uppercase text-muted">Sentiment</div>
-                <div className={`mt-1 text-sm font-bold ${isBear ? "text-red-600" : "text-green-600"}`}>{s?.sentiment ?? "—"}</div>
-              </div>
-              <div className="rounded-lg border border-border bg-surface-2 p-3">
-                <div className="text-[10px] font-semibold uppercase text-muted">Confidence</div>
-                <div className="mt-1 text-sm font-bold text-amber-600">{s ? `${s.confidence}%` : "—"}</div>
-              </div>
-              <div className="rounded-lg border border-border bg-surface-2 p-3">
-                <div className="text-[10px] font-semibold uppercase text-muted">Breakouts</div>
-                <div className="mt-1 text-sm font-bold text-green-600">{breakout.length}</div>
-              </div>
-              <div className="rounded-lg border border-border bg-surface-2 p-3">
-                <div className="text-[10px] font-semibold uppercase text-muted">Accumulating</div>
-                <div className="mt-1 text-sm font-bold text-green-600">{accumulation.length}</div>
-              </div>
-              <div className="rounded-lg border border-border bg-surface-2 p-3">
-                <div className="text-[10px] font-semibold uppercase text-muted">Distributing</div>
-                <div className="mt-1 text-sm font-bold text-red-600">{distribution.length}</div>
-              </div>
-            </div>
           </div>
 
-          {/* Breakout / Accumulation / Distribution panels */}
+          {/* Row 2: Breakout / Accumulation / Distribution */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             <StockMiniPanel
               title="Breakout"
@@ -452,11 +471,97 @@ export default function Dashboard() {
             />
           </div>
 
-          {/* Sub-Indices */}
-          <div className="grid grid-cols-1 gap-4">
+          {/* Row 3: Signal Leaderboard (Left) + Sub-Indices (Right) */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            {/* Left: Signal Leaderboard */}
+            {signalLeaderboard.length > 0 && (
+              <div className="rounded-xl border border-border bg-surface">
+                {/* Disclaimer */}
+                <div className="border-b border-border bg-amber-500/10 px-3 py-1.5">
+                  <p className="text-[8px] leading-relaxed text-amber-700">
+                    <strong>⚠️</strong> Signals reflect current technical data. Not investment advice.
+                  </p>
+                </div>
+
+                <div className="p-2.5">
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <h3 className="flex items-center gap-1 text-[10px] font-bold text-foreground">
+                      <span>📊</span> Signal Leaderboard
+                      <span className="rounded-full bg-primary/10 px-1 py-0.5 text-[8px] font-bold text-primary">TOP {signalLeaderboard.length}</span>
+                    </h3>
+                    <span className="text-[8px] text-muted">Real-time</span>
+                  </div>
+
+                  {/* Compact Table Header */}
+                  <div className="mb-1 grid grid-cols-12 gap-1 px-1.5 py-1 text-[7px] font-bold uppercase tracking-wide text-muted">
+                    <div className="col-span-2">Symbol</div>
+                    <div className="col-span-1 text-right">LTP</div>
+                    <div className="col-span-2 text-right">Momentum</div>
+                    <div className="col-span-2 text-right">Smart $</div>
+                    <div className="col-span-1 text-right">Vol Z</div>
+                    <div className="col-span-2 text-center">Order Flow</div>
+                    <div className="col-span-2 text-center">Confidence</div>
+                  </div>
+
+                  {/* Compact Table Body */}
+                  <div className="max-h-[280px] space-y-0.5 overflow-y-auto">
+                    {signalLeaderboard.map((signal, i) => {
+                      const momentumColor = signal.momentumScore > 20 ? "text-green-600" : signal.momentumScore < -20 ? "text-red-600" : "text-muted";
+                      const smartMoneyColor = signal.smartMoneyScore > 20 ? "text-green-600" : signal.smartMoneyScore < -20 ? "text-red-600" : "text-muted";
+                      const orderFlowColor = signal.orderFlow === "Buy Pressure" ? "text-green-600" : signal.orderFlow === "Sell Pressure" ? "text-red-600" : "text-muted";
+                      const orderFlowBg = signal.orderFlow === "Buy Pressure" ? "bg-green-500/10" : signal.orderFlow === "Sell Pressure" ? "bg-red-500/10" : "bg-surface-2";
+                      const confidenceColor = signal.confidenceLevel === "High" ? "text-green-600" : signal.confidenceLevel === "Medium" ? "text-amber-600" : "text-muted";
+                      const confidenceBg = signal.confidenceLevel === "High" ? "bg-green-500/10" : signal.confidenceLevel === "Medium" ? "bg-amber-500/10" : "bg-surface-2";
+
+                      return (
+                        <Link
+                          key={signal.symbol}
+                          href={`/stock/${signal.symbol}`}
+                          className="grid grid-cols-12 gap-1 rounded border border-border px-1.5 py-1 transition hover:border-primary/50 hover:bg-surface-2"
+                        >
+                          <div className="col-span-2">
+                            <div className="text-[9px] font-bold text-foreground">{signal.symbol}</div>
+                            <div className="text-[7px] text-muted">{fmt(signal.changePercent, 1)}%</div>
+                          </div>
+                          <div className="col-span-1 text-right">
+                            <div className="text-[9px] font-bold text-foreground">{fmt(signal.ltp, 0)}</div>
+                          </div>
+                          <div className={`col-span-2 text-right text-[9px] font-bold ${momentumColor}`}>
+                            {signal.momentumScore.toFixed(0)}
+                          </div>
+                          <div className={`col-span-2 text-right text-[9px] font-bold ${smartMoneyColor}`}>
+                            {signal.smartMoneyScore.toFixed(0)}
+                          </div>
+                          <div className="col-span-1 text-right">
+                            <div className={`text-[9px] font-bold ${signal.volumeZScore > 1 ? "text-green-600" : signal.volumeZScore < -1 ? "text-red-600" : "text-muted"}`}>
+                              {signal.volumeZScore.toFixed(1)}
+                            </div>
+                          </div>
+                          <div className="col-span-2 flex items-center justify-center">
+                            <span className={`rounded px-1 py-0.5 text-[7px] font-bold ${orderFlowBg} ${orderFlowColor}`}>
+                              {signal.orderFlow === "Buy Pressure" ? "🟢Buy" : signal.orderFlow === "Sell Pressure" ? "🔴Sell" : "⚪Neutral"}
+                            </span>
+                          </div>
+                          <div className="col-span-2 flex items-center justify-center">
+                            <span className={`rounded px-1 py-0.5 text-[7px] font-bold ${confidenceBg} ${confidenceColor}`}>
+                              {signal.confidenceLevel === "High" ? "🟢High" : signal.confidenceLevel === "Medium" ? "🟡Med" : "⚪Low"}
+                            </span>
+                          </div>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Right: Sub-Indices */}
             <IndexTable title="Sub-Indices" icon="📑" rows={indices.data?.subIndices ?? []} />
           </div>
-        </section>
+
+          {/* Row 4: Movers (Full Width) */}
+          <MoversPanel movers={movers} />
+        </main>
       </div>
     </div>
   );
