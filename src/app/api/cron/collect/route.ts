@@ -6,8 +6,11 @@ import {
   computeHash,
   execute,
   getFloorsheetCount,
+  saveSyncLog,
+  saveErrorLog,
 } from "@/lib/db";
 import { isTradingDay, todayStr, getTradingDays } from "@/lib/date-utils";
+import { fetchWithRetry, retry } from "@/lib/retry";
 import type { IntradayCandle } from "@/lib/db";
 import type { NextRequest } from "next/server";
 
@@ -42,7 +45,38 @@ export async function GET(req: NextRequest) {
     const today = todayStr();
     const isAfterMarket = nptHour >= 15;
 
-    const mero = await fetchMeroLaganiSummary();
+    // Use retry-wrapped fetch for MeroLagani (3 attempts, exponential backoff)
+    let mero;
+    try {
+      mero = await retry(
+        () => fetchMeroLaganiSummary(),
+        { attempts: 3, baseDelayMs: 1000, maxDelayMs: 15000, timeoutMs: 15000 },
+      );
+    } catch (e) {
+      await saveErrorLog({
+        source: "collect:merolagani",
+        severity: "error",
+        message: `MeroLagani unavailable after 3 retries on attempt ${attempt}`,
+        stack: (e as Error)?.stack,
+        context: JSON.stringify({ attempt, today }),
+      });
+      await saveSyncLog({
+        attempt,
+        phase: "fetch",
+        status: "error",
+        detail: "MeroLagani unavailable",
+        broker_date: null,
+        floorsheet_date: today,
+        duration_ms: Date.now() - startTs,
+        error: (e as Error)?.message,
+      });
+      return Response.json({
+        success: false,
+        attempt,
+        message: "MeroLagani unavailable after retries",
+        ts: Date.now(),
+      }, { status: 503 });
+    }
 
     // Stock data ingest (every minute during market hours)
     if (mero?.stock?.detail?.length) {
@@ -88,6 +122,12 @@ export async function GET(req: NextRequest) {
       brokerResult = await ingestBrokerData(mero, today, attempt);
     } else if (isAfterMarket && isTradingDay(today)) {
       console.error(`[collect] Attempt ${attempt}: MeroLagani returned no broker data`);
+      await saveErrorLog({
+        source: "collect:broker-empty",
+        severity: "warning",
+        message: `No broker data on attempt ${attempt}`,
+        context: JSON.stringify({ attempt, today }),
+      });
       brokerResult = { action: "error", count: 0, date: null };
     }
 
@@ -106,6 +146,23 @@ export async function GET(req: NextRequest) {
       gapReport = await checkBrokerDataGaps();
     }
 
+    // Save sync log for every run
+    await saveSyncLog({
+      attempt,
+      phase: "collect",
+      status: "success",
+      detail: brokerResult.date
+        ? `Broker ${brokerResult.action}: ${brokerResult.count} rows for ${brokerResult.date}`
+        : "No broker data processed",
+      broker_date: brokerResult.date ?? null,
+      broker_count: brokerResult.count,
+      broker_action: brokerResult.action ?? null,
+      floorsheet_date: floorsheetResult.date,
+      floorsheet_trades: floorsheetResult.trades,
+      floorsheet_action: floorsheetResult.action,
+      duration_ms: Date.now() - startTs,
+    });
+
     return Response.json({
       success: true,
       attempt,
@@ -121,6 +178,22 @@ export async function GET(req: NextRequest) {
     });
   } catch (e) {
     console.error(`[collect] Attempt ${attempt}: Fatal error:`, (e as Error).message);
+    await saveErrorLog({
+      source: "collect:fatal",
+      severity: "critical",
+      message: `Collect fatal error attempt ${attempt}`,
+      stack: (e as Error)?.stack,
+      context: JSON.stringify({ attempt }),
+    });
+    await saveSyncLog({
+      attempt,
+      phase: "fatal",
+      status: "error",
+      detail: (e as Error)?.message ?? "Collection failed",
+      floorsheet_date: todayStr(),
+      duration_ms: Date.now() - startTs,
+      error: (e as Error)?.message,
+    });
     return Response.json({
       success: false,
       attempt,
@@ -186,6 +259,12 @@ async function ingestBrokerData(
   }
   if (!brokers.length) {
     console.error(`[collect] Attempt ${attempt}: all broker rows rejected for ${normalizedDate}, nothing to store`);
+    await saveErrorLog({
+      source: "collect:broker-validation",
+      severity: "warning",
+      message: `All broker rows rejected for ${normalizedDate}`,
+      context: JSON.stringify({ attempt, rejected: rejected.slice(0, 5) }),
+    });
     return { action: "error", count: 0, date: normalizedDate };
   }
 
@@ -241,6 +320,12 @@ async function syncFloorsheet(
     return { action, trades, date };
   } catch (e) {
     console.error(`[collect] Floorsheet sync failed for ${date}:`, (e as Error).message);
+    await saveErrorLog({
+      source: "collect:floorsheet",
+      severity: "error",
+      message: `Floorsheet sync failed for ${date}`,
+      stack: (e as Error)?.stack,
+    });
     return { action: "error", trades: 0, date };
   }
 }

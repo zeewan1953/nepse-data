@@ -1,7 +1,5 @@
-import { runStockFlow } from "@/lib/broker_flow_engine";
 import { runRealStockFlow } from "@/lib/broker_flow_real_engine";
 import { hasRealData } from "@/lib/broker_flow_real_data";
-import { registerSymbol, DATA_VERSION } from "@/lib/broker_flow_sample_fixtures";
 import { getBrokerFlowCache, saveBrokerFlowCache } from "@/lib/db";
 import type { NextRequest } from "next/server";
 
@@ -20,35 +18,34 @@ export async function GET(req: NextRequest) {
 
   try {
     const real = await hasRealData(date);
-    const source = real ? "real" : "sample";
-    const cacheKey = `stock:${symbol}:${source}:${DATA_VERSION}`;
-    const cached = await getBrokerFlowCache(date, cacheKey);
-    if (cached) return Response.json(cached);
+    if (!real) {
+      return Response.json({
+        dataAvailable: false,
+        error: "No real broker flow data for this date. Run /api/cron/collect?attempt=1 to sync.",
+        date,
+        symbol,
+      }, { status: 503 });
+    }
 
-    let result;
-    if (real) {
-      const realResult = await runRealStockFlow(symbol, date);
-      if ("error" in realResult) {
-        // No real data for this specific symbol, fall back to sample
-        result = runStockFlow(symbol, date);
-        registerSymbol(symbol);
-      } else {
-        result = realResult;
-      }
-    } else {
-      result = runStockFlow(symbol, date);
-      registerSymbol(symbol);
+    const realResult = await runRealStockFlow(symbol, date);
+    if ("error" in realResult) {
+      return Response.json({
+        dataAvailable: false,
+        error: `No real broker flow data for ${symbol} on ${date}. ${realResult.error}`,
+        date,
+        symbol,
+      }, { status: 404 });
     }
 
     const data = {
-      date, symbol, ...result,
-      source,
+      date, symbol, ...realResult,
+      source: "real",
       rollingTrend: [],
       concentrationTrend: [],
       unusualFlags: [],
       generatedAt: Date.now(),
     };
-    await saveBrokerFlowCache(date, cacheKey, data);
+    await saveBrokerFlowCache(date, `stock:${symbol}:real`, data);
     return Response.json(data);
   } catch (e) {
     return Response.json({ error: (e as Error)?.message ?? "Analysis failed" }, { status: 502 });

@@ -76,9 +76,10 @@ function computeBrokerAgg(date: string, items: FloorSheetItem[]) {
 export async function GET(req: NextRequest) {
   try {
     const dateParam = req?.nextUrl?.searchParams?.get("date");
+    const force = req?.nextUrl?.searchParams?.get("force") === "true";
     const date = dateParam || todayStr();
 
-    const result = await cached(`fs-sync:${date}`, 3_000, async () => {
+    const runSync = async () => {
       const existingCount = await getFloorsheetCount(date);
       const items = await fetchAllTrades();
 
@@ -120,6 +121,16 @@ export async function GET(req: NextRequest) {
 
       const dates = await getAvailableDates();
       return { date, tradeCount: items.length, syncedAt: Date.now(), dates };
+    };
+
+    // If force=true, bypass cache and always execute fresh sync
+    if (force) {
+      const result = await runSync();
+      return Response.json(result);
+    }
+
+    const result = await cached(`fs-sync:${date}`, 3_000, async () => {
+      return runSync();
     });
 
     return Response.json(result);

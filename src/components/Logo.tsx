@@ -1,12 +1,12 @@
 import Image from "next/image";
 
-// Reusable AXION brand logo. Renders the logo image from /public/axion-logo.png.
-// Drop the AXION artwork at public/axion-logo.png and it appears everywhere.
+// Reusable NEPSE AXION brand logo.
+// Drop the NEPSE AXION artwork at public/nepse-axion-logo.png and it appears everywhere.
 //
 // Props:
 //  - size: pixel height of the logo image (width auto-scales)
-//  - withText: show the "AXION" wordmark + tagline next to the mark
-//  - tagline: small text under AXION (default "Smart Trading & Analytics")
+//  - withText: show the "NEPSE AXION" wordmark + tagline next to the mark
+//  - tagline: small text under NEPSE AXION (default "Smart Trading & Analytics")
 export function Logo({
   size = 32,
   withText = false,
@@ -22,7 +22,7 @@ export function Logo({
     <span className={`flex items-center gap-2 ${className}`}>
       <Image
         src="/axion-logo.svg"
-        alt="AXION"
+        alt="NEPSE AXION"
         width={size}
         height={size}
         priority
@@ -31,7 +31,7 @@ export function Logo({
       />
       {withText && (
         <span className="leading-tight">
-          <span className="block text-sm font-extrabold tracking-wide text-foreground">AXION</span>
+          <span className="block text-sm font-extrabold tracking-wide text-foreground">NEPSE AXION</span>
           {tagline && (
             <span className="block text-[9px] font-medium uppercase tracking-[0.12em] text-muted">{tagline}</span>
           )}

@@ -14,13 +14,13 @@ type StockWiseItem = {
   totalVolume: number;
   totalTurnover: number;
   tradeCount: number;
-  estBuyVolume: number | null;
-  estSellVolume: number | null;
-  estNetVolume: number | null;
+  avgPrice: number | null;
+  brokerBuy: number | null;
+  brokerSell: number | null;
+  brokerNet: number | null;
   cmf: number | null;
   mfi: number | null;
-  volumeZScore: number | null;
-  estimateMethod: string | null;
+  volZ: number | null;
 };
 
 type StockWiseResp = {
@@ -59,7 +59,7 @@ type BrokerOption = {
   name: string;
 };
 
-type SortKey = "turnover" | "netEst" | "cmf";
+type SortKey = "turnover" | "net" | "buy" | "sell" | "cmf" | "mfi" | "volz" | "avg" | "symbol" | "ltp" | "change" | "volume";
 type TimeRange = "1D" | "3D" | "1W" | "1M" | "3M";
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -94,9 +94,18 @@ const RANGE_LABELS: Record<TimeRange, string> = {
 };
 
 const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+  { key: "symbol", label: "Symbol" },
+  { key: "ltp", label: "LTP" },
+  { key: "change", label: "Chg%" },
+  { key: "volume", label: "Volume" },
   { key: "turnover", label: "Turnover" },
-  { key: "netEst", label: "Est. Net" },
+  { key: "buy", label: "Broker Buy" },
+  { key: "sell", label: "Broker Sell" },
+  { key: "net", label: "Broker Net" },
   { key: "cmf", label: "CMF" },
+  { key: "mfi", label: "MFI" },
+  { key: "volz", label: "Vol Z" },
+  { key: "avg", label: "Avg Price" },
 ];
 
 // ─── Stock Wise Table ──────────────────────────────────────────────────────
@@ -106,29 +115,61 @@ function StockWiseTab({ dateKey }: { dateKey: string }) {
   const [loading, setLoading] = useState(true);
   const [sort, setSort] = useState<SortKey>("turnover");
   const [query, setQuery] = useState("");
+  const [lastFetched, setLastFetched] = useState<number | null>(null);
+  const [autoRefresh, setAutoRefresh] = useState(true);
 
   const fetchWithDate = useCallback(async (date: string) => {
     setLoading(true);
     try {
-      // Empty date → API auto-selects the latest available trading day.
-      const dateQ = date ? `date=${date}&` : "";
-      const res = await fetch(`/api/stock-wise?${dateQ}sort=${sort}`);
-      const d: StockWiseResp = await res.json();
+      const bust = Date.now();
+      const dateQ = date ? `date=${encodeURIComponent(date)}&` : "";
+      const res = await fetch(`/api/stock-summary?${dateQ}sort=${sort}&_t=${bust}`, { cache: "no-store" });
+      const d: any = await res.json();
       if (d.stocks && d.stocks.length > 0) {
-        setData(d);
-      } else if (d.availableDates && d.availableDates.length > 0 && d.availableDates[0] !== date) {
-        // Retry with the latest available date
-        const res2 = await fetch(`/api/stock-wise?date=${d.availableDates[0]}&sort=${sort}`);
-        const d2: StockWiseResp = await res2.json();
-        setData(d2);
+        setData({
+          date: d.date,
+          stocks: d.stocks.map((s: any) => ({
+            symbol: s.symbol,
+            ltp: s.ltp,
+            changePercent: s.changePct,
+            totalVolume: s.quantity || 0,
+            totalTurnover: s.turnover || 0,
+            tradeCount: 0,
+            avgPrice: s.avgPrice || null,
+            brokerBuy: s.brokerBuy,
+            brokerSell: s.brokerSell,
+            brokerNet: s.brokerNet,
+            cmf: s.cmf,
+            mfi: s.mfi,
+            volZ: s.volZ,
+          })),
+          source: d.source,
+        });
+        setLastFetched(Date.now());
       } else {
-        setData(d);
+        setData({
+          date: d.date || date,
+          stocks: [],
+          source: d.source || "database",
+        });
+        setLastFetched(Date.now());
       }
     } catch { setData(null); }
     setLoading(false);
   }, [sort]);
 
-  useEffect(() => { fetchWithDate(dateKey); }, [dateKey, fetchWithDate]);
+  useEffect(() => {
+    fetchWithDate(dateKey);
+  }, [dateKey, fetchWithDate]);
+
+  // Auto-refresh every 30 seconds when tab is visible and autoRefresh is on
+  useEffect(() => {
+    if (!autoRefresh) return;
+    const interval = setInterval(() => {
+      fetchWithDate(dateKey);
+    }, 30_000);
+    return () => clearInterval(interval);
+  }, [autoRefresh, dateKey, fetchWithDate]);
 
   const filtered = useMemo(() => {
     if (!data?.stocks) return [];
@@ -150,7 +191,8 @@ function StockWiseTab({ dateKey }: { dateKey: string }) {
     return (
       <div className="py-12 text-center">
         <div className="text-3xl mb-2">📊</div>
-        <div className="text-sm text-muted">No floorsheet data available for {dateKey}.</div>
+        <div className="text-sm text-muted">No broker data available for {dateKey || "latest date"}.</div>
+        <p className="mt-2 text-[10px] text-muted">Click "Sync Now" at the top to fetch latest data from NEPSE floorsheet</p>
       </div>
     );
   }
@@ -159,19 +201,28 @@ function StockWiseTab({ dateKey }: { dateKey: string }) {
     <div>
       {/* Controls */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-1 text-[10px] text-muted mr-2">
+          <input
+            type="checkbox"
+            checked={autoRefresh}
+            onChange={(e) => setAutoRefresh(e.target.checked)}
+            className="h-3 w-3 rounded border-border"
+          />
+          Auto-refresh 30s
+        </label>
         <input
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search symbol..."
-          className="h-8 w-40 rounded-lg border border-border bg-background px-2.5 text-xs outline-none focus:border-primary"
+          className="h-7 w-36 rounded border border-border bg-background px-2 text-[10px] outline-none focus:border-primary"
         />
-        <div className="flex items-center gap-1 rounded-lg border border-border p-0.5">
+        <div className="flex items-center gap-0.5 rounded border border-border p-0.5">
           {SORT_OPTIONS.map((o) => (
             <button
               key={o.key}
               onClick={() => setSort(o.key)}
-              className={`rounded-md px-2.5 py-1 text-[10px] font-semibold transition ${
+              className={`rounded px-1.5 py-0.5 text-[9px] font-semibold transition ${
                 sort === o.key ? "bg-primary text-white" : "text-muted hover:text-foreground"
               }`}
             >
@@ -180,26 +231,30 @@ function StockWiseTab({ dateKey }: { dateKey: string }) {
           ))}
         </div>
         <div className="ml-auto text-[10px] text-muted">
-          {data.stocks.length} stocks &middot; {data.source}
+          {data?.date ? `Data: ${data.date}` : ""}
+          {lastFetched && ` · Updated ${new Date(lastFetched).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })}`}
+          {" · "}
+          {data?.stocks.length ?? 0} stocks · {data?.source}
         </div>
       </div>
 
       {/* Table */}
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[700px] border-collapse">
+        <table className="w-full min-w-[900px] border-collapse">
           <thead>
             <tr className="border-b border-border text-[10px] font-semibold uppercase tracking-wider text-muted">
-              <th className="sticky left-0 bg-surface px-2 py-2 text-left">Symbol</th>
-              <th className="px-2 py-2 text-right">LTP</th>
-              <th className="px-2 py-2 text-right">Chg%</th>
-              <th className="px-2 py-2 text-right">Volume</th>
-              <th className="px-2 py-2 text-right">Turnover</th>
-              <th className="px-2 py-2 text-right italic text-gray-400" title="Estimated via tick-rule">Est. Buy (est.)</th>
-              <th className="px-2 py-2 text-right italic text-gray-400" title="Estimated via tick-rule">Est. Sell (est.)</th>
-              <th className="px-2 py-2 text-right italic text-gray-400" title="Estimated via tick-rule">Est. Net (est.)</th>
-              <th className="px-2 py-2 text-right">CMF</th>
-              <th className="px-2 py-2 text-right">MFI</th>
-              <th className="px-2 py-2 text-right">Vol Z</th>
+              <th className="sticky left-0 bg-surface px-2 py-2 text-left cursor-pointer hover:text-foreground" onClick={() => setSort("symbol")}>Symbol {sort === "symbol" ? "▲" : ""}</th>
+              <th className="px-2 py-2 text-right cursor-pointer hover:text-foreground" onClick={() => setSort("ltp")}>LTP {sort === "ltp" ? "▲" : ""}</th>
+              <th className="px-2 py-2 text-right cursor-pointer hover:text-foreground" onClick={() => setSort("change")}>Chg% {sort === "change" ? "▲" : ""}</th>
+              <th className="px-2 py-2 text-right cursor-pointer hover:text-foreground" onClick={() => setSort("volume")}>Volume {sort === "volume" ? "▲" : ""}</th>
+              <th className="px-2 py-2 text-right cursor-pointer hover:text-foreground" onClick={() => setSort("turnover")}>Turnover {sort === "turnover" ? "▲" : ""}</th>
+              <th className="px-2 py-2 text-right cursor-pointer hover:text-foreground" onClick={() => setSort("buy")}>Broker Buy {sort === "buy" ? "▲" : ""}</th>
+              <th className="px-2 py-2 text-right cursor-pointer hover:text-foreground" onClick={() => setSort("sell")}>Broker Sell {sort === "sell" ? "▲" : ""}</th>
+              <th className="px-2 py-2 text-right cursor-pointer hover:text-foreground" onClick={() => setSort("net")}>Broker Net {sort === "net" ? "▲" : ""}</th>
+              <th className="px-2 py-2 text-right cursor-pointer hover:text-foreground" onClick={() => setSort("cmf")}>CMF {sort === "cmf" ? "▲" : ""}</th>
+              <th className="px-2 py-2 text-right cursor-pointer hover:text-foreground" onClick={() => setSort("mfi")}>MFI {sort === "mfi" ? "▲" : ""}</th>
+              <th className="px-2 py-2 text-right cursor-pointer hover:text-foreground" onClick={() => setSort("volz")}>Vol Z {sort === "volz" ? "▲" : ""}</th>
+              <th className="px-2 py-2 text-right cursor-pointer hover:text-foreground" onClick={() => setSort("avg")}>Avg Price {sort === "avg" ? "▲" : ""}</th>
             </tr>
           </thead>
           <tbody>
@@ -213,21 +268,19 @@ function StockWiseTab({ dateKey }: { dateKey: string }) {
                   {pct(s.changePercent)}
                 </td>
                 <td className="px-2 py-1.5 text-right tabular-nums text-foreground">
-                  {s.totalVolume.toLocaleString("en-IN")}
+                  {s.quantity?.toLocaleString("en-IN") || s.totalVolume?.toLocaleString("en-IN")}
                 </td>
                 <td className="px-2 py-1.5 text-right tabular-nums text-foreground">
-                  {compact(s.totalTurnover)}
+                  {s.turnoverLabel || compact(s.totalTurnover)}
                 </td>
-                <td className="px-2 py-1.5 text-right tabular-nums text-up">
-                  {s.estimateMethod ? npr(s.estBuyVolume) : MDASH}
+                <td className="px-2 py-1.5 text-right tabular-nums text-up font-semibold">
+                  {s.brokerBuy != null ? compact(s.brokerBuy) : MDASH}
                 </td>
-                <td className="px-2 py-1.5 text-right tabular-nums text-down">
-                  {s.estimateMethod ? npr(s.estSellVolume) : MDASH}
+                <td className="px-2 py-1.5 text-right tabular-nums text-down font-semibold">
+                  {s.brokerSell != null ? compact(s.brokerSell) : MDASH}
                 </td>
-                <td className={`px-2 py-1.5 text-right tabular-nums font-semibold ${
-                  s.estimateMethod ? cls(s.estNetVolume) : ""
-                }`}>
-                  {s.estimateMethod ? npr(s.estNetVolume) : MDASH}
+                <td className={`px-2 py-1.5 text-right tabular-nums font-semibold ${s.brokerNet != null && s.brokerNet >= 0 ? "text-up" : "text-down"}`}>
+                  {s.brokerNet != null ? (s.brokerNet >= 0 ? "+" : "") + compact(s.brokerNet) : MDASH}
                 </td>
                 <td className={`px-2 py-1.5 text-right tabular-nums ${cls(s.cmf)}`}>
                   {s.cmf !== null && s.cmf !== undefined ? (s.cmf >= 0 ? "+" : "") + s.cmf.toFixed(3) : MDASH}
@@ -236,13 +289,16 @@ function StockWiseTab({ dateKey }: { dateKey: string }) {
                   {s.mfi !== null && s.mfi !== undefined ? (s.mfi >= 0 ? "+" : "") + s.mfi.toFixed(1) : MDASH}
                 </td>
                 <td className={`px-2 py-1.5 text-right tabular-nums ${
-                  s.volumeZScore !== null && s.volumeZScore !== undefined
-                    ? Math.abs(s.volumeZScore) > 2 ? "text-up font-bold" : "text-foreground"
+                  s.volZ !== null && s.volZ !== undefined
+                    ? Math.abs(s.volZ) > 2 ? "text-up font-bold" : "text-foreground"
                     : ""
                 }`}>
-                  {s.volumeZScore !== null && s.volumeZScore !== undefined
-                    ? (s.volumeZScore >= 0 ? "+" : "") + s.volumeZScore.toFixed(2)
+                  {s.volZ !== null && s.volZ !== undefined
+                    ? (s.volZ >= 0 ? "+" : "") + s.volZ.toFixed(2)
                     : MDASH}
+                </td>
+                <td className="px-2 py-1.5 text-right tabular-nums text-foreground">
+                  {npr(s.avgPrice)}
                 </td>
               </tr>
             ))}
@@ -367,13 +423,24 @@ function BrokerWiseTab({ range }: { range: TimeRange }) {
     });
   }, []);
 
-  // Load brokers on mount
+  // Load brokers on mount — sort: #1 first, then numeric 2-100, then A-Z by name
   useEffect(() => {
     fetch("/api/merolagani-broker")
       .then((r) => r.json())
       .then((d) => {
         if (d.brokers) {
-          setBrokers(d.brokers.map((b: { broker: string; name: string }) => ({ broker: b.broker, name: b.name })));
+          const list = d.brokers.map((b: { broker: string; name: string }) => ({ broker: b.broker, name: b.name }));
+          list.sort((a, b) => {
+            const aNum = parseInt(a.broker, 10);
+            const bNum = parseInt(b.broker, 10);
+            if (a.broker === "1") return -1;
+            if (b.broker === "1") return 1;
+            if (!isNaN(aNum) && !isNaN(bNum)) return aNum - bNum;
+            if (!isNaN(aNum)) return -1;
+            if (!isNaN(bNum)) return 1;
+            return a.name.localeCompare(b.name);
+          });
+          setBrokers(list);
         }
       })
       .catch(() => {});
@@ -394,7 +461,7 @@ function BrokerWiseTab({ range }: { range: TimeRange }) {
     const q = search.toLowerCase();
     return brokers.filter(
       (b) => b.broker.includes(q) || b.name.toLowerCase().includes(q)
-    ).slice(0, 50);
+    ).slice(0, 100);
   }, [brokers, search]);
 
   const handleSelect = useCallback((b: BrokerOption) => {
@@ -520,8 +587,8 @@ function SummaryTab({ range }: { range: TimeRange }) {
 
   useEffect(() => {
     setLoading(true);
-    fetch("/api/merolagani-broker")
-      .then((r) => r.json())
+    fetch("/api/stock-summary")
+      .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         setData(d);
         setLoading(false);
@@ -533,73 +600,93 @@ function SummaryTab({ range }: { range: TimeRange }) {
     return (
       <div className="flex items-center justify-center py-16">
         <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-primary" />
-        <span className="ml-3 text-sm text-muted">Loading market summary...</span>
+        <span className="ml-3 text-sm text-muted">Loading summary...</span>
       </div>
     );
   }
 
-  const summary = data?.marketSummary || {};
+  const stocks = data?.stocks || [];
+
+  const totalBrokerBuy = stocks.reduce((s: number, x: any) => s + (x.brokerBuy || 0), 0);
+  const totalBrokerSell = stocks.reduce((s: number, x: any) => s + (x.brokerSell || 0), 0);
+  const totalBrokerNet = totalBrokerBuy - totalBrokerSell;
+  const totalTurnover = stocks.reduce((s: number, x: any) => s + (x.turnover || 0), 0);
 
   return (
     <div>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         <div className="rounded-lg border border-border bg-surface p-3">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">Total Turnover</div>
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">Date</div>
           <div className="mt-2 text-base font-bold text-foreground tabular-nums">
-            {compact(summary.totalTurnover)}
+            {data?.date || "—"}
           </div>
         </div>
         <div className="rounded-lg border border-border bg-surface p-3">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">Total Quantity</div>
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">Stocks</div>
           <div className="mt-2 text-base font-bold text-foreground tabular-nums">
-            {summary.totalQuantity?.toLocaleString("en-IN") || "—"}
+            {stocks.length || "—"}
           </div>
         </div>
         <div className="rounded-lg border border-border bg-surface p-3">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">Transactions</div>
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">Broker Buy</div>
           <div className="mt-2 text-base font-bold text-foreground tabular-nums">
-            {summary.totalTransactions?.toLocaleString("en-IN") || "—"}
+            {compact(totalBrokerBuy)}
           </div>
         </div>
         <div className="rounded-lg border border-border bg-surface p-3">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">Scrips Traded</div>
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">Broker Sell</div>
           <div className="mt-2 text-base font-bold text-foreground tabular-nums">
-            {summary.scripsTraded || "—"}
+            {compact(totalBrokerSell)}
           </div>
         </div>
         <div className="rounded-lg border border-border bg-surface p-3">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">Brokers Active</div>
-          <div className="mt-2 text-base font-bold text-foreground tabular-nums">
-            {data?.brokerCount || "—"}
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">Broker Net</div>
+          <div className={`mt-2 text-base font-bold tabular-nums ${cls(totalBrokerNet)}`}>
+            {totalBrokerNet >= 0 ? "+" : ""}{compact(totalBrokerNet)}
           </div>
         </div>
       </div>
 
-      {/* All Brokers */}
+      {/* All Stocks — Broker Buy/Sell/Net */}
       <div className="mt-6">
         <h3 className="mb-3 text-sm font-semibold text-foreground">
-          All Brokers by Net Flow{data?.brokers?.length ? ` (${data.brokers.length})` : ""}
+          Stock Wise Broker Summary {stocks.length ? `(${stocks.length})` : ""}
         </h3>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[500px] border-collapse">
             <thead>
               <tr className="border-b border-border text-[10px] font-semibold uppercase tracking-wider text-muted">
-                <th className="px-2 py-2 text-left">#</th>
-                <th className="px-2 py-2 text-left">Broker</th>
-                <th className="px-2 py-2 text-right">Buy Amount</th>
-                <th className="px-2 py-2 text-right">Sell Amount</th>
-                <th className="px-2 py-2 text-right">Net Amount</th>
+                <th className="px-2 py-2 text-left">Symbol</th>
+                <th className="px-2 py-2 text-right">LTP</th>
+                <th className="px-2 py-2 text-right">Change%</th>
+                <th className="px-2 py-2 text-right">Quantity</th>
+                <th className="px-2 py-2 text-right">Turnover</th>
+                <th className="px-2 py-2 text-right">Broker Buy</th>
+                <th className="px-2 py-2 text-right">Broker Sell</th>
+                <th className="px-2 py-2 text-right">Broker Net</th>
               </tr>
             </thead>
             <tbody>
-              {data?.brokers?.map((b: any, i: number) => (
-                <tr key={b.broker} className="border-b border-border/50 text-xs hover:bg-surface-2/50">
-                  <td className="px-2 py-2 text-muted tabular-nums">{i + 1}</td>
-                  <td className="px-2 py-2 font-semibold text-foreground">{b.broker} {b.name}</td>
-                  <td className="px-2 py-2 text-right tabular-nums text-up">{compact(b.purchase)}</td>
-                  <td className="px-2 py-2 text-right tabular-nums text-down">{compact(b.sell)}</td>
-                  <td className={`px-2 py-2 text-right tabular-nums font-semibold ${b.net >= 0 ? "text-up" : "text-down"}`}>
-                    {b.net >= 0 ? "+" : ""}{compact(b.net)}
+              {stocks.map((s: any, i: number) => (
+                <tr key={s.symbol} className="border-b border-border/50 text-xs hover:bg-surface-2/50">
+                  <td className="px-2 py-2 font-semibold text-foreground">
+                    <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-bold text-gray-600 mr-2">{i + 1}</span>
+                    {s.symbol}
+                  </td>
+                  <td className="px-2 py-2 text-right tabular-nums">₹{s.ltp?.toLocaleString("en-IN")}</td>
+                  <td className={`px-2 py-2 text-right tabular-nums ${s.changePct >= 0 ? "text-up" : "text-down"}`}>
+                    {s.changePct >= 0 ? "+" : ""}{s.changePct?.toFixed(2)}%
+                  </td>
+                  <td className="px-2 py-2 text-right tabular-nums">
+                    {(s.quantity || 0).toLocaleString("en-IN")}
+                  </td>
+                  <td className="px-2 py-2 text-right tabular-nums">
+                    {s.turnoverLabel}
+                  </td>
+                  <td className="px-2 py-2 text-right tabular-nums text-up">{compact(s.brokerBuy)}</td>
+                  <td className="px-2 py-2 text-right tabular-nums text-down">{compact(s.brokerSell)}</td>
+                  <td className={`px-2 py-2 text-right tabular-nums font-semibold ${s.brokerNet >= 0 ? "text-up" : "text-down"}`}>
+                    {s.brokerNet >= 0 ? "+" : ""}{compact(s.brokerNet)}
                   </td>
                 </tr>
               ))}
@@ -813,6 +900,25 @@ export default function BrokerAnalysisPage() {
   const [mounted, setMounted] = useState(false);
   const [brokers, setBrokers] = useState<BrokerOption[]>([]);
   const [coverage, setCoverage] = useState<{ days: number; firstDate: string | null; lastDate: string | null; targetDays: number } | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState<number | null>(null);
+
+  const handleGlobalSync = async () => {
+    setSyncing(true);
+    try {
+      const r = await fetch("/api/floorsheet/sync?force=true", { cache: "no-store" });
+      const d = await r.json();
+      if (d.error) throw new Error(d.error);
+      setLastSyncTime(Date.now());
+      // Force reload the page to pick up new DB data everywhere
+      setTimeout(() => window.location.reload(), 800);
+    } catch (e) {
+      console.error("Sync failed:", e);
+      alert("Sync failed: " + (e as Error).message);
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   useEffect(() => setMounted(true), []);
 
@@ -837,23 +943,23 @@ export default function BrokerAnalysisPage() {
   return (
     <div className="mx-auto max-w-[1200px]">
       {/* Header */}
-      <div className="mb-4">
-        <h1 className="text-lg font-bold text-foreground">Broker Analysis</h1>
-        <p className="text-xs text-muted">
+      <div className="mb-3">
+        <h1 className="text-base font-bold text-foreground">Broker Analysis</h1>
+        <p className="text-[11px] text-muted mt-0.5">
           {tab === "stock"
             ? "Stock-level floorsheet activity with tick-rule estimated buy/sell pressure"
             : tab === "broker"
             ? "Real broker performance with stock-level buy/sell activity from NEPSE"
             : tab === "flow"
-            ? "Stock-wise broker flow — kun broker le kati kitta uthayo (BUY / SELL / HOLD)"
+            ? "Stock-wise broker flow"
             : tab === "summary"
             ? "Market overview and broker performance summary"
             : tab === "favorite"
             ? "Your favorite brokers and holdings"
-            : "All brokers performance with correct time-range aggregation (1D, 3D, 1W, 1M, 3M)"}
+            : "All brokers performance with correct time-range aggregation"}
         </p>
         {mounted && coverage && coverage.days > 0 && (
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px]">
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[10px]">
             <span className="inline-flex items-center gap-1 rounded-full border border-border bg-surface px-2 py-0.5 font-semibold text-foreground">
               📅 {coverage.days} {coverage.days === 1 ? "day" : "days"} stored
               {coverage.firstDate && coverage.lastDate && (
@@ -872,54 +978,53 @@ export default function BrokerAnalysisPage() {
         )}
       </div>
 
-      {/* Tab Bar + Time Range */}
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        {/* Tabs */}
-        <div className="flex items-center gap-1 rounded-lg border border-border p-0.5 overflow-x-auto">
+      {/* Tabs — top left, compact */}
+      <div className="mb-3 flex items-center gap-2 overflow-x-auto">
+        <div className="flex items-center gap-0.5">
           <button
             onClick={() => setTab("stock")}
-            className={`rounded-md px-3 py-1.5 text-xs font-semibold transition whitespace-nowrap ${
-              tab === "stock" ? "bg-primary text-white shadow-sm" : "text-muted hover:text-foreground"
+            className={`rounded px-2 py-1 text-[10px] font-semibold transition whitespace-nowrap ${
+              tab === "stock" ? "bg-primary text-white" : "text-muted hover:text-foreground"
             }`}
           >
             Stock Wise
           </button>
           <button
             onClick={() => setTab("broker")}
-            className={`rounded-md px-3 py-1.5 text-xs font-semibold transition whitespace-nowrap ${
-              tab === "broker" ? "bg-primary text-white shadow-sm" : "text-muted hover:text-foreground"
+            className={`rounded px-2 py-1 text-[10px] font-semibold transition whitespace-nowrap ${
+              tab === "broker" ? "bg-primary text-white" : "text-muted hover:text-foreground"
             }`}
           >
             Broker Wise
           </button>
           <button
             onClick={() => setTab("flow")}
-            className={`rounded-md px-3 py-1.5 text-xs font-semibold transition whitespace-nowrap ${
-              tab === "flow" ? "bg-primary text-white shadow-sm" : "text-muted hover:text-foreground"
+            className={`rounded px-2 py-1 text-[10px] font-semibold transition whitespace-nowrap ${
+              tab === "flow" ? "bg-primary text-white" : "text-muted hover:text-foreground"
             }`}
           >
             📊 Flow
           </button>
           <button
             onClick={() => setTab("summary")}
-            className={`rounded-md px-3 py-1.5 text-xs font-semibold transition whitespace-nowrap ${
-              tab === "summary" ? "bg-primary text-white shadow-sm" : "text-muted hover:text-foreground"
+            className={`rounded px-2 py-1 text-[10px] font-semibold transition whitespace-nowrap ${
+              tab === "summary" ? "bg-primary text-white" : "text-muted hover:text-foreground"
             }`}
           >
             Summary
           </button>
           <button
             onClick={() => setTab("favorite")}
-            className={`rounded-md px-3 py-1.5 text-xs font-semibold transition whitespace-nowrap ${
-              tab === "favorite" ? "bg-primary text-white shadow-sm" : "text-muted hover:text-foreground"
+            className={`rounded px-2 py-1 text-[10px] font-semibold transition whitespace-nowrap ${
+              tab === "favorite" ? "bg-primary text-white" : "text-muted hover:text-foreground"
             }`}
           >
             Broker Favorite
           </button>
           <button
             onClick={() => setTab("performance")}
-            className={`rounded-md px-3 py-1.5 text-xs font-semibold transition whitespace-nowrap ${
-              tab === "performance" ? "bg-primary text-white shadow-sm" : "text-muted hover:text-foreground"
+            className={`rounded px-2 py-1 text-[10px] font-semibold transition whitespace-nowrap ${
+              tab === "performance" ? "bg-primary text-white" : "text-muted hover:text-foreground"
             }`}
           >
             📊 Performance
@@ -927,12 +1032,12 @@ export default function BrokerAnalysisPage() {
         </div>
 
         {/* Time Range Pills */}
-        <div className="flex items-center gap-1 rounded-lg border border-border p-0.5">
+        <div className="ml-auto flex items-center gap-0.5 rounded border border-border p-0.5">
           {(Object.keys(RANGE_LABELS) as TimeRange[]).map((r) => (
             <button
               key={r}
               onClick={() => setRange(r)}
-              className={`rounded-md px-2.5 py-1 text-[10px] font-semibold transition ${
+              className={`rounded px-2 py-0.5 text-[9px] font-semibold transition ${
                 range === r ? "bg-primary text-white" : "text-muted hover:text-foreground"
               }`}
             >
@@ -940,6 +1045,31 @@ export default function BrokerAnalysisPage() {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Quick Actions — top left, small */}
+      <div className="mb-2 flex items-center gap-2">
+        <button
+          onClick={handleGlobalSync}
+          disabled={syncing}
+          className="h-7 rounded border border-border bg-surface px-2.5 text-[10px] font-semibold text-foreground hover:bg-surface-2 disabled:opacity-50"
+        >
+          {syncing ? "Syncing..." : "🔁 Sync Now"}
+        </button>
+        <button
+          onClick={() => window.location.reload()}
+          className="h-7 rounded border border-border bg-surface px-2.5 text-[10px] font-semibold text-foreground hover:bg-surface-2"
+        >
+          🔄 Refresh
+        </button>
+        {lastSyncTime && (
+          <span className="text-[10px] text-muted">
+            Last sync: {new Date(lastSyncTime).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })}
+          </span>
+        )}
+        <span className="text-[10px] text-muted ml-auto">
+          Stock Wise auto-refreshes every 30s when enabled
+        </span>
       </div>
 
       {/* Tab Content */}

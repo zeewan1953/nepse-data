@@ -26,7 +26,7 @@ export default function ChartPage() {
     <div className="fixed inset-0 z-[60] flex flex-col bg-[#0b0f19] text-[#d1d4dc]">
       {/* top bar */}
       <div className="flex flex-wrap items-center gap-2 border-b border-[#222a3a] px-3 py-2">
-        <Link href="/" className="text-sm font-bold text-[#8a93a6] hover:text-white">← AXION</Link>
+        <Link href="/" className="text-sm font-bold text-[#8a93a6] hover:text-white">← NEPSE AXION</Link>
 
         <form onSubmit={handleSubmit} className="flex items-center">
           <input

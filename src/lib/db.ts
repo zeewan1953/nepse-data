@@ -260,30 +260,44 @@ async function migrateSchema(): Promise<void> {
     await db.execute("ALTER TABLE merolagani_broker_daily ADD COLUMN sellQty REAL DEFAULT 0");
   } catch { /* already exists */ }
 
-  // Health check runs log
+  // Sync logs — records every collection run for monitoring/debugging
   await db.execute(`
-    CREATE TABLE IF NOT EXISTS health_check_runs (
+    CREATE TABLE IF NOT EXISTS sync_logs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      timestamp TEXT NOT NULL,
-      payload TEXT NOT NULL
+      ts INTEGER NOT NULL,
+      attempt INTEGER NOT NULL DEFAULT 1,
+      phase TEXT NOT NULL,
+      status TEXT NOT NULL,
+      detail TEXT NOT NULL,
+      broker_date TEXT,
+      broker_count INTEGER DEFAULT 0,
+      broker_action TEXT,
+      floorsheet_date TEXT,
+      floorsheet_trades INTEGER DEFAULT 0,
+      floorsheet_action TEXT,
+      duration_ms INTEGER DEFAULT 0,
+      error TEXT
     )
   `);
 
-  // Trade decision log
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_sync_logs_ts ON sync_logs(ts)`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_sync_logs_date ON sync_logs(broker_date)`);
+
+  // Error logs — permanent failure records
   await db.execute(`
-    CREATE TABLE IF NOT EXISTS trade_decision_log (
+    CREATE TABLE IF NOT EXISTS error_logs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      timestamp TEXT NOT NULL,
-      stock_symbol TEXT NOT NULL,
-      cmf REAL,
-      mfi REAL,
-      vol_zscore REAL,
-      smart_money_score REAL,
-      signal TEXT NOT NULL,
-      confidence REAL NOT NULL,
-      data_source TEXT NOT NULL
+      ts INTEGER NOT NULL,
+      source TEXT NOT NULL,
+      severity TEXT NOT NULL DEFAULT 'error',
+      message TEXT NOT NULL,
+      stack TEXT,
+      context TEXT
     )
   `);
+
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_error_logs_ts ON error_logs(ts)`);
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_error_logs_source ON error_logs(source)`);
 
   // Self-healer action log
   await db.execute(`
@@ -916,4 +930,128 @@ export async function getMeroBrokerData(date: string, brokerCode: string): Promi
     sellAmt: Number(row.sellAmt),
     netAmt: Number(row.netAmt),
   };
+}
+
+// ─── Sync logs ─────────────────────────────────────────────────────────
+export type SyncLogRow = {
+  id: number;
+  ts: number;
+  attempt: number;
+  phase: string;
+  status: string;
+  detail: string;
+  broker_date: string | null;
+  broker_count: number;
+  broker_action: string | null;
+  floorsheet_date: string | null;
+  floorsheet_trades: number;
+  floorsheet_action: string | null;
+  duration_ms: number;
+  error: string | null;
+};
+
+export async function saveSyncLog(row: {
+  attempt: number;
+  phase: string;
+  status: string;
+  detail: string;
+  broker_date?: string | null;
+  broker_count?: number;
+  broker_action?: string | null;
+  floorsheet_date?: string | null;
+  floorsheet_trades?: number;
+  floorsheet_action?: string | null;
+  duration_ms?: number;
+  error?: string | null;
+}): Promise<void> {
+  await db.execute({
+    sql: `INSERT INTO sync_logs(ts, attempt, phase, status, detail, broker_date, broker_count, broker_action, floorsheet_date, floorsheet_trades, floorsheet_action, duration_ms, error)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      Date.now(),
+      row.attempt,
+      row.phase,
+      row.status,
+      row.detail,
+      row.broker_date ?? null,
+      row.broker_count ?? 0,
+      row.broker_action ?? null,
+      row.floorsheet_date ?? null,
+      row.floorsheet_trades ?? 0,
+      row.floorsheet_action ?? null,
+      row.duration_ms ?? 0,
+      row.error ?? null,
+    ],
+  });
+}
+
+export async function getSyncLogs(limit = 50): Promise<SyncLogRow[]> {
+  const r = await db.execute({
+    sql: `SELECT id, ts, attempt, phase, status, detail, broker_date, broker_count, broker_action, floorsheet_date, floorsheet_trades, floorsheet_action, duration_ms, error
+          FROM sync_logs ORDER BY id DESC LIMIT ?`,
+    args: [limit],
+  });
+  return r.rows.map((row) => ({
+    id: Number(row.id),
+    ts: Number(row.ts),
+    attempt: Number(row.attempt),
+    phase: String(row.phase),
+    status: String(row.status),
+    detail: String(row.detail),
+    broker_date: row.broker_date != null ? String(row.broker_date) : null,
+    broker_count: Number(row.broker_count),
+    broker_action: row.broker_action != null ? String(row.broker_action) : null,
+    floorsheet_date: row.floorsheet_date != null ? String(row.floorsheet_date) : null,
+    floorsheet_trades: Number(row.floorsheet_trades),
+    floorsheet_action: row.floorsheet_action != null ? String(row.floorsheet_action) : null,
+    duration_ms: Number(row.duration_ms),
+    error: row.error != null ? String(row.error) : null,
+  }));
+}
+
+// ─── Error logs ────────────────────────────────────────────────────────
+export type ErrorLogRow = {
+  id: number;
+  ts: number;
+  source: string;
+  severity: string;
+  message: string;
+  stack: string | null;
+  context: string | null;
+};
+
+export async function saveErrorLog(row: {
+  source: string;
+  severity?: string;
+  message: string;
+  stack?: string | null;
+  context?: string | null;
+}): Promise<void> {
+  await db.execute({
+    sql: `INSERT INTO error_logs(ts, source, severity, message, stack, context) VALUES (?, ?, ?, ?, ?, ?)`,
+    args: [
+      Date.now(),
+      row.source,
+      row.severity ?? "error",
+      row.message,
+      row.stack ?? null,
+      row.context ?? null,
+    ],
+  });
+}
+
+export async function getErrorLogs(limit = 50): Promise<ErrorLogRow[]> {
+  const r = await db.execute({
+    sql: `SELECT id, ts, source, severity, message, stack, context FROM error_logs ORDER BY id DESC LIMIT ?`,
+    args: [limit],
+  });
+  return r.rows.map((row) => ({
+    id: Number(row.id),
+    ts: Number(row.ts),
+    source: String(row.source),
+    severity: String(row.severity),
+    message: String(row.message),
+    stack: row.stack != null ? String(row.stack) : null,
+    context: row.context != null ? String(row.context) : null,
+  }));
 }

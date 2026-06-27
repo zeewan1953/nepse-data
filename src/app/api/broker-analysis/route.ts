@@ -352,69 +352,6 @@ async function calcAISignals(liveData: LiveMarketData[]) {
   return signals.slice(0, 4);
 }
 
-// Generate sample broker analysis from live market data when NEPSE floorsheet is unavailable
-function generateSampleBrokerAnalysis(live: LiveMarketData[]) {
-  if (live.length === 0) return null;
-
-  // Sort by turnover to get most active stocks
-  const activeStocks = [...live]
-    .filter((s) => s.totalTradeValue > 100000)
-    .sort((a, b) => b.totalTradeValue - a.totalTradeValue)
-    .slice(0, 40);
-
-  // Generate sample floorsheet items
-  const sampleItems: FloorSheetItem[] = [];
-  const brokerPool = Array.from({ length: 50 }, (_, i) => String(i + 1)); // 50 brokers
-
-  for (const stock of activeStocks) {
-    // Generate 20-50 trades per stock
-    const tradeCount = 20 + Math.floor(Math.random() * 30);
-    const avgPrice = stock.lastTradedPrice;
-    const totalQty = stock.totalTradeQuantity;
-
-    for (let i = 0; i < tradeCount; i++) {
-      const qty = Math.round((totalQty / tradeCount) * (0.5 + Math.random()));
-      const price = avgPrice * (0.98 + Math.random() * 0.04); // ±2% variation
-      const buyer = brokerPool[Math.floor(Math.random() * brokerPool.length)];
-      let seller = brokerPool[Math.floor(Math.random() * brokerPool.length)];
-      while (seller === buyer) seller = brokerPool[Math.floor(Math.random() * brokerPool.length)];
-
-      sampleItems.push({
-        stockSymbol: stock.symbol,
-        buyerMemberId: buyer,
-        sellerMemberId: seller,
-        contractQuantity: qty,
-        contractAmount: qty * price,
-      } as FloorSheetItem);
-    }
-  }
-
-  // Calculate analysis from sample data
-  const { aggressiveBuy, aggressiveSell } = calcAggressiveTrades(sampleItems);
-  const brokerFavorites = calcBrokerFavorites(sampleItems);
-  const zeroSum = calcZeroSum(sampleItems);
-
-  const totalQty = sampleItems.reduce((s, t) => s + t.contractQuantity, 0);
-  const totalAmt = sampleItems.reduce((s, t) => s + t.contractAmount, 0);
-  const uniqueBrokers = new Set([...sampleItems.map((t) => t.buyerMemberId), ...sampleItems.map((t) => t.sellerMemberId)]);
-  const uniqueStocks = new Set(sampleItems.map((t) => t.stockSymbol));
-
-  return {
-    totals: {
-      trades: sampleItems.length,
-      qty: totalQty,
-      amount: totalAmt,
-      brokers: uniqueBrokers.size,
-      stocks: uniqueStocks.size,
-    },
-    aggressiveBuy,
-    aggressiveSell,
-    brokerFavorites,
-    zeroSum,
-    floorCount: sampleItems.length,
-  };
-}
-
 export async function GET() {
   try {
     // Overall timeout: 30 seconds max
@@ -480,64 +417,40 @@ export async function GET() {
       let isSampleData = false;
 
       if (floorsheet.length > 0) {
-        // Real floorsheet data available
         const result = calcAggressiveTrades(floorsheet);
         aggressiveBuy = result.aggressiveBuy;
         aggressiveSell = result.aggressiveSell;
         brokerFavorites = calcBrokerFavorites(floorsheet);
         zeroSum = calcZeroSum(floorsheet);
-      } else if (live.length > 0) {
-        // No floorsheet — generate sample broker analysis from live data
-        const sample = generateSampleBrokerAnalysis(live);
-        if (sample) {
-          aggressiveBuy = sample.aggressiveBuy;
-          aggressiveSell = sample.aggressiveSell;
-          brokerFavorites = sample.brokerFavorites;
-          zeroSum = sample.zeroSum;
-          totalTrades = sample.totals.trades;
-          totalQty = sample.totals.qty;
-          totalAmt = sample.totals.amount;
-          isSampleData = true;
-        }
       }
 
-      // AI signals from live data + price history
-      const aiSignals = live.length > 0
-        ? await calcAISignals(live).catch(() => [])
-        : [];
+      const dataAvailable = floorsheet.length > 0 || live.length > 0;
 
-      // Determine error message if no data
-      let error: string | undefined;
-      if (floorsheet.length === 0 && live.length === 0) {
-        error = "No data available. NEPSE API may be unreachable and DB has no synced data. Please sync floorsheet data first.";
-      } else if (floorsheet.length === 0 && isSampleData) {
-        error = "NEPSE floorsheet unavailable — showing simulated broker analysis based on live market data.";
-      }
-
-        return {
-          generatedAt: Date.now(),
-          source: isSampleData ? `${source}+sample` : source,
-          totals: {
-            trades: totalTrades,
-            qty: totalQty,
-            amount: totalAmt,
-            brokers: uniqueBrokers.size || (live.length > 0 ? Math.round(live.length * 0.3) : 0),
-            stocks: uniqueStocks.size || live.length,
-          },
-          aggressiveBuy,
-          aggressiveSell,
-          brokerFavorites,
-          zeroSum,
-          aiSignals,
-          liveCount: live.length,
-          floorCount: floorsheet.length,
-          liveData: live.length > 0 ? {
-            advances: live.filter((r) => r.percentageChange > 0).length,
-            declines: live.filter((r) => r.percentageChange < 0).length,
-            unchanged: live.filter((r) => r.percentageChange === 0).length,
-          } : null,
-          error,
-        };
+      return {
+        generatedAt: Date.now(),
+        source,
+        dataAvailable,
+        totals: {
+          trades: totalTrades,
+          qty: totalQty,
+          amount: totalAmt,
+          brokers: uniqueBrokers.size,
+          stocks: uniqueStocks.size,
+        },
+        aggressiveBuy,
+        aggressiveSell,
+        brokerFavorites,
+        zeroSum,
+        aiSignals,
+        liveCount: live.length,
+        floorCount: floorsheet.length,
+        liveData: live.length > 0 ? {
+          advances: live.filter((r) => r.percentageChange > 0).length,
+          declines: live.filter((r) => r.percentageChange < 0).length,
+          unchanged: live.filter((r) => r.percentageChange === 0).length,
+        } : null,
+        error: !dataAvailable ? "No data available. NEPSE API may be unreachable and DB has no synced data. Please sync floorsheet data first." : floorsheet.length === 0 ? "Floorsheet data unavailable. Run /api/floorsheet/sync to populate." : undefined,
+      };
       }),
       timeoutPromise,
     ]);
