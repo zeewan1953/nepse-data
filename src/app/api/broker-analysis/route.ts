@@ -441,7 +441,6 @@ export async function GET() {
         aggressiveSell,
         brokerFavorites,
         zeroSum,
-        aiSignals,
         liveCount: live.length,
         floorCount: floorsheet.length,
         liveData: live.length > 0 ? {
