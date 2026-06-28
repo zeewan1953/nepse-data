@@ -39,8 +39,8 @@ yarn-error.log*
 /data/*.db-shm
 /data/*.db-wal
 
-# vercel
-.vercel
+# vercel - track project.json but not build output
+.vercel/output
 
 # typescript
 *.tsbuildinfo
@@ -50,7 +50,4 @@ next-env.d.ts
 .claude/settings.local.json
 
 *.zip
-.vercel
 *.png
-
-.vercel/output
