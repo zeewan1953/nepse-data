@@ -20,6 +20,13 @@ export const metadata: Metadata = {
   title: "NEPSE AXION — NEPSE Analytics",
   description:
     "Live Nepal Stock Exchange market watch, floorsheet, charts and portfolio tracking.",
+  icons: {
+    icon: [
+      { url: "/favicon-32.png", sizes: "32x32", type: "image/png" },
+      { url: "/favicon-64.png", sizes: "64x64", type: "image/png" },
+    ],
+    apple: "/apple-touch-icon-180.png",
+  },
 };
 
 export const viewport = {

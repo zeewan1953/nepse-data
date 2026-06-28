@@ -4,6 +4,7 @@ import Link from "next/link";
 import { npr, num, pct, compact } from "@/lib/format";
 import { usePoll } from "@/lib/useLive";
 import type { LiveMarketData } from "@/lib/types";
+import { Logo } from "@/components/Logo";
 
 type LiveResp = { data: LiveMarketData[]; count: number };
 
@@ -163,9 +164,8 @@ export default function PaperTradingPage() {
     <div className="mx-auto max-w-[1200px] px-4 py-6">
       {/* ── Header with Logo ── */}
       <div className="mb-6 flex items-center gap-3">
-        <Link href="/" className="flex shrink-0 items-center gap-2">
-          <span className="grid h-8 w-8 place-items-center rounded-lg text-sm font-black text-white" style={{ background: "#0F6E56" }}>A</span>
-          <span className="text-sm font-extrabold text-foreground">NEPSE AXION</span>
+        <Link href="/" className="flex shrink-0 items-center">
+          <Logo variant="medium" size={32} />
         </Link>
         <span className="text-muted">/</span>
         <div className="flex items-center gap-2">
