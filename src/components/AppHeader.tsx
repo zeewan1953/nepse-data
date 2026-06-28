@@ -313,54 +313,9 @@ export default function AppHeader() {
       <div className="border-b" style={{ borderColor: "rgba(0,0,0,0.12)", background: "#fff" }}>
         <div className="mx-auto flex max-w-[1400px] items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1 sm:py-1.5">
           {/* Logo - NEPSE AXION */}
-          <Link href="/" className="flex shrink-0 items-center mr-1 sm:mr-2">
+          <Link href="/" className="flex shrink-0 items-center">
             <Logo variant="medium" size={32} />
           </Link>
-
-          {/* Navigation Pill - All screen sizes */}
-          <nav className="flex flex-1 justify-center overflow-x-auto no-scrollbar">
-            <div className="flex items-center gap-0.5 rounded-[10px] border p-[3px]" style={{ background: "#F5F5F0", borderColor: "rgba(0,0,0,0.12)" }}>
-              {NAV.map((item) => {
-                const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
-                return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      className="relative flex shrink-0 items-center gap-1 rounded-[7px] px-1.5 sm:px-2.5 py-1 text-[10px] sm:text-[11px] font-medium transition-all"
-                      style={active ? { background: "#0F6E56", color: "#fff" } : { background: "transparent", color: "#555" }}
-                      onMouseEnter={(e) => {
-                        if (!active) {
-                          e.currentTarget.style.background = "#fff";
-                          e.currentTarget.style.color = "#1a1a1a";
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!active) {
-                          e.currentTarget.style.background = "transparent";
-                          e.currentTarget.style.color = "#555";
-                        }
-                      }}
-                    >
-                      <Icon d={item.icon} size={13} />
-                      <span className="inline whitespace-nowrap">{item.label}</span>
-                      {item.href === "/paper-trading" ? (
-                        <span className="rounded border px-1 py-0.5 text-[7px] font-bold uppercase leading-none tracking-wider"
-                          style={{ borderColor: "#d4af37", color: "#d4af37" }}>
-                          DEMO
-                        </span>
-                      ) : item.badge ? (
-                        <span className="absolute -right-1 -top-1 grid h-3.5 min-w-3.5 place-items-center rounded-full px-1 text-[8px] font-bold text-white" style={{ background: "#c0392b" }}>
-                          {newsCount}
-                        </span>
-                      ) : null}
-                    </Link>
-                );
-              })}
-            </div>
-          </nav>
-
-          {/* Spacer */}
-          <div className="flex-1" />
 
           {/* ── Right Side Icons - Mobile optimized ── */}
           <div className="ml-auto flex items-center gap-0.5 sm:gap-1">
@@ -673,7 +628,34 @@ export default function AppHeader() {
         </div>
       </div>
 
-      
+      {/* ── Vertical Navigation List ──────────────────────────── */}
+      <nav className="border-b" style={{ borderColor: "rgba(0,0,0,0.12)", background: "#fff" }}>
+        <div className="mx-auto max-w-[1400px] px-2 sm:px-4 py-1">
+          <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5">
+            {NAV.map((item) => {
+              const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] sm:text-[12px] font-medium transition whitespace-nowrap"
+                  style={active ? { background: "#0F6E56", color: "#fff" } : { background: "transparent", color: "#555" }}
+                >
+                  <Icon d={item.icon} size={13} />
+                  <span>{item.label}</span>
+                  {item.href === "/paper-trading" ? (
+                    <span className="rounded border px-1 py-0.5 text-[7px] font-bold uppercase leading-none tracking-wider"
+                      style={{ borderColor: "#d4af37", color: "#d4af37" }}>
+                      DEMO
+                    </span>
+                  ) : null}
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      </nav>
+
       {/* ── Live Market Stats Bar ─────────────────────────── */}
       {live.data && live.data.data.length > 0 && (
         <LiveHeaderBar indices={indices.data} live={live.data} mkt={mkt} />
