@@ -34,24 +34,31 @@ export async function captureDailySnapshot(): Promise<{ inserted: number; date: 
     const res = await fetch(`${getBaseUrl()}/api/stock-wise?date=${dateStr}`, { cache: "no-store" });
     if (res.ok) {
       const json = await res.json();
-      stockWiseData = json.stocks || json;
-      if (!Array.isArray(stockWiseData)) stockWiseData = [];
+      stockWiseData = Array.isArray(json) ? json : Array.isArray(json?.stocks) ? json.stocks : [];
     }
   } catch {}
 
   // Fetch tactical signals (momentumScore, smartMoneyScore, divergenceFlag)
-  let signalsData: { sectors?: any[]; signals?: any[] } = {};
+  const tacticalMap = new Map<string, any>();
   try {
     const res = await fetch(`${getBaseUrl()}/api/signals`, { cache: "no-store" });
-    if (res.ok) signalsData = await res.json();
+    if (res.ok) {
+      const signalsData = await res.json();
+      // signals come via sectors -> topSignals path
+      const sectors = Array.isArray(signalsData?.sectors) ? signalsData.sectors : [];
+      for (const sector of sectors) {
+        const top = Array.isArray(sector?.topSignals) ? sector.topSignals : [];
+        for (const s of top) {
+          if (s?.symbol) tacticalMap.set(s.symbol, s);
+        }
+      }
+      // Also check flat signals array
+      const flat = Array.isArray(signalsData?.signals) ? signalsData.signals : [];
+      for (const s of flat) {
+        if (s?.symbol) tacticalMap.set(s.symbol, s);
+      }
+    }
   } catch {}
-
-  // Flatten tactical signals into a lookup: symbol -> { momentumScore, smartMoneyScore, divergenceFlag }
-  const tacticalMap = new Map<string, any>();
-  const allSignals = signalsData.signals || [];
-  for (const s of allSignals) {
-    tacticalMap.set(s.symbol, s);
-  }
 
   for (const row of stockWiseData) {
     const symbol = row.symbol;
@@ -90,18 +97,17 @@ export async function captureDailySnapshot(): Promise<{ inserted: number; date: 
     const flowRes = await fetch(`${getBaseUrl()}/api/broker-flow/stocks?date=${dateStr}`, { cache: "no-store" });
     if (flowRes.ok) {
       const flowData = await flowRes.json();
-      const items = flowData.stocks || flowData;
-      if (Array.isArray(items)) {
-        for (const item of items) {
-          try {
-            await execute(
-              `INSERT OR IGNORE INTO signal_daily_snapshot (trade_date, symbol, signal_name, signal_value, computed_at)
-               VALUES (?, ?, 'net_broker_flow', ?, ?)`,
-              [dateStr, item.symbol, item.netAmt ?? null, now]
-            );
-            inserted++;
-          } catch {}
-        }
+      const items = Array.isArray(flowData) ? flowData : Array.isArray(flowData?.stocks) ? flowData.stocks : [];
+      for (const item of items) {
+        if (!item?.symbol) continue;
+        try {
+          await execute(
+            `INSERT OR IGNORE INTO signal_daily_snapshot (trade_date, symbol, signal_name, signal_value, computed_at)
+             VALUES (?, ?, 'net_broker_flow', ?, ?)`,
+            [dateStr, item.symbol, item.netAmt ?? null, now]
+          );
+          inserted++;
+        } catch {}
       }
     }
   } catch {}
