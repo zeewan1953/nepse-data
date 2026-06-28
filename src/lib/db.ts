@@ -482,6 +482,40 @@ async function migrateSchema(): Promise<void> {
     await db.execute("CREATE INDEX IF NOT EXISTS idx_alert_trigger_log_read ON alert_trigger_log(is_read)");
     await db.execute("CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user ON push_subscriptions(user_id)");
   } catch {}
+
+  // ── Signal Daily Snapshot (append-only) ────────────────────────────────────────────
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS signal_daily_snapshot (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      trade_date TEXT NOT NULL,
+      symbol TEXT NOT NULL,
+      signal_name TEXT NOT NULL,
+      signal_value NUMERIC,
+      computed_at INTEGER NOT NULL
+    )
+  `);
+  try {
+    await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_signal_snapshot_uniq ON signal_daily_snapshot(trade_date, symbol, signal_name)");
+  } catch {}
+
+  // ── Signal Performance Summary ─────────────────────────────────────────────────────
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS signal_performance_summary (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      signal_name TEXT NOT NULL,
+      horizon_days INTEGER NOT NULL,
+      window_start TEXT NOT NULL,
+      window_end TEXT NOT NULL,
+      hit_rate NUMERIC,
+      avg_top_quintile_return NUMERIC,
+      avg_baseline_return NUMERIC,
+      sample_size INTEGER NOT NULL,
+      computed_at INTEGER NOT NULL
+    )
+  `);
+  try {
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_signal_perf_lookup ON signal_performance_summary(signal_name, horizon_days, window_end)");
+  } catch {}
 }
 migrateSchema().catch(console.error);
 

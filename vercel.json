@@ -19,6 +19,14 @@
     {
       "path": "/api/cron/retention",
       "schedule": "45 9 * * 0-4"
+    },
+    {
+      "path": "/api/cron/signal-snapshot",
+      "schedule": "50 9 * * 0-4"
+    },
+    {
+      "path": "/api/cron/signal-backtest",
+      "schedule": "0 6 * * 1"
     }
   ]
 }
