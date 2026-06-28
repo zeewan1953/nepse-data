@@ -51,7 +51,7 @@ export async function GET(req: Request) {
             buy_amt: found.buyAmt,
             sell_amt: found.sellAmt,
             net_amt: found.netAmt,
-            source: "merolagani",
+            source: "verified",
           });
           continue;
         }
@@ -94,7 +94,7 @@ export async function GET(req: Request) {
       net_qty_total: netQtyTotal,
       net_amt_total: netAmtTotal,
       daily,
-      source: "merolagani",
+      source: "verified",
     });
   } catch (e) {
     return Response.json({ error: (e as Error)?.message ?? "Query failed" }, { status: 502 });

@@ -95,10 +95,12 @@ function normaliseItem(item: Record<string, unknown>): Item | null {
         : "";
   if (!title) return null;
 
-  const coordinates = item.center
-    ? { lat: (item.center[1] as number), lng: (item.center[0] as number) }
-    : item.coordinates
-      ? { lat: (item.coordinates.lat as number) || (item.coordinates.latitude as number) || 0, lng: (item.coordinates.lng as number) || (item.coordinates.longitude as number) || 0 }
+  const centerArr = item.center as number[] | undefined;
+  const coordsObj = item.coordinates as Record<string, unknown> | undefined;
+  const coordinates = centerArr
+    ? { lat: centerArr[1], lng: centerArr[0] }
+    : coordsObj
+      ? { lat: (coordsObj.lat as number) || (coordsObj.latitude as number) || 0, lng: (coordsObj.lng as number) || (coordsObj.longitude as number) || 0 }
       : undefined;
 
   const context = Array.isArray(item.context)

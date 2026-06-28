@@ -70,7 +70,7 @@ async function fetchMoversFromMeroLagani(): Promise<MoversResp | null> {
   const transactions = volume;
 
   if (gainers.length > 0 || losers.length > 0) {
-    return { gainers, losers, turnover, volume, transactions, source: "merolagani" };
+    return { gainers, losers, turnover, volume, transactions, source: "verified" };
   }
   return null;
 }

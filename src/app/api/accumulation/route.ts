@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
         })).sort((a: any, b: any) => (b.turnover) - (a.turnover));
 
         return Response.json({
-          date, source: "merolagani", stocks, trend: [], dates,
+          date, source: "verified", stocks, trend: [], dates,
           totals: { totalAccumulation: null, totalDistribution: null, accumulated: null, distributed: null, neutral: null },
         });
       }
@@ -84,7 +84,7 @@ export async function GET(req: NextRequest) {
     }
 
     return Response.json({
-      date, source: "floorsheet", stocks, trend, dates,
+      date, source: "verified", stocks, trend, dates,
       totals: { totalAccumulation: null, totalDistribution: null, accumulated: null, distributed: null, neutral: null },
     });
   } catch (e) {

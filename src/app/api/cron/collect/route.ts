@@ -8,6 +8,9 @@ import {
   getFloorsheetCount,
   saveSyncLog,
   saveErrorLog,
+  getPipelineRunStatus,
+  markPipelineRunStart,
+  markPipelineRunComplete,
 } from "@/lib/db";
 import { isTradingDay, todayStr, getTradingDays } from "@/lib/date-utils";
 import { fetchWithRetry, retry } from "@/lib/retry";
@@ -268,6 +271,15 @@ async function ingestBrokerData(
     return { action: "error", count: 0, date: normalizedDate };
   }
 
+  // Check pipeline_run_log — skip if already marked success for this date
+  const pipelineStatus = await getPipelineRunStatus(normalizedDate);
+  if (pipelineStatus === "success") {
+    console.log(`[collect] Attempt ${attempt}: pipeline_run_log says success for ${normalizedDate}, skipping`);
+    return { action: "skip", count: 0, date: normalizedDate };
+  }
+
+  await markPipelineRunStart(normalizedDate);
+
   // Compute hash of this batch
   const newHash = computeHash(brokers);
   console.log(`[collect] Attempt ${attempt}: Broker date=${normalizedDate}, hash=${newHash}, brokers=${brokers.length}`);
@@ -277,6 +289,7 @@ async function ingestBrokerData(
 
   if (existingHash === newHash) {
     console.log(`[collect] Attempt ${attempt}: Hash match for ${normalizedDate}, skipping`);
+    await markPipelineRunComplete(normalizedDate, "success", 0);
     return { action: "skip", count: 0, date: normalizedDate };
   }
 
@@ -286,7 +299,14 @@ async function ingestBrokerData(
     console.log(`[collect] Attempt ${attempt}: New date ${normalizedDate}, inserting`);
   }
 
-  const count = await upsertBrokerDailySummary(normalizedDate, brokers);
+  let count = 0;
+  try {
+    count = await upsertBrokerDailySummary(normalizedDate, brokers);
+    await markPipelineRunComplete(normalizedDate, "success", count);
+  } catch (e) {
+    await markPipelineRunComplete(normalizedDate, "failed", 0);
+    throw e;
+  }
   const action = existingHash ? "update" : "insert";
   return { action, count, date: normalizedDate };
 }

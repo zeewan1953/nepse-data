@@ -75,7 +75,7 @@ export async function GET() {
         totalTradingDays: storedDates.length,
         daysIn30DayWindow: storedInWindow,
         expected30DayWindow: tradingDaysInWindow.length,
-        latestDataDate: latestDate,
+        latestDataDate: latestFsDate,
         hasTodayData: hasToday,
         sizeBytes: dbSizeBytes,
       },

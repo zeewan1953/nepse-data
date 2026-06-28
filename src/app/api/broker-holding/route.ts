@@ -63,7 +63,7 @@ export async function GET(req: Request) {
     const totalNetAmt = Math.round(brokers.reduce((a: number, b: any) => a + b.netAmt, 0) * 100) / 100;
 
     return Response.json({
-      date: effectiveDate, status: "finalized", source: "merolagani",
+      date: effectiveDate, status: "finalized", source: "verified",
       brokers, totalBuyAmt, totalSellAmt, totalNetAmt,
     });
   }
@@ -95,7 +95,7 @@ async function handleMeroDb(date: string) {
   });
 
   return {
-    date, status: "finalized", source: "merolagani",
+    date, status: "finalized", source: "verified",
     brokers,
     totalBuyAmt: Math.round(totalBuyAmt * 100) / 100,
     totalSellAmt: Math.round(totalSellAmt * 100) / 100,
@@ -127,7 +127,7 @@ async function handleMeroDbRange(from: string, to: string) {
   });
 
   return {
-    status: "finalized", source: "merolagani",
+    status: "finalized", source: "verified",
     brokers,
     totalBuyAmt: Math.round(totalBuyAmt * 100) / 100,
     totalSellAmt: Math.round(totalSellAmt * 100) / 100,

@@ -1,6 +1,8 @@
 import "server-only";
 import { execute } from "@/lib/db";
 import { computeNetFlowStreak } from "@/lib/broker_flow_analytics";
+import { getTradingDaysForRange, TRADING_DAYS } from "@/lib/trading-periods";
+import { todayStr } from "@/lib/date-utils";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,29 +16,48 @@ export async function GET(
     const sp = new URL(req.url).searchParams;
     const range = sp.get("range") || "1D";
 
-    const lookback: Record<string, number> = { "1D": 0, "3D": 2, "1W": 6, "1M": 21, "3M": 63 };
+    const nTradingDays = TRADING_DAYS[range];
+    if (!nTradingDays) {
+      return Response.json({ brokerCode, error: `Invalid range: ${range}` }, { status: 400 });
+    }
 
-    // Get dates from merolagani_broker_daily (not floorsheet_trades)
+    // Get all stored dates
     const dateRows = await execute(
       "SELECT DISTINCT tradeDate FROM merolagani_broker_daily ORDER BY tradeDate DESC"
     );
-    const sortedDates = dateRows.rows.map((r: any) => String(r.tradeDate));
+    const storedDates = dateRows.rows.map((r: any) => String(r.tradeDate));
 
-    if (!sortedDates.length) {
+    if (!storedDates.length) {
       return Response.json({ brokerCode, error: "No dates available" }, { status: 404 });
     }
 
-    const latestDate = sortedDates[0];
-    const lookbackDays = lookback[range] ?? 0;
-    const fromIdx = Math.min(lookbackDays, sortedDates.length - 1);
-    const fromDate = sortedDates[fromIdx];
+    // For 1D: use the latest stored date (DB-only, no live fallback — the cron fetches it)
+    // For multi-day: compute trading-day range from today backwards, filter against stored dates
+    const latestStored = storedDates[0];
+
+    let targetDates: string[];
+    if (nTradingDays <= 1) {
+      targetDates = [latestStored];
+    } else {
+      const idealDays = getTradingDaysForRange(range);
+      // Only return dates that actually exist in the DB
+      const storedSet = new Set(storedDates);
+      targetDates = idealDays.filter((d) => storedSet.has(d));
+    }
+
+    if (!targetDates.length) {
+      return Response.json({ brokerCode, error: "No stored data for this range" }, { status: 404 });
+    }
+
+    const fromDate = targetDates[0];
+    const toDate = targetDates[targetDates.length - 1];
 
     const rows = await execute(
       `SELECT tradeDate, purchaseAmt, sellAmt, netAmt, totalAmt, brokerName
        FROM merolagani_broker_daily 
        WHERE brokerCode = ? AND tradeDate >= ? AND tradeDate <= ?
        ORDER BY tradeDate ASC`,
-      [brokerCode, fromDate, latestDate],
+      [brokerCode, fromDate, toDate],
     );
 
     if (!rows.rows.length) {
@@ -71,11 +92,13 @@ export async function GET(
       brokerCode,
       brokerName,
       daysAvailable,
+      tradingDaysRequested: nTradingDays,
+      tradingDaysReturned: daysAvailable,
+      resolution: "stored",
       history,
       totals,
       currentStreak,
       rollingNetFlow,
-      source: "merolagani",
     });
   } catch (e) {
     return Response.json({ error: (e as Error)?.message ?? "Failed" }, { status: 502 });

@@ -77,7 +77,7 @@ export async function runRealScanner(
     const flows = flowsFromAgg(aggRows, sym);
     const conc = computeBrokerConcentration(flows, 5);
     const bars = await getRealOHLCV(sym, 30);
-    const volZ = computeVolumeZScore(bars, 20);
+    const volZ = computeVolumeZScore(bars, 7);
 
     // Tick-rule from raw trades (if available)
     let tick = { buyVolume: 0, sellVolume: 0, netImbalance: 0, buyTrades: 0, sellTrades: 0, estimated: true as const };
@@ -99,8 +99,8 @@ export async function runRealScanner(
 
     stocks.push({
       symbol: sym, name: sym, conc,
-      cmf: computeCMF(bars, 20),
-      mfi: computeMFI(bars, 14),
+      cmf: computeCMF(bars, 7),
+      mfi: computeMFI(bars, 5),
       volZ: volZ?.zScore ?? null,
       todayVolume: volZ?.todayVolume ?? 0,
       avgVolume: volZ?.avgVolume ?? 0,
@@ -219,7 +219,7 @@ export async function runRealOverview(date: string) {
     const flows = flowsFromAgg(aggRows, sym);
     const conc = computeBrokerConcentration(flows, 5);
     const bars = await getRealOHLCV(sym, 30);
-    const volZ = computeVolumeZScore(bars, 20);
+    const volZ = computeVolumeZScore(bars, 7);
 
     let score = 0;
     const flag = volZ?.zScore && Math.abs(volZ.zScore) > 2 ? "highly_unusual"
@@ -263,7 +263,7 @@ export async function runRealLeaderboard(date: string) {
     const flows = flowsFromAgg(aggRows, sym);
     const conc = computeBrokerConcentration(flows, 5);
     const bars = await getRealOHLCV(sym, 30);
-    const volZ = computeVolumeZScore(bars, 20);
+    const volZ = computeVolumeZScore(bars, 7);
     const netAmt = flows.reduce((s, f) => s + f.netAmt, 0);
 
     scored.push({
@@ -304,9 +304,9 @@ export async function runRealStockFlow(symbol: string, date: string) {
 
   const bars = await getRealOHLCV(symbol, 30);
   const conc = computeBrokerConcentration(flows, 5);
-  const cmf = computeCMF(bars, 20);
-  const mfi = computeMFI(bars, 14);
-  const volZ = computeVolumeZScore(bars, 20);
+  const cmf = computeCMF(bars, 7);
+  const mfi = computeMFI(bars, 5);
+  const volZ = computeVolumeZScore(bars, 7);
   const tick = trades.length > 0
     ? computeTickImbalance(trades)
     : { buyVolume: 0, sellVolume: 0, netImbalance: 0, buyTrades: 0, sellTrades: 0, estimated: true as const };

@@ -76,7 +76,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ symbol: 
       return Response.json({
         symbol: sym,
         date,
-        source: "merolagani",
+        source: "verified",
         status: "live",
         finalizedAt: null,
         accurate: false,

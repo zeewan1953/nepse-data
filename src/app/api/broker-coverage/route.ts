@@ -49,7 +49,7 @@ export async function GET() {
       brokers,
       rows: broker.rows,
       targetDays: 365,
-      source: "merolagani",
+      source: "verified",
       // detailed per-dataset coverage
       brokerWise: { ...broker, brokers },
       stockWise: floorsheet,

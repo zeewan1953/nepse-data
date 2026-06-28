@@ -346,15 +346,7 @@ export default function StockPage({
               </div>
             )}
 
-            <p className="text-[11px] text-muted">
-              Technical signal for education only — not financial advice. Verify before trading.
-            </p>
 
-            {/* Demo Trade Button */}
-            <Link href={`/demo?symbol=${sym}&price=${ltp}&rec=${encodeURIComponent(signal.recommendation)}&conf=${signal.confidence}&trend=${signal.trend ?? ""}`}
-              className="flex items-center justify-center gap-2 rounded-lg border-2 border-amber-500 bg-amber-500/10 px-4 py-2.5 text-sm font-extrabold text-amber-700 transition hover:bg-amber-500/20 dark:text-amber-400">
-              🎯 डेमो ट्रेड गर्नुहोस् (Demo Trade)
-            </Link>
           </div>
         </section>
       )}

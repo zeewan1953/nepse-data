@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
       );
       if (!rows.rows.length) {
         return Response.json({
-          date, source: "merolagani", broker,
+          date, source: "verified", broker,
           stocks: [],
           totals: { buyAmt: 0, sellAmt: 0, netAmt: 0, buyQty: 0, sellQty: 0, avgBuyPrice: 0, avgSellPrice: 0, buyTrades: 0, sellTrades: 0 },
         });
@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
         netAmt: a.netAmt + Number(r.netAmt),
       }), { buyAmt: 0, sellAmt: 0, netAmt: 0 });
       return Response.json({
-        date, source: "merolagani", broker,
+        date, source: "verified", broker,
         stocks: [],
         totals: { ...totals, buyQty: 0, sellQty: 0, avgBuyPrice: 0, avgSellPrice: 0, buyTrades: 0, sellTrades: 0 },
         note: "Per-stock breakdown not available from MeroLagani",
@@ -68,7 +68,7 @@ export async function GET(req: NextRequest) {
       const buyAmt = Number(r.purchaseAmt);
       const sellAmt = Number(r.sellAmt);
       return Response.json({
-        date, source: "merolagani", broker,
+        date, source: "verified", broker,
         stocks: [],
         totals: { buyAmt, sellAmt, netAmt: buyAmt - sellAmt, buyQty: 0, sellQty: 0, avgBuyPrice: 0, avgSellPrice: 0, buyTrades: 0, sellTrades: 0 },
         note: "Per-stock breakdown not available from MeroLagani",
@@ -83,7 +83,7 @@ export async function GET(req: NextRequest) {
         const buyAmt = Number(match.p) || 0;
         const sellAmt = Number(match.s) || 0;
         return Response.json({
-          date, source: "merolagani", broker,
+          date, source: "verified", broker,
           stocks: [],
           totals: { buyAmt, sellAmt, netAmt: buyAmt - sellAmt, buyQty: 0, sellQty: 0, avgBuyPrice: 0, avgSellPrice: 0, buyTrades: 0, sellTrades: 0 },
         });
@@ -91,7 +91,7 @@ export async function GET(req: NextRequest) {
     }
 
     return Response.json({
-      date, source: "merolagani", broker,
+      date, source: "verified", broker,
       stocks: [],
       totals: { buyAmt: 0, sellAmt: 0, netAmt: 0, buyQty: 0, sellQty: 0, avgBuyPrice: 0, avgSellPrice: 0, buyTrades: 0, sellTrades: 0 },
     });

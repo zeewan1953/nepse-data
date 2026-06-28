@@ -201,7 +201,7 @@ export function computeTickImbalance(rows: FloorsheetRow[]): TickImbalance {
  * Range: [-1, +1]. Positive = accumulation, Negative = distribution.
  * Requires at least `period` bars → returns null otherwise.
  */
-export function computeCMF(bars: OHLCVBar[], period = 20): number | null {
+export function computeCMF(bars: OHLCVBar[], period = 7): number | null {
   if (bars.length < period) return null;
 
   const slice = bars.slice(-period);
@@ -234,7 +234,7 @@ export function computeCMF(bars: OHLCVBar[], period = 20): number | null {
  * Range: [0, 100]. >80 overbought, <20 oversold.
  * Requires at least `period + 1` bars → returns null otherwise.
  */
-export function computeMFI(bars: OHLCVBar[], period = 14): number | null {
+export function computeMFI(bars: OHLCVBar[], period = 5): number | null {
   if (bars.length < period + 1) return null;
 
   const slice = bars.slice(-(period + 1));
@@ -268,7 +268,7 @@ export function computeMFI(bars: OHLCVBar[], period = 14): number | null {
  * |Z| > 2 = unusual volume.
  * Needs at least `lookback` bars → returns null otherwise.
  */
-export function computeVolumeZScore(bars: OHLCVBar[], lookback = 20): { zScore: number; todayVolume: number; avgVolume: number } | null {
+export function computeVolumeZScore(bars: OHLCVBar[], lookback = 7): { zScore: number; todayVolume: number; avgVolume: number } | null {
   if (bars.length < lookback + 1) return null;
 
   const historical = bars.slice(-(lookback + 1), -1);

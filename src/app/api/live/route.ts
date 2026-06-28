@@ -50,7 +50,7 @@ async function fetchFromMeroLagani(): Promise<{ rows: LiveMarketData[]; source: 
   });
 
   if (rows.length > 50) {
-    return { rows, source: "merolagani", raw: mero };
+    return { rows, source: "live", raw: mero };
   }
   return null;
 }

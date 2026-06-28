@@ -5,7 +5,7 @@ import { todayStr } from "@/lib/date-utils";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function cmf(rows: Array<{ close: number; high: number; low: number; volume: number }>, period = 20): number | null {
+function cmf(rows: Array<{ close: number; high: number; low: number; volume: number }>, period = 7): number | null {
   if (rows.length < period) return null;
   const slice = rows.slice(-period);
   let sum = 0;
@@ -21,7 +21,7 @@ function cmf(rows: Array<{ close: number; high: number; low: number; volume: num
   return sum / vol;
 }
 
-function mfi(rows: Array<{ close: number; high: number; low: number; volume: number }>, period = 14): number | null {
+function mfi(rows: Array<{ close: number; high: number; low: number; volume: number }>, period = 5): number | null {
   if (rows.length < period + 1) return null;
   let pos = 0;
   let neg = 0;

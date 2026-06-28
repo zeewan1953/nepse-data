@@ -48,7 +48,7 @@ async function buildMeroResponse(date: string) {
 
   return {
     date,
-    source: "merolagani",
+    source: "verified",
     totals: {
       trades: Number(overall.tn) || 0,
       qty: totalQty,
@@ -101,7 +101,7 @@ async function buildMeroDbRangeResponse(from: string, to: string) {
 
   return {
     date: `${from} – ${to}`,
-    source: "merolagani",
+    source: "verified",
     totals: {
       trades: stocks.reduce((a: number, s: any) => a + s.trades, 0),
       qty: totalQty,
@@ -151,7 +151,7 @@ async function buildMeroDbDateResponse(date: string) {
 
   return {
     date,
-    source: "merolagani",
+    source: "verified",
     totals: {
       trades: stocks.reduce((a: number, s: any) => a + s.trades, 0),
       qty: totalQty,

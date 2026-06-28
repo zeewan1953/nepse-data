@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const dates = getAvailableDates();
+    const dates = await getAvailableDates();
     const latest = dates[0] || null;
 
     if (!latest) {
@@ -18,8 +18,8 @@ export async function GET() {
       }, { status: 503 });
     }
 
-    const totalTrades = getFloorsheetCount(latest);
-    const trades = getLatestFloorsheetFromDb();
+    const totalTrades = await getFloorsheetCount(latest);
+    const trades = await getLatestFloorsheetFromDb();
 
     const totalBuyQty = trades.reduce((s, t) => s + (t.contractAmount > 0 ? t.contractQuantity : 0), 0);
     const totalSellQty = trades.reduce((s, t) => s + (t.contractAmount < 0 ? t.contractQuantity : 0), 0);

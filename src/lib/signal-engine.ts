@@ -143,5 +143,5 @@ export async function buildSignalsFromLiveData(): Promise<{ signals: SignalOutpu
     return b.confidence - a.confidence;
   });
 
-  return { signals, source: "merolagani" };
+  return { signals, source: "live" };
 }

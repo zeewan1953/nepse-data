@@ -224,6 +224,18 @@ async function migrateSchema(): Promise<void> {
     )
   `);
 
+  // Pipeline run log — prevents duplicate daily broker scrapes
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS pipeline_run_log (
+      run_date TEXT PRIMARY KEY,
+      pipeline TEXT NOT NULL DEFAULT 'broker_ingest',
+      status TEXT NOT NULL,
+      rows_written INTEGER NOT NULL DEFAULT 0,
+      started_at INTEGER NOT NULL,
+      completed_at INTEGER
+    )
+  `);
+
   // Broker flow analytics cache — stores computed JSON per date+section
   await db.execute(`
     CREATE TABLE IF NOT EXISTS broker_flow_cache (
@@ -799,12 +811,12 @@ export type BrokerDailySummaryRow = {
   totalAmt: number;
   buyQty: number | null;
   sellQty: number | null;
-  source: "merolagani";
+  source: string;
 };
 
 export type BrokerHistoryRow = {
   date: string;
-  source: "floorsheet" | "merolagani";
+  source: string;
   buyQty: number | null;
   sellQty: number | null;
   netQty: number | null;
@@ -873,7 +885,7 @@ export async function getBrokerDailySummary(date: string): Promise<BrokerDailySu
     totalAmt: Number(row.totalAmt),
     buyQty: row.buyQty != null ? Number(row.buyQty) : null,
     sellQty: row.sellQty != null ? Number(row.sellQty) : null,
-    source: "merolagani",
+    source: "verified",
   }));
 }
 
@@ -922,7 +934,7 @@ export async function getMeroBrokerData(date: string, brokerCode: string): Promi
   const row = r.rows[0];
   return {
     date,
-    source: "merolagani",
+    source: "verified",
     buyQty: null,
     sellQty: null,
     netQty: null,
@@ -1054,4 +1066,36 @@ export async function getErrorLogs(limit = 50): Promise<ErrorLogRow[]> {
     stack: row.stack != null ? String(row.stack) : null,
     context: row.context != null ? String(row.context) : null,
   }));
+}
+
+// ─── Pipeline Run Log ────────────────────────────────────────────────────
+
+export async function getPipelineRunStatus(runDate: string): Promise<string | null> {
+  try {
+    const r = await db.execute({
+      sql: `SELECT status FROM pipeline_run_log WHERE run_date = ?`,
+      args: [runDate],
+    });
+    if (r.rows.length > 0) return String(r.rows[0].status);
+  } catch { /* table may not exist yet */ }
+  return null;
+}
+
+export async function markPipelineRunStart(runDate: string, pipeline = "broker_ingest"): Promise<void> {
+  await db.execute({
+    sql: `INSERT INTO pipeline_run_log(run_date, pipeline, status, rows_written, started_at)
+          VALUES (?, ?, 'running', 0, ?)
+          ON CONFLICT(run_date) DO UPDATE SET status='running', started_at=excluded.started_at`,
+    args: [runDate, pipeline, Date.now()],
+  });
+}
+
+export async function markPipelineRunComplete(
+  runDate: string, status: "success" | "partial" | "failed", rowsWritten: number,
+  pipeline = "broker_ingest",
+): Promise<void> {
+  await db.execute({
+    sql: `UPDATE pipeline_run_log SET status = ?, rows_written = ?, completed_at = ? WHERE run_date = ? AND pipeline = ?`,
+    args: [status, rowsWritten, Date.now(), runDate, pipeline],
+  });
 }

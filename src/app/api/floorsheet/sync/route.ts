@@ -77,14 +77,24 @@ export async function GET(req: NextRequest) {
   try {
     const dateParam = req?.nextUrl?.searchParams?.get("date");
     const force = req?.nextUrl?.searchParams?.get("force") === "true";
-    const date = dateParam || todayStr();
+
+    // NEPSE floorsheet API always returns the latest trading day's data
+    // (no date parameter supported). Only the latest trading day is valid.
+    const date = todayStr();
+
+    if (dateParam && dateParam !== date) {
+      return Response.json({
+        error: "NEPSE floorsheet API only returns the latest trading day's data",
+        date,
+        requested: dateParam,
+      }, { status: 400 });
+    }
 
     const runSync = async () => {
       const existingCount = await getFloorsheetCount(date);
       const items = await fetchAllTrades();
 
-      if (items.length !== existingCount || existingCount === 0) {
-        // Save raw trades with trade_order for tick-rule
+      if (items.length !== existingCount || existingCount === 0 || force) {
         const trades = items.map((t, i) => ({
           tradeDate: date,
           stockSymbol: t.stockSymbol,
@@ -97,11 +107,9 @@ export async function GET(req: NextRequest) {
         }));
         await saveFloorsheetTrades(date, trades);
 
-        // Compute and save broker_daily_agg
         const aggs = computeBrokerAgg(date, items);
         await saveBrokerDailyAgg(date, aggs);
 
-        // Fetch OHLCV from MeroLagani and save
         try {
           const mero = await fetchMeroLaganiSummary();
           if (mero?.turnover?.detail?.length) {
@@ -123,7 +131,6 @@ export async function GET(req: NextRequest) {
       return { date, tradeCount: items.length, syncedAt: Date.now(), dates };
     };
 
-    // If force=true, bypass cache and always execute fresh sync
     if (force) {
       const result = await runSync();
       return Response.json(result);

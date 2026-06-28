@@ -314,9 +314,10 @@ export default function AppHeader() {
       {/* ── Main Header Bar ──────────────────────────────── */}
       <div className="border-b" style={{ borderColor: "rgba(0,0,0,0.12)", background: "#fff" }}>
         <div className="mx-auto flex max-w-[1400px] items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1 sm:py-1.5">
-          {/* Logo - smaller on mobile */}
-          <Link href="/" className="flex shrink-0 items-center">
-            <Logo size={28} tagline="NEPSE Analytics" />
+          {/* Logo + Brand - smaller on mobile */}
+          <Link href="/" className="flex shrink-0 items-center gap-2">
+            <Logo size={28} tagline="" />
+            <span className="text-sm font-extrabold text-foreground hidden sm:inline">NEPSE AXION</span>
           </Link>
 
           {/* Mobile Menu Button */}
@@ -353,7 +354,7 @@ export default function AppHeader() {
                     }}
                   >
                     <Icon d={item.icon} size={13} />
-                    <span className="hidden lg:inline">{item.label}</span>
+                    <span className="inline whitespace-nowrap">{item.label}</span>
                     {item.badge && (
                       <span className="absolute -right-1 -top-1 grid h-3.5 min-w-3.5 place-items-center rounded-full px-1 text-[8px] font-bold text-white" style={{ background: "#c0392b" }}>
                         {newsCount}
@@ -364,6 +365,9 @@ export default function AppHeader() {
               })}
             </div>
           </nav>
+
+          {/* Spacer */}
+          <div className="flex-1" />
 
           {/* ── Right Side Icons - Mobile optimized ── */}
           <div className="ml-auto flex items-center gap-0.5 sm:gap-1">

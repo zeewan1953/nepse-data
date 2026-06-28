@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { BrokerPerformanceSection } from "./broker-performance";
 import { StockBrokerFlow } from "./StockBrokerFlow";
 import { BrokerStockPanels } from "./BrokerStockPanels";
+import { StockWiseTable } from "./StockWiseTable";
 import { BrokerStockDetail } from "./BrokerStockDetail";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -123,7 +124,7 @@ function StockWiseTab({ dateKey }: { dateKey: string }) {
     try {
       const bust = Date.now();
       const dateQ = date ? `date=${encodeURIComponent(date)}&` : "";
-      const res = await fetch(`/api/stock-summary?${dateQ}sort=${sort}&_t=${bust}`, { cache: "no-store" });
+      const res = await fetch(`/api/stock-wise?${dateQ}sort=${sort}&_t=${bust}`, { cache: "no-store" });
       const d: any = await res.json();
       if (d.stocks && d.stocks.length > 0) {
         setData({
@@ -131,17 +132,17 @@ function StockWiseTab({ dateKey }: { dateKey: string }) {
           stocks: d.stocks.map((s: any) => ({
             symbol: s.symbol,
             ltp: s.ltp,
-            changePercent: s.changePct,
-            totalVolume: s.quantity || 0,
-            totalTurnover: s.turnover || 0,
-            tradeCount: 0,
+            changePercent: s.changePercent,
+            totalVolume: s.totalVolume || 0,
+            totalTurnover: s.totalTurnover || 0,
+            tradeCount: s.tradeCount || 0,
             avgPrice: s.avgPrice || null,
-            brokerBuy: s.brokerBuy,
-            brokerSell: s.brokerSell,
-            brokerNet: s.brokerNet,
+            brokerBuy: s.estBuyVolume,
+            brokerSell: s.estSellVolume,
+            brokerNet: s.estNetVolume,
             cmf: s.cmf,
             mfi: s.mfi,
-            volZ: s.volZ,
+            volZ: s.volumeZScore,
           })),
           source: d.source,
         });
@@ -268,10 +269,10 @@ function StockWiseTab({ dateKey }: { dateKey: string }) {
                   {pct(s.changePercent)}
                 </td>
                 <td className="px-2 py-1.5 text-right tabular-nums text-foreground">
-                  {s.quantity?.toLocaleString("en-IN") || s.totalVolume?.toLocaleString("en-IN")}
+                  {s.totalVolume.toLocaleString("en-IN")}
                 </td>
                 <td className="px-2 py-1.5 text-right tabular-nums text-foreground">
-                  {s.turnoverLabel || compact(s.totalTurnover)}
+                  {compact(s.totalTurnover)}
                 </td>
                 <td className="px-2 py-1.5 text-right tabular-nums text-up font-semibold">
                   {s.brokerBuy != null ? compact(s.brokerBuy) : MDASH}
@@ -403,7 +404,11 @@ function saveFavs(codes: string[]): void {
 
 function BrokerWiseTab({ range }: { range: TimeRange }) {
   const [brokers, setBrokers] = useState<BrokerOption[]>([]);
-  const [selected, setSelected] = useState<BrokerOption | null>(null);
+  const [selected, setSelected] = useState<BrokerOption | null>(() => {
+    if (typeof window === "undefined") return { broker: "1", name: "" };
+    const saved = localStorage.getItem("axion_selectedBroker");
+    return saved ? JSON.parse(saved) : { broker: "1", name: "" };
+  });
   const [data, setData] = useState<BrokerWiseResp | null>(null);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
@@ -430,17 +435,23 @@ function BrokerWiseTab({ range }: { range: TimeRange }) {
       .then((d) => {
         if (d.brokers) {
           const list = d.brokers.map((b: { broker: string; name: string }) => ({ broker: b.broker, name: b.name }));
-          list.sort((a, b) => {
+          list.sort((a: { broker: string; name: string }, b: { broker: string; name: string }) => {
             const aNum = parseInt(a.broker, 10);
             const bNum = parseInt(b.broker, 10);
-            if (a.broker === "1") return -1;
-            if (b.broker === "1") return 1;
             if (!isNaN(aNum) && !isNaN(bNum)) return aNum - bNum;
             if (!isNaN(aNum)) return -1;
             if (!isNaN(bNum)) return 1;
             return a.name.localeCompare(b.name);
           });
           setBrokers(list);
+          // Fill in broker 1 name if selected but name is empty
+          setSelected((prev) => {
+            if (prev?.broker === "1" && !prev.name) {
+              const b1 = list.find((b: BrokerOption) => b.broker === "1");
+              if (b1) { localStorage.setItem("axion_selectedBroker", JSON.stringify(b1)); return b1; }
+            }
+            return prev;
+          });
         }
       })
       .catch(() => {});
@@ -457,7 +468,7 @@ function BrokerWiseTab({ range }: { range: TimeRange }) {
   }, [selected, range]);
 
   const filteredBrokers = useMemo(() => {
-    if (!search.trim()) return [];
+    if (!search.trim()) return brokers;
     const q = search.toLowerCase();
     return brokers.filter(
       (b) => b.broker.includes(q) || b.name.toLowerCase().includes(q)
@@ -466,6 +477,7 @@ function BrokerWiseTab({ range }: { range: TimeRange }) {
 
   const handleSelect = useCallback((b: BrokerOption) => {
     setSelected(b);
+    localStorage.setItem("axion_selectedBroker", JSON.stringify(b));
     setSearch("");
     setOpen(false);
   }, []);
@@ -693,7 +705,7 @@ function SummaryTab({ range }: { range: TimeRange }) {
             </tbody>
           </table>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -706,6 +718,7 @@ function BrokerFavoriteTab({ brokers, range }: { brokers: BrokerOption[]; range:
   const [stocks, setStocks] = useState<Record<string, any[]>>({});
   const [expandedBroker, setExpandedBroker] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [popupStock, setPopupStock] = useState<{ symbol: string; buyAmt: number; sellAmt: number; netAmt: number; brokerName: string } | null>(null);
 
   useEffect(() => {
     setFavs(loadFavs());
@@ -794,92 +807,122 @@ function BrokerFavoriteTab({ brokers, range }: { brokers: BrokerOption[]; range:
           <div className="text-sm text-muted">Click "Add All Brokers" or star brokers in Broker Wise tab to add favorites.</div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {favs.map((code) => {
-            const c = cards[code];
-            const b = brokers.find((x) => x.broker === code);
-            const brokerStockList = stocks[code] || [];
-            const isExpanded = expandedBroker === code;
+        <div className="overflow-x-auto rounded-lg border border-border">
+          <table className="w-full text-[10px]">
+            <thead>
+              <tr className="bg-surface-2 border-b border-border text-muted text-[9px] font-semibold uppercase tracking-wider">
+                <th className="text-left px-2 py-1.5 w-8">#</th>
+                <th className="text-left px-2 py-1.5">Broker</th>
+                <th className="text-right px-2 py-1.5">Buy</th>
+                <th className="text-right px-2 py-1.5">Sell</th>
+                <th className="text-right px-2 py-1.5">Net</th>
+                <th className="text-right px-2 py-1.5">Days</th>
+                <th className="text-right px-2 py-1.5">Stocks</th>
+                <th className="text-right px-2 py-1.5 w-12"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {favs.map((code, idx) => {
+                const c = cards[code];
+                const b = brokers.find((x) => x.broker === code);
+                const brokerStockList = stocks[code] || [];
+                const isExpanded = expandedBroker === code;
 
+                return (
+                  <tr key={code} className="hover:bg-surface-2 transition">
+                    <td className="px-2 py-1 text-muted text-[9px]">{idx + 1}</td>
+                    <td className="px-2 py-1 font-medium text-foreground truncate max-w-[160px]">
+                      <span className="rounded bg-gray-100 px-1 py-0.5 text-[8px] font-bold text-gray-600 mr-1">{code}</span>
+                      <span className="text-[9px]">{b?.name || code}</span>
+                    </td>
+                    {c ? (
+                      <>
+                        <td className="px-2 py-1 text-right tabular-nums text-up font-semibold">{compact(c.totals.buyAmount)}</td>
+                        <td className="px-2 py-1 text-right tabular-nums text-down font-semibold">{compact(c.totals.sellAmount)}</td>
+                        <td className={`px-2 py-1 text-right tabular-nums font-semibold ${c.totals.netAmount >= 0 ? "text-up" : "text-down"}`}>
+                          {c.totals.netAmount >= 0 ? "+" : ""}{compact(c.totals.netAmount)}
+                        </td>
+                        <td className="px-2 py-1 text-right tabular-nums">{c.daysAvailable}</td>
+                      </>
+                    ) : (
+                      <td colSpan={4} className="px-2 py-1 text-muted text-[9px]">{loading ? "Loading..." : "No data"}</td>
+                    )}
+                    <td className="px-2 py-1 text-right">
+                      <button
+                        onClick={() => setExpandedBroker(isExpanded ? null : code)}
+                        className="text-[9px] font-semibold text-muted hover:text-foreground"
+                      >
+                        {brokerStockList.length} {isExpanded ? "▲" : "▼"}
+                      </button>
+                    </td>
+                    <td className="px-2 py-1 text-right">
+                      <button
+                        onClick={() => removeFav(code)}
+                        className="text-[8px] text-red-500 hover:text-red-700 font-semibold"
+                      >
+                        Remove
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {/* Expanded stock details */}
+          {favs.map((code) => {
+            const brokerStockList = stocks[code] || [];
+            if (expandedBroker !== code || brokerStockList.length === 0) return null;
             return (
-              <div key={code} className="rounded-lg border border-border bg-surface overflow-hidden">
-                {/* Header */}
-                <div className="p-3 relative group border-b border-border">
-                  <button
-                    onClick={() => removeFav(code)}
-                    className="absolute top-2 right-2 rounded text-xs px-2 py-1 bg-red-500/20 text-red-600 opacity-0 group-hover:opacity-100 transition"
-                  >
-                    Remove
-                  </button>
-                  <div className="mb-3">
-                    <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-bold text-gray-600">{code}</span>
-                    <span className="ml-2 text-[10px] font-semibold text-foreground">{b?.name || code}</span>
-                  </div>
-                  {c ? (
-                    <div className="space-y-2">
-                      <div className="grid grid-cols-2 gap-2 text-[9px]">
-                        <div>
-                          <span className="text-muted">Buy</span>
-                          <div className="text-right tabular-nums text-up font-semibold">{compact(c.totals.buyAmount)}</div>
-                        </div>
-                        <div>
-                          <span className="text-muted">Sell</span>
-                          <div className="text-right tabular-nums text-down font-semibold">{compact(c.totals.sellAmount)}</div>
-                        </div>
-                        <div>
-                          <span className="text-muted">Net</span>
-                          <div className={`text-right tabular-nums font-semibold ${c.totals.netAmount >= 0 ? "text-up" : "text-down"}`}>
-                            {c.totals.netAmount >= 0 ? "+" : ""}{compact(c.totals.netAmount)}
-                          </div>
-                        </div>
-                        <div>
-                          <span className="text-muted">Days</span>
-                          <div className="text-right tabular-nums font-semibold">{c.daysAvailable}</div>
-                        </div>
+              <div key={`exp-${code}`} className="border-t border-border bg-surface-2 p-2">
+                <div className="grid grid-cols-5 gap-1">
+                  {brokerStockList.map((stock: any, idx: number) => (
+                    <div
+                      key={idx}
+                      onClick={() => setPopupStock({ symbol: stock.symbol, buyAmt: stock.buyAmt || 0, sellAmt: stock.sellAmt || 0, netAmt: stock.netAmt || 0, brokerName: b?.name || code })}
+                      className="rounded border border-border bg-surface p-1.5 text-center hover:border-primary/50 hover:shadow-sm cursor-pointer transition"
+                      title={`${stock.symbol}: Buy ${compact(stock.buyAmt)} | Sell ${compact(stock.sellAmt)}`}
+                    >
+                      <div className="text-[8px] font-bold text-foreground truncate">{stock.symbol}</div>
+                      <div className="text-[7px] text-up font-semibold">B: {compact(stock.buyAmt || 0).replace("Rs. ", "")}</div>
+                      <div className="text-[7px] text-down font-semibold">S: {compact(stock.sellAmt || 0).replace("Rs. ", "")}</div>
+                      <div className={`text-[7px] font-semibold ${stock.netAmt >= 0 ? "text-up" : "text-down"}`}>
+                        {stock.netAmt >= 0 ? "+" : ""}{compact(stock.netAmt || 0).replace("Rs. ", "")}
                       </div>
                     </div>
-                  ) : (
-                    <div className="text-[9px] text-muted">{loading ? "Loading..." : "No data"}</div>
-                  )}
+                  ))}
                 </div>
-
-                {/* Stocks Grid Toggle */}
-                <button
-                  onClick={() => setExpandedBroker(isExpanded ? null : code)}
-                  className="w-full px-3 py-2 text-[9px] font-semibold text-muted hover:text-foreground hover:bg-surface-2 transition border-t border-border flex items-center justify-between"
-                >
-                  <span>📊 Stocks ({brokerStockList.length})</span>
-                  <span>{isExpanded ? "▼" : "▶"}</span>
-                </button>
-
-                {/* Stocks Grid (5 columns × 5 rows max) */}
-                {isExpanded && brokerStockList.length > 0 && (
-                  <div className="p-2 bg-surface-2 border-t border-border">
-                    <div className="grid grid-cols-5 gap-1">
-                      {brokerStockList.map((stock: any, idx: number) => (
-                        <div
-                          key={idx}
-                          className="rounded border border-border bg-surface p-1.5 text-center hover:border-primary/50 transition"
-                          title={`${stock.symbol}: Buy ${compact(stock.buyAmt)} | Sell ${compact(stock.sellAmt)}`}
-                        >
-                          <div className="text-[8px] font-bold text-foreground truncate">{stock.symbol}</div>
-                          <div className="text-[7px] text-up font-semibold">B: {compact(stock.buyAmt || 0).replace("Rs. ", "")}</div>
-                          <div className="text-[7px] text-down font-semibold">S: {compact(stock.sellAmt || 0).replace("Rs. ", "")}</div>
-                          <div className={`text-[7px] font-semibold ${stock.netAmt >= 0 ? "text-up" : "text-down"}`}>
-                            {stock.netAmt >= 0 ? "+" : ""}{compact(stock.netAmt || 0).replace("Rs. ", "")}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {isExpanded && brokerStockList.length === 0 && (
-                  <div className="p-2 text-center text-[9px] text-muted">No stocks data</div>
-                )}
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Stock popup */}
+      {popupStock && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40" onClick={() => setPopupStock(null)}>
+          <div className="bg-surface rounded-xl border border-border shadow-xl w-[260px] p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-bold text-foreground">{popupStock.symbol}</h3>
+              <button onClick={() => setPopupStock(null)} className="text-muted hover:text-foreground text-lg leading-none">&times;</button>
+            </div>
+            <div className="text-[10px] text-muted mb-3">{popupStock.brokerName}</div>
+            <div className="space-y-2">
+              <div className="flex justify-between text-xs">
+                <span className="text-up font-semibold">Buy</span>
+                <span className="tabular-nums font-bold">{compact(popupStock.buyAmt)}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-down font-semibold">Sell</span>
+                <span className="tabular-nums font-bold">{compact(popupStock.sellAmt)}</span>
+              </div>
+              <div className="flex justify-between text-xs pt-2 border-t border-border">
+                <span className="font-semibold text-foreground">Net</span>
+                <span className={`tabular-nums font-bold ${popupStock.netAmt >= 0 ? "text-up" : "text-down"}`}>
+                  {popupStock.netAmt >= 0 ? "+" : ""}{compact(popupStock.netAmt)}
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -902,6 +945,14 @@ export default function BrokerAnalysisPage() {
   const [coverage, setCoverage] = useState<{ days: number; firstDate: string | null; lastDate: string | null; targetDays: number } | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<number | null>(null);
+  // Auto-refresh indicator only — individual tabs handle their own refresh
+  useEffect(() => {
+    const id = setInterval(() => {
+      // lightweight keep-alive: re-fetch brokers list silently
+      fetch("/api/merolagani-broker", { cache: "no-store" }).catch(() => {});
+    }, 5000);
+    return () => clearInterval(id);
+  }, []);
 
   const handleGlobalSync = async () => {
     setSyncing(true);
@@ -941,10 +992,10 @@ export default function BrokerAnalysisPage() {
   }, []);
 
   return (
-    <div className="mx-auto max-w-[1200px]">
+    <div className="mx-auto max-w-[1200px] px-3">
       {/* Header */}
       <div className="mb-3">
-        <h1 className="text-base font-bold text-foreground">Broker Analysis</h1>
+        <h1 className="text-base font-bold text-foreground">NEPSE AXION <span className="text-[11px] font-normal text-muted">· Broker Analysis</span></h1>
         <p className="text-[11px] text-muted mt-0.5">
           {tab === "stock"
             ? "Stock-level floorsheet activity with tick-rule estimated buy/sell pressure"
@@ -974,8 +1025,8 @@ export default function BrokerAnalysisPage() {
             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 font-semibold text-emerald-500">
               ✓ Real data
             </span>
-          </div>
-        )}
+        </div>
+      </div>
       </div>
 
       {/* Tabs — top left, compact */}
@@ -1047,34 +1098,12 @@ export default function BrokerAnalysisPage() {
         </div>
       </div>
 
-      {/* Quick Actions — top left, small */}
-      <div className="mb-2 flex items-center gap-2">
-        <button
-          onClick={handleGlobalSync}
-          disabled={syncing}
-          className="h-7 rounded border border-border bg-surface px-2.5 text-[10px] font-semibold text-foreground hover:bg-surface-2 disabled:opacity-50"
-        >
-          {syncing ? "Syncing..." : "🔁 Sync Now"}
-        </button>
-        <button
-          onClick={() => window.location.reload()}
-          className="h-7 rounded border border-border bg-surface px-2.5 text-[10px] font-semibold text-foreground hover:bg-surface-2"
-        >
-          🔄 Refresh
-        </button>
-        {lastSyncTime && (
-          <span className="text-[10px] text-muted">
-            Last sync: {new Date(lastSyncTime).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })}
-          </span>
-        )}
-        <span className="text-[10px] text-muted ml-auto">
-          Stock Wise auto-refreshes every 30s when enabled
-        </span>
-      </div>
+      {/* Auto-refresh indicator */}
+      <div className="mb-2 text-[10px] text-muted">Auto-refreshing every 5s</div>
 
       {/* Tab Content */}
       <div className="rounded-xl border border-border bg-surface p-3 shadow-sm">
-        {mounted && tab === "stock" && <StockWiseTab dateKey={getRangeDate(range)} />}
+        {mounted && tab === "stock" && <StockWiseTable />}
         {mounted && tab === "broker" && <BrokerWiseTab range={range} />}
         {mounted && tab === "flow" && <StockBrokerFlow />}
         {mounted && tab === "summary" && <SummaryTab range={range} />}

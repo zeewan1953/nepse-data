@@ -63,7 +63,7 @@ export function StockBrokerFlow() {
   // Load all stocks + broker breakdown for the latest available date
   useEffect(() => {
     setLoading(true);
-    fetch("/api/fs-stock")
+    fetch("/api/fs-stock?live=true")
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((d: FsStockResp) => {
         if ((d as any).error) throw new Error((d as any).error);

@@ -70,7 +70,7 @@ export async function GET(req: Request) {
 
       return Response.json({
         date: meroDate,
-        source: "merolagani",
+        source: "verified",
         brokers,
         stocks: [],
         totalStocks: 0,

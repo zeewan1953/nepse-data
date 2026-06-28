@@ -92,11 +92,40 @@ export function BrokerPerformanceSection() {
 
   const currentData = rangeData[selectedRange];
 
-  if (loading) {
+  if (loading && !currentData) {
     return (
-      <div className="p-6 text-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-primary mx-auto mb-2" />
-        <p className="text-muted">Loading broker performance data...</p>
+      <div className="space-y-4 p-3 animate-pulse">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="rounded-lg border border-border bg-surface p-3">
+              <div className="h-3 w-20 rounded bg-surface-2 mb-2" />
+              <div className="h-6 w-24 rounded bg-surface-2" />
+            </div>
+          ))}
+        </div>
+        <div className="h-8 w-60 rounded bg-surface-2" />
+        <div className="rounded-lg border border-border overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[800px]">
+              <thead>
+                <tr className="border-b border-border bg-surface-2">
+                  {Array.from({ length: 8 }).map((_, j) => (
+                    <th key={j} className="px-3 py-2"><div className="h-3 w-14 rounded bg-surface-2" /></th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <tr key={i} className="border-b border-border">
+                    {Array.from({ length: 8 }).map((_, j) => (
+                      <td key={j} className="px-3 py-2"><div className="h-3 w-16 rounded bg-surface-2" /></td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     );
   }
@@ -104,7 +133,8 @@ export function BrokerPerformanceSection() {
   if (!currentData || !currentData.brokers?.length) {
     return (
       <div className="p-6 text-center">
-        <p className="text-muted">No broker performance data available.</p>
+        <div className="h-32 animate-pulse rounded-lg bg-surface-2 mb-4" />
+        <p className="text-sm text-muted">Broker performance data not available for this period.</p>
       </div>
     );
   }

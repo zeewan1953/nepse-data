@@ -66,7 +66,7 @@ export function BrokerStockDetail({ brokerCode, brokerName }: { brokerCode: stri
     let alive = true;
     setLoading(true);
     setError(null);
-    fetch("/api/fs-stock")
+    fetch("/api/fs-stock?live=true")
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((d: FsStockResp) => {
         if (!alive) return;

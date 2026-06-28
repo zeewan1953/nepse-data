@@ -57,9 +57,9 @@ export function runScanner(_date: string): { longPicks: ScannerPick[]; shortPick
 
     const flows = computeBrokerNetFlow(symRows);
     const conc = computeBrokerConcentration(flows, 5);
-    const cmf = computeCMF(bars, 20);
-    const mfi = computeMFI(bars, 14);
-    const volZ = computeVolumeZScore(bars, 20);
+    const cmf = computeCMF(bars, 7);
+    const mfi = computeMFI(bars, 5);
+    const volZ = computeVolumeZScore(bars, 7);
     const tick = computeTickImbalance(symRows);
 
     const netAmt = flows.reduce((s, f) => s + f.netAmt, 0);
@@ -227,7 +227,7 @@ export function runOverview(date: string) {
       const symFlows = computeBrokerNetFlow(symRows);
       const conc = computeBrokerConcentration(symFlows, 5);
       const bars = getOHLCVHistory(sym, 30);
-      const volZ = computeVolumeZScore(bars, 20);
+      const volZ = computeVolumeZScore(bars, 7);
 
       // Anomaly score: high concentration + unusual volume
       let score = 0;
@@ -273,7 +273,7 @@ export function runLeaderboard(date: string) {
     const flows = computeBrokerNetFlow(symRows);
     const conc = computeBrokerConcentration(flows, 5);
     const bars = getOHLCVHistory(sym, 30);
-    const volZ = computeVolumeZScore(bars, 20);
+    const volZ = computeVolumeZScore(bars, 7);
     const netAmt = flows.reduce((s, f) => s + f.netAmt, 0);
 
     // Score: normalized blend of concentration + volume
@@ -305,9 +305,9 @@ export function runStockFlow(symbol: string, date: string) {
 
   const flows = computeBrokerNetFlow(rows);
   const conc = computeBrokerConcentration(flows, 5);
-  const cmf = computeCMF(bars, 20);
-  const mfi = computeMFI(bars, 14);
-  const volZ = computeVolumeZScore(bars, 20);
+  const cmf = computeCMF(bars, 7);
+  const mfi = computeMFI(bars, 5);
+  const volZ = computeVolumeZScore(bars, 7);
   const tick = computeTickImbalance(rows);
 
   const topBuyers = [...flows].sort((a, b) => b.netAmt - a.netAmt).slice(0, 5);
@@ -347,8 +347,8 @@ export function runMomentum() {
   const symbols = getStockSymbols();
   const stocks = symbols.map((sym) => {
     const bars = getOHLCVHistory(sym, 30);
-    const cmf = computeCMF(bars, 20);
-    const vz = computeVolumeZScore(bars, 20);
+    const cmf = computeCMF(bars, 7);
+    const vz = computeVolumeZScore(bars, 7);
     return { symbol: sym, bars, cmf, volZ: vz?.zScore ?? null };
   });
 

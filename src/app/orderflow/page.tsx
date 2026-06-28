@@ -3,17 +3,18 @@ import { useState, useEffect } from "react";
 import { getMarketSession } from "@/lib/market-hours";
 
 type OrderFlowData = {
-  buy_pressure: number;
-  sell_pressure: number;
-  imbalance: number;
-  trend: "BULLISH" | "BEARISH" | "SIDEWAYS";
-  signal: "STRONG_BUY" | "BUY" | "NEUTRAL" | "SELL" | "STRONG_SELL";
+  buy_pressure: number | null;
+  sell_pressure: number | null;
+  imbalance: number | null;
+  trend: "BULLISH" | "BEARISH" | "SIDEWAYS" | null;
+  signal: "STRONG_BUY" | "BUY" | "NEUTRAL" | "SELL" | "STRONG_SELL" | null;
   large_orders: Array<{ price: number; qty: number; type: "buy" | "sell" }>;
   liquidity_walls: Array<{ price: number; qty: number; type: "support" | "resistance" }>;
   ltp: number;
-  total_buy_qty: number;
-  total_sell_qty: number;
+  total_buy_qty: number | null;
+  total_sell_qty: number | null;
   total_trades: number;
+  unavailable?: boolean;
 };
 
 type MarketDepthData = {
@@ -34,7 +35,7 @@ type StockInfo = {
   volume: number;
 };
 
-function getTrendEmoji(trend: string) {
+function getTrendEmoji(trend: string | null) {
   if (trend === "BULLISH") return "🟢";
   if (trend === "BEARISH") return "🔴";
   return "⚪";
@@ -63,7 +64,6 @@ export default function OrderFlowPage() {
   const [marketDepth, setMarketDepth] = useState<MarketDepthData | null>(null);
   const [loading, setLoading] = useState(false);
   const [isMarketOpen, setIsMarketOpen] = useState(false);
-  const [searchResults, setSearchResults] = useState<StockInfo[]>([]);
 
   // Check market session
   useEffect(() => {
@@ -102,35 +102,27 @@ export default function OrderFlowPage() {
           .sort((a: StockInfo, b: StockInfo) => a.symbol.localeCompare(b.symbol));
         
         setStocks(stockList);
+        // Auto-load ADBL on first load
+        const adbl = stockList.find((s: StockInfo) => s.symbol === "ADBL");
+        if (adbl && !selectedSymbol) fetchOrderFlow("ADBL", adbl);
       }
     } catch (e) {
       console.error("Failed to fetch stocks:", e);
     }
   };
 
-  // Search stocks
-  useEffect(() => {
-    if (!searchQuery.trim()) {
-      setSearchResults([]);
-      return;
-    }
-    
-    const q = searchQuery.toLowerCase();
-    const results = stocks.filter(
-      (s) => s.symbol.toLowerCase().includes(q) || s.name.toLowerCase().includes(q)
-    ).slice(0, 10);
-    
-    setSearchResults(results);
-  }, [searchQuery, stocks]);
+  // Search/filter stocks
+  const filteredStocks = searchQuery.trim()
+    ? stocks.filter((s) => s.symbol.toLowerCase().includes(searchQuery.toLowerCase()) || s.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    : stocks;
 
   // Fetch order flow for selected symbol
-  const fetchOrderFlow = async (symbol: string) => {
+  const fetchOrderFlow = async (symbol: string, stockInfoOverride?: StockInfo) => {
     if (!symbol) return;
     
     setLoading(true);
     setSelectedSymbol(symbol);
     setSearchQuery("");
-    setSearchResults([]);
     
     try {
       // Fetch market depth
@@ -158,7 +150,7 @@ export default function OrderFlowPage() {
         directContent: floorsheetData?.content?.length || 0,
       });
       
-      const stockInfo = stocks.find((s) => s.symbol === symbol);
+      const stockInfo = stockInfoOverride ?? stocks.find((s) => s.symbol === symbol);
       if (!stockInfo) {
         console.error('[OrderFlow] Stock not found:', symbol);
         setLoading(false);
@@ -169,6 +161,28 @@ export default function OrderFlowPage() {
       const trades = floorsheetData?.floorsheets?.content || floorsheetData?.content || [];
       console.log('[OrderFlow] Processing trades:', trades.length, 'for', symbol);
       
+      const total_trades = trades.length;
+
+      // Guard: no tick data → unavailable
+      if (total_trades === 0) {
+        setOrderFlow({
+          buy_pressure: null,
+          sell_pressure: null,
+          imbalance: null,
+          trend: null,
+          signal: null,
+          large_orders: [],
+          liquidity_walls: [],
+          ltp: stockInfo.ltp,
+          total_buy_qty: null,
+          total_sell_qty: null,
+          total_trades: 0,
+          unavailable: true,
+        });
+        setLoading(false);
+        return;
+      }
+
       let total_buy_qty = 0;
       const large_orders: OrderFlowData["large_orders"] = [];
       const priceLevels = new Map<number, number>();
@@ -187,13 +201,6 @@ export default function OrderFlowPage() {
           priceLevels.set(rate, (priceLevels.get(rate) || 0) + qty);
         }
       }
-      
-      console.log('[OrderFlow] Processed:', {
-        total_buy_qty,
-        stock_volume: stockInfo.volume,
-        large_orders: large_orders.length,
-        price_levels: priceLevels.size,
-      });
       
       const total_sell_qty = Math.max(0, stockInfo.volume - total_buy_qty);
       const total_volume = total_buy_qty + total_sell_qty;
@@ -234,7 +241,7 @@ export default function OrderFlowPage() {
         ltp: stockInfo.ltp,
         total_buy_qty,
         total_sell_qty,
-        total_trades: trades.length,
+        total_trades,
       });
       
     } catch (e) {
@@ -277,275 +284,251 @@ export default function OrderFlowPage() {
             )}
           </p>
         </div>
-        
-        {/* Selected Stock Badge */}
-        {selectedSymbol && currentStock && (
-          <div className="flex items-center gap-3 bg-white rounded-lg border border-gray-200 px-3 py-2 shadow-sm">
-            <div>
-              <span className="font-bold text-primary text-sm">{selectedSymbol}</span>
-              <span className="ml-2 text-xs text-gray-500">{currentStock.name}</span>
-            </div>
-            <div className="text-right">
-              <div className="font-semibold text-sm">₨{currentStock.ltp.toFixed(2)}</div>
-              <div className={`text-xs font-bold ${currentStock.change >= 0 ? "text-green-600" : "text-red-600"}`}>
-                {currentStock.change >= 0 ? "+" : ""}{currentStock.change.toFixed(2)}%
-              </div>
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* Search Bar */}
-      <div className="mb-4 relative">
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="🔍 Search by company name or symbol..."
-          className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-        />
-        
-        {/* Search Results */}
-        {searchResults.length > 0 && (
-          <div className="absolute z-50 mt-1 w-full max-h-80 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
-            {searchResults.map((stock) => (
+      <div className="flex gap-3">
+        {/* ── Left: Stock Table ── */}
+        <div className="w-[220px] shrink-0">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="🔍 Search..."
+            className="w-full rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-[11px] mb-2 focus:border-primary focus:outline-none"
+          />
+          <div className="bg-white rounded-lg border border-gray-200 max-h-[calc(100vh-140px)] overflow-y-auto">
+            {filteredStocks.length === 0 ? (
+              <p className="text-[10px] text-gray-400 py-4 text-center">No stocks match</p>
+            ) : filteredStocks.map((stock) => (
               <button
                 key={stock.symbol}
                 onClick={() => fetchOrderFlow(stock.symbol)}
-                className="w-full px-3 py-2 text-left hover:bg-gray-50 border-b border-gray-100 last:border-0 transition flex items-center justify-between"
+                className={`w-full px-2 py-1.5 text-left hover:bg-gray-50 border-b border-gray-100 last:border-0 transition flex items-center justify-between ${
+                  selectedSymbol === stock.symbol ? "bg-sky-50 border-l-2 border-l-sky-500" : ""
+                }`}
               >
-                <div>
-                  <span className="font-bold text-primary text-sm">{stock.symbol}</span>
-                  <span className="ml-2 text-xs text-gray-500">{stock.name}</span>
-                </div>
-                <div className="text-right">
-                  <div className="font-semibold text-sm">₨{stock.ltp.toFixed(2)}</div>
-                  <div className={`text-xs font-bold ${stock.change >= 0 ? "text-green-600" : "text-red-600"}`}>
-                    {stock.change >= 0 ? "+" : ""}{stock.change.toFixed(2)}%
-                  </div>
-                </div>
+                <span className="text-[11px] font-bold text-gray-800">{stock.symbol}</span>
+                <span className={`text-[10px] font-semibold tabular-nums ${stock.change >= 0 ? "text-green-600" : "text-red-600"}`}>
+                  {stock.change >= 0 ? "+" : ""}{stock.change.toFixed(1)}%
+                </span>
               </button>
             ))}
           </div>
-        )}
+        </div>
+
+        {/* ── Right: Selected Stock Content ── */}
+        <div className="flex-1 min-w-0">
+          {!mounted ? (
+            <div className="flex items-center justify-center py-20">
+              <div className="text-sm text-gray-500">Loading...</div>
+            </div>
+          ) : !selectedSymbol ? (
+            <div className="bg-white rounded-lg border border-gray-200 p-8 text-center">
+              <div className="text-5xl mb-3">📊</div>
+              <h2 className="text-lg font-bold text-gray-900 mb-1">Select a Stock</h2>
+              <p className="text-xs text-gray-500">Click a stock from the left panel</p>
+            </div>
+          ) : loading ? (
+            <div className="flex items-center justify-center py-20">
+              <div className="text-sm text-gray-500">Loading {selectedSymbol} data...</div>
+            </div>
+          ) : orderFlow && currentStock ? (
+            <div className="space-y-3">
+              {/* Stock Info */}
+              <div className="bg-sky-50 border border-sky-200 rounded-lg p-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-sm font-bold text-gray-900">{currentStock.symbol}</h2>
+                    <span className="text-[9px] text-gray-500">{currentStock.name}</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-sm font-bold text-gray-900">₨{currentStock.ltp.toFixed(2)}</span>
+                    <span className={`ml-1.5 text-[10px] font-bold ${currentStock.change >= 0 ? "text-green-600" : "text-red-600"}`}>
+                      {currentStock.change >= 0 ? "+" : ""}{currentStock.change.toFixed(2)}%
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 mt-1.5 pt-1.5 border-t border-sky-100 text-[10px] text-gray-600">
+                  <span>H: ₨{currentStock.high.toFixed(2)}</span>
+                  <span>L: ₨{currentStock.low.toFixed(2)}</span>
+                  <span>C: ₨{currentStock.close.toFixed(2)}</span>
+                  <span className="ml-auto text-gray-500">Vol: {currentStock.volume.toLocaleString()}</span>
+                </div>
+              </div>
+
+              {/* Order Flow + Market Depth merged */}
+              <div className="space-y-3">
+                {/* Order Flow */}
+                <div className="bg-white rounded-lg border border-gray-200 p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <h2 className="text-xs font-bold text-gray-900">📊 Order Flow</h2>
+                    <span className="px-1.5 py-0.5 text-[8px] font-bold uppercase rounded bg-amber-100 text-amber-800 border border-amber-200">
+                      Estimated
+                    </span>
+                  </div>
+
+                  {orderFlow.unavailable ? (
+                    <>
+                      <p className="text-[10px] text-gray-400 mb-2">
+                        No tick-level data for this session
+                      </p>
+                      <div className="grid grid-cols-2 gap-2 mb-2">
+                        <div className="bg-gray-50 rounded p-2 border border-gray-100">
+                          <p className="text-[9px] text-gray-400 uppercase mb-0.5">Buy</p>
+                          <p className="text-sm font-bold text-gray-300">—%</p>
+                          <div className="w-full bg-gray-100 rounded-full h-2 mt-1" />
+                          <p className="text-[9px] text-gray-300 mt-0.5">Qty: —</p>
+                        </div>
+                        <div className="bg-gray-50 rounded p-2 border border-gray-100">
+                          <p className="text-[9px] text-gray-400 uppercase mb-0.5">Sell</p>
+                          <p className="text-sm font-bold text-gray-300">—%</p>
+                          <div className="w-full bg-gray-100 rounded-full h-2 mt-1" />
+                          <p className="text-[9px] text-gray-300 mt-0.5">Qty: —</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 text-[10px] text-gray-400">
+                        <span className="border border-gray-200 rounded px-1.5 py-0.5 font-semibold text-gray-400">NO DATA</span>
+                        <span className="border border-gray-200 rounded px-1.5 py-0.5 font-semibold text-gray-400">UNAVAILABLE</span>
+                        <span className="ml-auto font-semibold text-gray-500">{orderFlow.total_trades}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-2 gap-2 mb-2">
+                        <div className="bg-green-50 rounded p-2 border border-green-100">
+                          <p className="text-[9px] text-green-600 uppercase mb-0.5">Buy</p>
+                          <p className="text-sm font-bold text-green-700">{(orderFlow.buy_pressure! * 100).toFixed(0)}%</p>
+                          <div className="w-full bg-green-100 rounded-full h-2 mt-1">
+                            <div className="bg-green-500 h-full rounded-full transition-all duration-500" style={{ width: `${orderFlow.buy_pressure! * 100}%` }} />
+                          </div>
+                          <p className="text-[9px] text-green-500 mt-0.5">{orderFlow.total_buy_qty!.toLocaleString()}</p>
+                        </div>
+                        <div className="bg-red-50 rounded p-2 border border-red-100">
+                          <p className="text-[9px] text-red-600 uppercase mb-0.5">Sell</p>
+                          <p className="text-sm font-bold text-red-700">{(orderFlow.sell_pressure! * 100).toFixed(0)}%</p>
+                          <div className="w-full bg-red-100 rounded-full h-2 mt-1">
+                            <div className="bg-red-500 h-full rounded-full transition-all duration-500" style={{ width: `${orderFlow.sell_pressure! * 100}%` }} />
+                          </div>
+                          <p className="text-[9px] text-red-500 mt-0.5">{orderFlow.total_sell_qty!.toLocaleString()}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-[10px]">
+                        <span className="font-semibold">{orderFlow.trend} {getTrendEmoji(orderFlow.trend)}</span>
+                        <span className={`rounded px-1.5 py-0.5 font-bold border ${getSignalColor(orderFlow.signal!)} text-[9px]`}>
+                          {orderFlow.signal} {getSignalEmoji(orderFlow.signal!)}
+                        </span>
+                        <span className="ml-auto text-gray-400">
+                          <span className="text-gray-500">Imb:</span> {(orderFlow.imbalance! * 100).toFixed(1)}%
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Market Depth */}
+                <div className="bg-white rounded-lg border border-gray-200 p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <h2 className="text-xs font-bold text-gray-900">📈 Market Depth</h2>
+                    {marketDepth ? (
+                      <span className="text-[9px] text-gray-400">{marketDepth.bids.length + marketDepth.asks.length} levels</span>
+                    ) : isMarketOpen ? (
+                      <span className="flex items-center gap-1 text-[9px] text-amber-500">
+                        <span className="relative flex h-1.5 w-1.5">
+                          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
+                          <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-amber-500" />
+                        </span>
+                        Retrying
+                      </span>
+                    ) : null}
+                  </div>
+                  {marketDepth ? (
+                    <>
+                      <div className="grid grid-cols-2 gap-2 mb-2">
+                        <div className="bg-green-50 rounded p-2 border border-green-100">
+                          <p className="text-[9px] text-green-600 uppercase">Total Bid</p>
+                          <p className="text-sm font-bold text-green-800">{marketDepth.total_bid_qty.toLocaleString()}</p>
+                        </div>
+                        <div className="bg-red-50 rounded p-2 border border-red-100">
+                          <p className="text-[9px] text-red-600 uppercase">Total Ask</p>
+                          <p className="text-sm font-bold text-red-800">{marketDepth.total_ask_qty.toLocaleString()}</p>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <p className="text-[9px] font-bold text-green-700 mb-1 uppercase border-b border-green-300 pb-0.5">Bids</p>
+                          <div className="space-y-1">
+                            {marketDepth.bids.length > 0 ? marketDepth.bids.map((bid, idx) => (
+                              <div key={idx} className="flex justify-between items-center bg-green-50 rounded px-1.5 py-1 border border-green-100">
+                                <span className="text-green-700 font-semibold text-[10px]">₨{bid.price.toFixed(2)}</span>
+                                <span className="text-gray-700 font-medium text-[10px]">{bid.qty.toLocaleString()}</span>
+                              </div>
+                            )) : (
+                              <p className="text-[10px] text-gray-400 py-2 text-center">No data</p>
+                            )}
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-[9px] font-bold text-red-700 mb-1 uppercase border-b border-red-300 pb-0.5">Asks</p>
+                          <div className="space-y-1">
+                            {marketDepth.asks.length > 0 ? marketDepth.asks.map((ask, idx) => (
+                              <div key={idx} className="flex justify-between items-center bg-red-50 rounded px-1.5 py-1 border border-red-100">
+                                <span className="text-red-700 font-semibold text-[10px]">₨{ask.price.toFixed(2)}</span>
+                                <span className="text-gray-700 font-medium text-[10px]">{ask.qty.toLocaleString()}</span>
+                              </div>
+                            )) : (
+                              <p className="text-[10px] text-gray-400 py-2 text-center">No data</p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex items-center justify-center min-h-[80px]">
+                      <p className="text-[10px] text-gray-400">
+                        {isMarketOpen ? "Market depth not available — retrying every 10s" : "Market depth not available"}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Analytics */}
+              {(orderFlow.large_orders.length > 0 || orderFlow.liquidity_walls.length > 0) && (
+                <div className="space-y-3">
+                  {orderFlow.large_orders.length > 0 && (
+                    <div className="bg-white rounded-lg border border-gray-200 p-3">
+                      <h2 className="text-[10px] font-bold text-gray-900 uppercase mb-2">🎯 Large Orders &gt;5K</h2>
+                      <div className="space-y-1">
+                        {orderFlow.large_orders.slice(0, 5).map((order, idx) => (
+                          <div key={idx} className="flex justify-between items-center rounded px-2 py-1.5 bg-green-50 border border-green-100">
+                            <span className="text-[10px] font-semibold text-gray-700">₨{order.price.toFixed(2)}</span>
+                            <span className="text-[10px] font-bold text-green-600">{order.qty.toLocaleString()}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {orderFlow.liquidity_walls.length > 0 && (
+                    <div className="bg-white rounded-lg border border-gray-200 p-3">
+                      <h2 className="text-[10px] font-bold text-gray-900 uppercase mb-2"> Liquidity Walls &gt;10K</h2>
+                      <div className="space-y-1">
+                        {orderFlow.liquidity_walls.map((wall, idx) => (
+                          <div key={idx} className={`flex justify-between items-center rounded px-2 py-1.5 border ${
+                            wall.type === "support" ? "bg-blue-50 border-blue-100" : "bg-orange-50 border-orange-100"
+                          }`}>
+                            <span className="text-[10px] font-semibold text-gray-700">₨{wall.price.toFixed(2)}</span>
+                            <span className="text-[10px] font-bold">{wall.qty.toLocaleString()}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : null}
+        </div>
       </div>
-
-      {!mounted ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="text-sm text-gray-500">Loading...</div>
-        </div>
-      ) : !selectedSymbol ? (
-        <div className="bg-white rounded-lg border border-gray-200 p-8 text-center">
-          <div className="text-5xl mb-3">📊</div>
-          <h2 className="text-lg font-bold text-gray-900 mb-1">Select a Stock</h2>
-          <p className="text-xs text-gray-500">Search for a company name or symbol to view order flow</p>
-        </div>
-      ) : loading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="text-sm text-gray-500">Loading {selectedSymbol} data...</div>
-        </div>
-      ) : orderFlow && currentStock ? (
-        <div className="space-y-4">
-          {/* Stock Info */}
-          <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg shadow p-4 text-white">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <h2 className="text-2xl font-bold mb-0.5">{currentStock.symbol}</h2>
-                <p className="text-xs opacity-90">{currentStock.name}</p>
-              </div>
-              <div className="text-right">
-                <div className="text-2xl font-bold">₨{currentStock.ltp.toFixed(2)}</div>
-                <div className={`text-base font-bold ${currentStock.change >= 0 ? "text-green-300" : "text-red-300"}`}>
-                  {currentStock.change >= 0 ? "+" : ""}{currentStock.change.toFixed(2)}%
-                </div>
-              </div>
-            </div>
-            <div className="grid grid-cols-4 gap-3 mt-3 pt-3 border-t border-white/20 text-sm">
-              <div>
-                <p className="text-xs opacity-75">High</p>
-                <p className="font-semibold">₨{currentStock.high.toFixed(2)}</p>
-              </div>
-              <div>
-                <p className="text-xs opacity-75">Low</p>
-                <p className="font-semibold">₨{currentStock.low.toFixed(2)}</p>
-              </div>
-              <div>
-                <p className="text-xs opacity-75">Close</p>
-                <p className="font-semibold">₨{currentStock.close.toFixed(2)}</p>
-              </div>
-              <div>
-                <p className="text-xs opacity-75">Volume</p>
-                <p className="font-semibold">{currentStock.volume.toLocaleString()}</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Main Grid: Order Flow + Market Depth */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {/* Order Flow */}
-            <div className="bg-white rounded-lg border border-gray-200 p-4">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-sm font-bold text-gray-900">📊 Order Flow Analysis</h2>
-                <span className="px-2 py-0.5 text-[9px] font-bold uppercase rounded bg-amber-100 text-amber-800 border border-amber-300">
-                  Estimated
-                </span>
-              </div>
-
-              {/* Buy Pressure */}
-              <div className="mb-4">
-                <div className="flex justify-between items-center mb-1.5">
-                  <span className="text-xs font-semibold text-green-700 uppercase">Buy Pressure</span>
-                  <span className="text-xl font-bold text-green-600">{(orderFlow.buy_pressure * 100).toFixed(0)}%</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-5 overflow-hidden">
-                  <div
-                    className="bg-gradient-to-r from-green-400 to-green-600 h-full transition-all duration-500"
-                    style={{ width: `${orderFlow.buy_pressure * 100}%` }}
-                  />
-                </div>
-                <p className="text-xs text-gray-500 mt-1">Qty: {orderFlow.total_buy_qty.toLocaleString()}</p>
-              </div>
-
-              {/* Sell Pressure */}
-              <div className="mb-4">
-                <div className="flex justify-between items-center mb-1.5">
-                  <span className="text-xs font-semibold text-red-700 uppercase">Sell Pressure</span>
-                  <span className="text-xl font-bold text-red-600">{(orderFlow.sell_pressure * 100).toFixed(0)}%</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-5 overflow-hidden">
-                  <div
-                    className="bg-gradient-to-r from-red-400 to-red-600 h-full transition-all duration-500"
-                    style={{ width: `${orderFlow.sell_pressure * 100}%` }}
-                  />
-                </div>
-                <p className="text-xs text-gray-500 mt-1">Qty: {orderFlow.total_sell_qty.toLocaleString()}</p>
-              </div>
-
-              {/* Trend & Signal */}
-              <div className="grid grid-cols-2 gap-3 pt-4 border-t border-gray-200">
-                <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-                  <p className="text-xs text-gray-500 uppercase mb-1">Trend</p>
-                  <p className="text-lg font-bold flex items-center gap-1.5">
-                    <span>{orderFlow.trend}</span>
-                    <span className="text-2xl">{getTrendEmoji(orderFlow.trend)}</span>
-                  </p>
-                </div>
-                <div className={`rounded-lg p-3 border ${getSignalColor(orderFlow.signal)}`}>
-                  <p className="text-xs text-gray-500 uppercase mb-1">Signal</p>
-                  <p className="text-lg font-bold flex items-center gap-1.5">
-                    <span>{orderFlow.signal}</span>
-                    <span className="text-2xl">{getSignalEmoji(orderFlow.signal)}</span>
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-3 pt-3 border-t border-gray-200 grid grid-cols-2 gap-3 text-xs">
-                <div>
-                  <span className="text-gray-500">Trades:</span>
-                  <span className="ml-1 font-semibold">{orderFlow.total_trades}</span>
-                </div>
-                <div>
-                  <span className="text-gray-500">Imbalance:</span>
-                  <span className="ml-1 font-semibold">{(orderFlow.imbalance * 100).toFixed(1)}%</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Market Depth */}
-            {marketDepth ? (
-              <div className="bg-white rounded-lg border border-gray-200 p-4">
-                <h2 className="text-sm font-bold text-gray-900 mb-4">📈 Market Depth</h2>
-
-                <div className="grid grid-cols-2 gap-3 mb-4">
-                  <div className="bg-green-50 rounded-lg p-3 border border-green-200">
-                    <p className="text-xs text-green-700 uppercase mb-1">Total Bid</p>
-                    <p className="text-lg font-bold text-green-900">{marketDepth.total_bid_qty.toLocaleString()}</p>
-                  </div>
-                  <div className="bg-red-50 rounded-lg p-3 border border-red-200">
-                    <p className="text-xs text-red-700 uppercase mb-1">Total Ask</p>
-                    <p className="text-lg font-bold text-red-900">{marketDepth.total_ask_qty.toLocaleString()}</p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-xs font-bold text-green-700 mb-2 uppercase border-b-2 border-green-500 pb-1">Top Bids</p>
-                    <div className="space-y-1.5">
-                      {marketDepth.bids.length > 0 ? marketDepth.bids.map((bid, idx) => (
-                        <div key={idx} className="flex justify-between items-center bg-green-50 rounded px-2 py-1.5 border border-green-200">
-                          <span className="text-green-700 font-semibold text-xs">₨{bid.price.toFixed(2)}</span>
-                          <span className="text-gray-800 font-medium text-xs">{bid.qty.toLocaleString()}</span>
-                        </div>
-                      )) : (
-                        <p className="text-xs text-gray-500 py-4 text-center">No data</p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div>
-                    <p className="text-xs font-bold text-red-700 mb-2 uppercase border-b-2 border-red-500 pb-1">Top Asks</p>
-                    <div className="space-y-1.5">
-                      {marketDepth.asks.length > 0 ? marketDepth.asks.map((ask, idx) => (
-                        <div key={idx} className="flex justify-between items-center bg-red-50 rounded px-2 py-1.5 border border-red-200">
-                          <span className="text-red-700 font-semibold text-xs">₨{ask.price.toFixed(2)}</span>
-                          <span className="text-gray-800 font-medium text-xs">{ask.qty.toLocaleString()}</span>
-                        </div>
-                      )) : (
-                        <p className="text-xs text-gray-500 py-4 text-center">No data</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="bg-white rounded-lg border border-gray-200 p-4 flex items-center justify-center">
-                <p className="text-xs text-gray-500">Market depth not available</p>
-              </div>
-            )}
-          </div>
-
-          {/* Analytics Grid */}
-          {(orderFlow.large_orders.length > 0 || orderFlow.liquidity_walls.length > 0) && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {orderFlow.large_orders.length > 0 && (
-                <div className="bg-white rounded-lg border border-gray-200 p-4">
-                  <h2 className="text-sm font-bold text-gray-900 mb-3">🎯 Large Orders (&gt;5K)</h2>
-                  <div className="space-y-2">
-                    {orderFlow.large_orders.slice(0, 5).map((order, idx) => (
-                      <div key={idx} className="flex justify-between items-center rounded p-2 bg-green-50 border border-green-200">
-                        <div>
-                          <p className="text-xs text-gray-500 uppercase">Buy</p>
-                          <p className="text-sm font-bold">₨{order.price.toFixed(2)}</p>
-                        </div>
-                        <p className="text-sm font-bold text-green-600">{order.qty.toLocaleString()}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {orderFlow.liquidity_walls.length > 0 && (
-                <div className="bg-white rounded-lg border border-gray-200 p-4">
-                  <h2 className="text-sm font-bold text-gray-900 mb-3"> Liquidity Walls (&gt;10K)</h2>
-                  <div className="space-y-2">
-                    {orderFlow.liquidity_walls.map((wall, idx) => (
-                      <div key={idx} className={`flex justify-between items-center rounded p-2 border ${
-                        wall.type === "support" ? "bg-blue-50 border-blue-200" : "bg-orange-50 border-orange-200"
-                      }`}>
-                        <div>
-                          <p className="text-xs text-gray-500 uppercase">{wall.type === "support" ? "Support" : "Resistance"}</p>
-                          <p className="text-sm font-bold">₨{wall.price.toFixed(2)}</p>
-                        </div>
-                        <p className="text-sm font-bold">{wall.qty.toLocaleString()}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>A variable with the name `SUPABASE_SERVICE_ROLE_KEY` already exists for the target production on branch undefined
-          )}
-        </div>
-      ) : null}
     </div>
   );
 }
