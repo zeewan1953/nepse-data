@@ -312,14 +312,9 @@ export default function AppHeader() {
       {/* ── Main Header Bar ──────────────────────────────── */}
       <div className="border-b" style={{ borderColor: "rgba(0,0,0,0.12)", background: "#fff" }}>
         <div className="mx-auto flex max-w-[1400px] items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1 sm:py-1.5">
-          {/* Logo - medium on desktop, icon on mobile */}
-          <Link href="/" className="flex shrink-0 items-center">
-            <span className="sm:hidden">
-              <Logo variant="icon" size={28} />
-            </span>
-            <span className="hidden sm:inline">
-              <Logo variant="medium" size={36} />
-            </span>
+          {/* Logo - NEPSE AXION */}
+          <Link href="/" className="flex shrink-0 items-center mr-1 sm:mr-2">
+            <Logo variant="medium" size={32} />
           </Link>
 
           {/* Navigation Pill - All screen sizes */}
