@@ -1,11 +1,3 @@
-import Image from "next/image";
-
-const VARIANTS = {
-  icon: { file: "/branding/nepse-axion-logo-icon.png", w: 683, h: 619 },
-  medium: { file: "/branding/nepse-axion-logo-medium.png", w: 1133, h: 778 },
-  full: { file: "/branding/nepse-axion-logo-full.png", w: 1134, h: 839 },
-} as const;
-
 export function Logo({
   size = 32,
   variant = "icon",
@@ -15,16 +7,29 @@ export function Logo({
   variant?: "icon" | "medium" | "full";
   className?: string;
 }) {
-  const v = VARIANTS[variant];
+  const iconSize = variant === "medium" || variant === "full" ? 28 : Math.round(size * 0.8);
+  const textSize = variant === "icon" ? Math.round(size * 0.5) : variant === "medium" ? 16 : 20;
+  const showBrand = variant !== "icon";
+
   return (
-    <Image
-      src={v.file}
-      alt="NEPSE AXION"
-      width={v.w}
-      height={v.h}
-      priority
-      className={`object-contain ${className}`}
-      style={{ height: size, width: "auto" }}
-    />
+    <span className={`inline-flex items-center gap-1.5 ${className}`} style={{ height: size }}>
+      <span
+        className="grid place-items-center rounded-md font-black text-white"
+        style={{
+          width: iconSize,
+          height: iconSize,
+          fontSize: Math.round(iconSize * 0.55),
+          background: "linear-gradient(135deg, #00cc44, #0088cc)",
+          flexShrink: 0,
+        }}
+      >
+        A
+      </span>
+      {showBrand && (
+        <span className="font-extrabold tracking-tight" style={{ fontSize: textSize, color: "#04122A" }}>
+          AXION
+        </span>
+      )}
+    </span>
   );
 }
