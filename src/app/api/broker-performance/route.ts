@@ -22,81 +22,70 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Invalid range" }, { status: 400 });
     }
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const fromDate = new Date(today);
-    fromDate.setDate(fromDate.getDate() - RANGE_DAYS[range]);
-    const fromDateStr = fromDate.toISOString().split("T")[0];
-    const toDateStr = today.toISOString().split("T")[0];
+    const data = await aggregateBrokerDataForRange(range);
+    if (data.brokers && data.brokers.length > 0) {
+      const marketTurnover = data.brokers.reduce((sum, b: any) => sum + b.turnover, 0);
+      const totalTransactions = data.brokers.reduce((sum, b: any) => sum + b.transactionCount, 0);
+      const avgNetFlow = data.brokers.length > 0
+        ? data.brokers.reduce((sum, b: any) => sum + b.netAmount, 0) / data.brokers.length
+        : 0;
+      const topBrokerBuy = [...data.brokers].sort((a: any, b: any) => b.buyAmount - a.buyAmount)[0];
+      const topBrokerSell = [...data.brokers].sort((a: any, b: any) => b.sellAmount - a.sellAmount)[0];
 
-    try {
-      const data = await aggregateBrokerDataForRange(range);
-      if (data.brokers && data.brokers.length > 0) {
-        const marketTurnover = data.brokers.reduce((sum, b: any) => sum + b.turnover, 0);
-        const totalTransactions = data.brokers.reduce((sum, b: any) => sum + b.transactionCount, 0);
-        const avgNetFlow = data.brokers.length > 0
-          ? data.brokers.reduce((sum, b: any) => sum + b.netAmount, 0) / data.brokers.length
-          : 0;
-        const topBrokerBuy = [...data.brokers].sort((a: any, b: any) => b.buyAmount - a.buyAmount)[0];
-        const topBrokerSell = [...data.brokers].sort((a: any, b: any) => b.sellAmount - a.sellAmount)[0];
-
-        return NextResponse.json({
-          range,
-          fromDate: data.fromDate,
-          toDate: data.toDate,
-          brokers: data.brokers.map((b: any) => ({
-            brokerCode: b.brokerCode,
-            brokerName: b.brokerName,
-            buyAmount: b.buyAmount,
-            sellAmount: b.sellAmount,
-            netAmount: b.netAmount,
-            turnover: b.turnover,
-            transactionCount: b.transactionCount,
-            daysActive: b.daysInRange,
-            avgDaily: b.averageDailyTurnover,
-          })),
-          marketTurnover,
-          totalTransactions,
-          avgNetFlow,
-          topBrokerBuy: topBrokerBuy
-            ? {
-                brokerCode: topBrokerBuy.brokerCode,
-                brokerName: topBrokerBuy.brokerName,
-                buyAmount: topBrokerBuy.buyAmount,
-                sellAmount: topBrokerBuy.sellAmount,
-                netAmount: topBrokerBuy.netAmount,
-                turnover: topBrokerBuy.turnover,
-                transactionCount: topBrokerBuy.transactionCount,
-                daysActive: topBrokerBuy.daysInRange,
-                avgDaily: topBrokerBuy.averageDailyTurnover,
-              }
-            : null,
-          topBrokerSell: topBrokerSell
-            ? {
-                brokerCode: topBrokerSell.brokerCode,
-                brokerName: topBrokerSell.brokerName,
-                buyAmount: topBrokerSell.buyAmount,
-                sellAmount: topBrokerSell.sellAmount,
-                netAmount: topBrokerSell.netAmount,
-                turnover: topBrokerSell.turnover,
-                transactionCount: topBrokerSell.transactionCount,
-                daysActive: topBrokerSell.daysInRange,
-                avgDaily: topBrokerSell.averageDailyTurnover,
-              }
-            : null,
-          brokerCount: data.brokers.length,
-          timestamp: new Date().toISOString(),
-          source: "nepse_live",
-        });
-      }
-    } catch (nepseError) {
-      console.error("NEPSE data fetch error:", nepseError);
+      return NextResponse.json({
+        range,
+        fromDate: data.fromDate,
+        toDate: data.toDate,
+        brokers: data.brokers.map((b: any) => ({
+          brokerCode: b.brokerCode,
+          brokerName: b.brokerName,
+          buyAmount: b.buyAmount,
+          sellAmount: b.sellAmount,
+          netAmount: b.netAmount,
+          turnover: b.turnover,
+          transactionCount: b.transactionCount,
+          daysActive: b.daysInRange,
+          avgDaily: b.averageDailyTurnover,
+        })),
+        marketTurnover,
+        totalTransactions,
+        avgNetFlow,
+        topBrokerBuy: topBrokerBuy
+          ? {
+              brokerCode: topBrokerBuy.brokerCode,
+              brokerName: topBrokerBuy.brokerName,
+              buyAmount: topBrokerBuy.buyAmount,
+              sellAmount: topBrokerBuy.sellAmount,
+              netAmount: topBrokerBuy.netAmount,
+              turnover: topBrokerBuy.turnover,
+              transactionCount: topBrokerBuy.transactionCount,
+              daysActive: topBrokerBuy.daysInRange,
+              avgDaily: topBrokerBuy.averageDailyTurnover,
+            }
+          : null,
+        topBrokerSell: topBrokerSell
+          ? {
+              brokerCode: topBrokerSell.brokerCode,
+              brokerName: topBrokerSell.brokerName,
+              buyAmount: topBrokerSell.buyAmount,
+              sellAmount: topBrokerSell.sellAmount,
+              netAmount: topBrokerSell.netAmount,
+              turnover: topBrokerSell.turnover,
+              transactionCount: topBrokerSell.transactionCount,
+              daysActive: topBrokerSell.daysInRange,
+              avgDaily: topBrokerSell.averageDailyTurnover,
+            }
+          : null,
+        brokerCount: data.brokers.length,
+        timestamp: new Date().toISOString(),
+        source: "merolagani_db",
+      });
     }
 
     return NextResponse.json({
       range,
-      fromDate: fromDateStr,
-      toDate: toDateStr,
+      fromDate: data.fromDate,
+      toDate: data.toDate,
       brokers: [],
       marketTurnover: 0,
       totalTransactions: 0,
@@ -112,6 +101,8 @@ export async function GET(req: NextRequest) {
     console.error("Broker performance error:", error);
     return NextResponse.json({
       range: req.nextUrl.searchParams.get("range") || "1D",
+      fromDate: "",
+      toDate: "",
       brokers: [],
       marketTurnover: 0,
       totalTransactions: 0,
