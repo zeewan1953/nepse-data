@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useMemo, useCallback } from "react";
+import Link from "next/link";
 import { npr, num, pct, compact } from "@/lib/format";
 import { usePoll } from "@/lib/useLive";
 import type { LiveMarketData } from "@/lib/types";
@@ -7,59 +8,21 @@ import type { LiveMarketData } from "@/lib/types";
 type LiveResp = { data: LiveMarketData[]; count: number };
 
 type Order = {
-  id: number;
-  symbol: string;
-  side: "BUY" | "SELL";
-  limit_price: number;
-  quantity: number;
-  status: string;
-  placed_at: number;
-  expires_at: number;
-  filled_at: number | null;
-  filled_price: number | null;
+  id: number; symbol: string; side: "BUY" | "SELL"; limit_price: number; quantity: number;
+  status: string; placed_at: number; expires_at: number; filled_at: number | null; filled_price: number | null;
 };
 
-type Holding = {
-  symbol: string;
-  quantity: number;
-  avgBuyPrice: number;
-  currentLtp: number | null;
-  unrealizedPnl: number | null;
-  unrealizedPnlPct: number | null;
-};
+type Holding = { symbol: string; quantity: number; avgBuyPrice: number; currentLtp: number | null; unrealizedPnl: number | null; unrealizedPnlPct: number | null };
 
-type PortfolioResp = {
-  cashBalance: number;
-  totalEquity: number;
-  totalReturnPct: number;
-  holdings: Holding[];
-};
+type PortfolioResp = { cashBalance: number; totalEquity: number; totalReturnPct: number; holdings: Holding[] };
 
-type Trade = {
-  id: number;
-  symbol: string;
-  side: string;
-  quantity: number;
-  price: number;
-  realized_pnl: number | null;
-  executed_at: number;
-};
+type Trade = { id: number; symbol: string; side: string; quantity: number; price: number; realized_pnl: number | null; fees: number; executed_at: number };
 
 type PerfResp = {
-  totalEquity: number;
-  cashBalance: number;
-  startingBalance: number;
-  totalReturnPct: number;
-  realizedPnl: number;
-  winRate: number | null;
-  avgPnl: number | null;
-  bestTrade: number | null;
-  worstTrade: number | null;
-  holdingCount: number;
-  tradeCount: number;
-  resetCount: number;
-  lastResetAt: number | null;
-  snapshots: { date: string; total_equity: number }[];
+  totalEquity: number; cashBalance: number; startingBalance: number; totalReturnPct: number;
+  realizedPnl: number; totalFees: number; winRate: number | null; avgPnl: number | null;
+  bestTrade: number | null; worstTrade: number | null; holdingCount: number; tradeCount: number;
+  resetCount: number; lastResetAt: number | null; snapshots: { date: string; total_equity: number }[];
 };
 
 const DISCLAIMER = "Simulated performance using virtual capital. Past paper-trading results do not indicate real trading outcomes.";
@@ -71,13 +34,18 @@ function computeSignalScore(stock: LiveMarketData | undefined, all: LiveMarketDa
   const momentumScore = Math.min(100, Math.max(-100, pctChg * 10));
   const avgVolume = all.reduce((s, x) => s + (x.totalTradeQuantity ?? 0), 0) / Math.max(all.length, 1);
   const volumeRatio = avgVolume > 0 ? volume / avgVolume : 1;
-  const smartMoneyScore = pctChg > 0 && volumeRatio > 1.5
-    ? Math.min(100, pctChg * 5 + volumeRatio * 10)
-    : pctChg < 0 && volumeRatio > 1.5
-      ? Math.max(-100, pctChg * 5 - volumeRatio * 10)
-      : 0;
+  const smartMoneyScore = pctChg > 0 && volumeRatio > 1.5 ? Math.min(100, pctChg * 5 + volumeRatio * 10) : pctChg < 0 && volumeRatio > 1.5 ? Math.max(-100, pctChg * 5 - volumeRatio * 10) : 0;
   const orderFlow = pctChg > 2 ? "Buy Pressure" : pctChg < -2 ? "Sell Pressure" : "Neutral";
   return { momentumScore, smartMoneyScore, orderFlow };
+}
+
+function calcFees(side: "BUY" | "SELL", tradeValue: number) {
+  const sebon = tradeValue * 0.00015;
+  const brokerageRate = tradeValue >= 500_000 ? 0.0015 : 0.003;
+  const brokerage = Math.max(50, tradeValue * brokerageRate);
+  const dp = side === "SELL" ? 25 : 0;
+  const total = sebon + brokerage + dp;
+  return { sebon: Math.round(sebon * 100) / 100, brokerage: Math.round(brokerage * 100) / 100, dp, total: Math.round(total * 100) / 100 };
 }
 
 export default function PaperTradingPage() {
@@ -114,11 +82,7 @@ export default function PaperTradingPage() {
       if (pRes.ok) setPortfolio(await pRes.json());
       if (hRes.ok) setHistory((await hRes.json()).trades ?? []);
       if (perfRes.ok) setPerf(await perfRes.json());
-    } catch {
-      setError("Failed to load data");
-    } finally {
-      setLoading(false);
-    }
+    } catch { setError("Failed to load data"); } finally { setLoading(false); }
   }, []);
 
   useEffect(() => { fetchAll(); const id = setInterval(fetchAll, 5_000); return () => clearInterval(id); }, [fetchAll]);
@@ -128,6 +92,15 @@ export default function PaperTradingPage() {
     for (const s of liveData) m[s.symbol] = s;
     return m;
   }, [liveData]);
+
+  const orderValue = useMemo(() => {
+    const price = Number(plPrice);
+    const qty = Number(plQty);
+    if (!price || !qty || qty <= 0 || !Number.isInteger(qty)) return null;
+    const tradeValue = price * qty;
+    const fees = calcFees(plSide, tradeValue);
+    return { tradeValue, ...fees, net: plSide === "BUY" ? tradeValue + fees.total : tradeValue - fees.total };
+  }, [plPrice, plQty, plSide]);
 
   const handlePlaceOrder = async () => {
     setPlErr("");
@@ -141,11 +114,7 @@ export default function PaperTradingPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ symbol: plSym.toUpperCase(), side: plSide, limitPrice: price, quantity: qty }),
     });
-    if (!res.ok) {
-      const err = await res.json();
-      setPlErr(err.error ?? "Failed to place order");
-      return;
-    }
+    if (!res.ok) { const err = await res.json(); setPlErr(err.error ?? "Failed"); return; }
     setPlSym(""); setPlPrice(""); setPlQty("");
     fetchAll();
   };
@@ -157,25 +126,18 @@ export default function PaperTradingPage() {
 
   const handleReset = async () => {
     setResetMsg("");
-    const res = await fetch("/api/paper-trading/reset", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ confirmation: true }),
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      setResetMsg(err.error ?? "Reset failed");
-    } else {
-      setResetMsg("Account reset successfully!");
-      setResetConfirm(false);
-      fetchAll();
-    }
+    const res = await fetch("/api/paper-trading/reset", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirmation: true }) });
+    if (!res.ok) { const err = await res.json(); setResetMsg(err.error ?? "Reset failed"); }
+    else { setResetMsg("Account reset successfully!"); setResetConfirm(false); fetchAll(); }
   };
 
   if (loading) {
     return (
       <div className="mx-auto max-w-[1200px] px-4 py-6">
-        <div className="h-8 w-48 animate-pulse rounded bg-surface-2 mb-6" />
+        <div className="flex items-center gap-3 mb-6">
+          <div className="h-8 w-8 rounded-lg bg-primary animate-pulse" />
+          <div className="h-5 w-40 animate-pulse rounded bg-surface-2" />
+        </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
           {[1,2,3,4].map(i => <div key={i} className="h-20 rounded-xl bg-surface-2 animate-pulse" />)}
         </div>
@@ -199,80 +161,79 @@ export default function PaperTradingPage() {
 
   return (
     <div className="mx-auto max-w-[1200px] px-4 py-6">
-      {/* ── Account Summary ── */}
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <h1 className="text-lg font-extrabold text-foreground">Paper Trading</h1>
-          <span className="rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"
-            style={{ borderColor: "#d4af37", color: "#d4af37", background: "#fef9e7" }}>
-            DEMO
-          </span>
-          <span className="text-[10px] text-muted">Virtual ₨1,000,000</span>
+      {/* ── Header with Logo ── */}
+      <div className="mb-6 flex items-center gap-3">
+        <Link href="/" className="flex shrink-0 items-center gap-2">
+          <span className="grid h-8 w-8 place-items-center rounded-lg text-sm font-black text-white" style={{ background: "#0F6E56" }}>A</span>
+          <span className="text-sm font-extrabold text-foreground">NEPSE AXION</span>
+        </Link>
+        <span className="text-muted">/</span>
+        <div className="flex items-center gap-2">
+          <h1 className="text-base font-extrabold text-foreground">Paper Trading</h1>
+          <span className="rounded-md border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide" style={{ borderColor: "#d4af37", color: "#d4af37", background: "#fef9e7" }}>DEMO</span>
         </div>
-        <div className="text-right">
-          <div className="text-[10px] text-muted">Total Equity</div>
-          <div className={`text-lg font-black tabular-nums ${p && p.totalReturnPct >= 0 ? "text-up" : "text-down"}`}>
-            {p ? npr(p.totalEquity) : "—"}
-          </div>
+      </div>
+
+      {/* ── Account Summary ── */}
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <div className="text-[10px] text-muted">Virtual Capital</div>
+          <div className="text-xl font-black tabular-nums text-foreground">{p ? npr(p.cashBalance) : "—"}</div>
           <div className={`text-[10px] font-semibold ${p && p.totalReturnPct >= 0 ? "text-up" : "text-down"}`}>
             {p != null ? `${p.totalReturnPct >= 0 ? "+" : ""}${p.totalReturnPct.toFixed(2)}%` : "—"} all time
           </div>
         </div>
-      </div>
-
-      {/* Stat cards */}
-      <div className="mb-6 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
-        <div className="rounded-xl border border-border bg-surface p-3">
-          <div className="text-[10px] text-muted">Cash Balance</div>
-          <div className="text-sm font-bold tabular-nums text-foreground">{p ? npr(p.cashBalance) : "—"}</div>
-        </div>
-        <div className="rounded-xl border border-border bg-surface p-3">
-          <div className="text-[10px] text-muted">Holdings Value</div>
-          <div className="text-sm font-bold tabular-nums text-foreground">
-            {p ? npr((p.holdings || []).reduce((s, h) => s + (h.currentLtp ?? h.avgBuyPrice) * h.quantity, 0)) : "—"}
+        <div className="flex items-center gap-3 text-right">
+          <div>
+            <div className="text-[10px] text-muted">Total Equity</div>
+            <div className="text-lg font-black tabular-nums">{p ? npr(p.totalEquity) : "—"}</div>
+          </div>
+          <div>
+            <div className="text-[10px] text-muted">Holdings</div>
+            <div className="text-lg font-black tabular-nums">{p ? (p.holdings || []).length : "—"}</div>
+          </div>
+          <div>
+            <div className="text-[10px] text-muted">Pending</div>
+            <div className="text-lg font-black tabular-nums">{orders.length}</div>
           </div>
         </div>
-        <div className="rounded-xl border border-border bg-surface p-3">
-          <div className="text-[10px] text-muted">Open Positions</div>
-          <div className="text-sm font-bold tabular-nums text-foreground">{p ? (p.holdings || []).length : "—"}</div>
-        </div>
-        <div className="rounded-xl border border-border bg-surface p-3">
-          <div className="text-[10px] text-muted">Pending Orders</div>
-          <div className="text-sm font-bold tabular-nums text-foreground">{orders.length}</div>
-        </div>
       </div>
 
-      {/* ── Place Order + Order Panel ── */}
-      <div className="mb-6 grid gap-4 sm:grid-cols-[320px_1fr]">
-        {/* Place Order form */}
+      {/* ── Place Order + Order Calculator ── */}
+      <div className="mb-6 grid gap-4 sm:grid-cols-[340px_1fr]">
         <div className="rounded-xl border border-border bg-surface p-4">
           <h2 className="mb-3 text-sm font-bold text-foreground">Place Order</h2>
           <div className="space-y-2.5">
-            <input
-              type="text" value={plSym} onChange={(e) => setPlSym(e.target.value.toUpperCase())}
+            <input type="text" value={plSym} onChange={(e) => setPlSym(e.target.value.toUpperCase())}
               placeholder="Symbol (e.g. NABIL)"
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs outline-none focus:border-primary placeholder:text-muted"
-            />
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs outline-none focus:border-primary placeholder:text-muted" />
             <div className="flex gap-2">
               <button onClick={() => setPlSide("BUY")}
-                className={`flex-1 rounded-lg py-2 text-xs font-bold transition ${plSide === "BUY" ? "bg-up text-white" : "border border-border text-muted hover:bg-surface-2"}`}>
-                BUY
-              </button>
+                className={`flex-1 rounded-lg py-2 text-xs font-bold transition ${plSide === "BUY" ? "bg-up text-white" : "border border-border text-muted hover:bg-surface-2"}`}>BUY</button>
               <button onClick={() => setPlSide("SELL")}
-                className={`flex-1 rounded-lg py-2 text-xs font-bold transition ${plSide === "SELL" ? "bg-down text-white" : "border border-border text-muted hover:bg-surface-2"}`}>
-                SELL
-              </button>
+                className={`flex-1 rounded-lg py-2 text-xs font-bold transition ${plSide === "SELL" ? "bg-down text-white" : "border border-border text-muted hover:bg-surface-2"}`}>SELL</button>
             </div>
-            <input
-              type="number" value={plPrice} onChange={(e) => setPlPrice(e.target.value)}
+            <input type="number" value={plPrice} onChange={(e) => setPlPrice(e.target.value)}
               placeholder="Limit price (Rs)"
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs outline-none focus:border-primary placeholder:text-muted"
-            />
-            <input
-              type="number" value={plQty} onChange={(e) => setPlQty(e.target.value)}
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs outline-none focus:border-primary placeholder:text-muted" />
+            <input type="number" value={plQty} onChange={(e) => setPlQty(e.target.value)}
               placeholder="Quantity"
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs outline-none focus:border-primary placeholder:text-muted"
-            />
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs outline-none focus:border-primary placeholder:text-muted" />
+
+            {/* Order Value Calculator */}
+            {orderValue && (
+              <div className="rounded-lg border border-border bg-surface-2 p-2.5 text-[10px] space-y-1">
+                <div className="flex justify-between"><span className="text-muted">Trade Value</span><span className="font-semibold tabular-nums">{npr(orderValue.tradeValue)}</span></div>
+                <div className="flex justify-between"><span className="text-muted">SEBON (0.015%)</span><span className="tabular-nums">{npr(orderValue.sebon)}</span></div>
+                <div className="flex justify-between"><span className="text-muted">Brokerage{orderValue.tradeValue >= 500000 ? " (0.15%)" : " (0.30%)"}</span><span className="tabular-nums">{npr(orderValue.brokerage)}</span></div>
+                {orderValue.dp > 0 && <div className="flex justify-between"><span className="text-muted">DP Charge</span><span className="tabular-nums">Rs 25.00</span></div>}
+                <div className="border-t border-border pt-1 flex justify-between font-bold">
+                  <span className="text-foreground">{plSide === "BUY" ? "Total Cost" : "Net Proceeds"}</span>
+                  <span className={`tabular-nums ${plSide === "BUY" ? "text-down" : "text-up"}`}>{npr(orderValue.net)}</span>
+                </div>
+              </div>
+            )}
+
             {plErr && <div className="text-[10px] text-down font-semibold">{plErr}</div>}
             <button onClick={handlePlaceOrder}
               className="w-full rounded-lg bg-primary py-2 text-xs font-bold text-white hover:opacity-90">
@@ -286,13 +247,13 @@ export default function PaperTradingPage() {
           <div className="border-b border-border px-4 py-2.5">
             <h2 className="text-sm font-bold text-foreground">Pending Orders ({orders.length})</h2>
           </div>
-          <div className="max-h-[320px] overflow-y-auto">
+          <div className="max-h-[340px] overflow-y-auto">
             {orders.length === 0 ? (
               <div className="px-4 py-8 text-center text-xs text-muted">No pending orders</div>
             ) : (
               <table className="w-full text-[10px]">
                 <thead className="sticky top-0 bg-surface text-left text-[9px] font-semibold uppercase text-muted">
-                  <tr><th className="px-4 py-2">Symbol</th><th>Side</th><th>Price</th><th>Qty</th><th>Expires</th><th></th></tr>
+                  <tr><th className="px-4 py-2">Symbol</th><th>Side</th><th>Price</th><th>Qty</th><th>Value</th><th>Expires</th><th></th></tr>
                 </thead>
                 <tbody>
                   {orders.map((o) => {
@@ -305,12 +266,11 @@ export default function PaperTradingPage() {
                         <td className={`font-semibold ${o.side === "BUY" ? "text-up" : "text-down"}`}>{o.side}</td>
                         <td className="tabular-nums text-foreground">{npr(o.limit_price)}</td>
                         <td className="tabular-nums text-foreground">{num(o.quantity)}</td>
+                        <td className="tabular-nums text-foreground">{npr(o.limit_price * o.quantity)}</td>
                         <td className="tabular-nums text-muted">{hours}h {mins}m</td>
                         <td>
                           <button onClick={() => handleCancel(o.id)}
-                            className="rounded bg-down-bg px-2 py-0.5 text-[9px] font-semibold text-down hover:opacity-80">
-                            Cancel
-                          </button>
+                            className="rounded bg-down-bg px-2 py-0.5 text-[9px] font-semibold text-down hover:opacity-80">Cancel</button>
                         </td>
                       </tr>
                     );
@@ -336,10 +296,13 @@ export default function PaperTradingPage() {
                 <tr>
                   <th className="px-4 py-2">Symbol</th>
                   <th>Qty</th>
-                  <th>Avg Cost</th>
+                  <th>WACC (Avg Cost)</th>
+                  <th>Total Cost</th>
                   <th>LTP</th>
+                  <th>Market Value</th>
                   <th>Unrealized P&L</th>
-                  <th>Momentum</th>
+                  <th>Return %</th>
+                  <th>Mom.</th>
                   <th>Smart $</th>
                   <th>Flow</th>
                 </tr>
@@ -348,14 +311,22 @@ export default function PaperTradingPage() {
                 {p.holdings.map((h) => {
                   const liveStock = liveMap[h.symbol];
                   const sig = computeSignalScore(liveStock, liveData);
+                  const marketVal = (h.currentLtp ?? h.avgBuyPrice) * h.quantity;
+                  const totalCost = h.avgBuyPrice * h.quantity;
+                  const retPct = h.currentLtp != null ? ((h.currentLtp - h.avgBuyPrice) / h.avgBuyPrice) * 100 : null;
                   return (
                     <tr key={h.symbol} className="border-t border-border hover:bg-surface-2">
                       <td className="px-4 py-2 font-bold text-foreground">{h.symbol}</td>
                       <td className="tabular-nums text-foreground">{num(h.quantity)}</td>
-                      <td className="tabular-nums text-foreground">{npr(h.avgBuyPrice)}</td>
+                      <td className="tabular-nums text-foreground font-semibold">{npr(h.avgBuyPrice)}</td>
+                      <td className="tabular-nums text-foreground">{npr(totalCost)}</td>
                       <td className="tabular-nums">{h.currentLtp != null ? npr(h.currentLtp) : <span className="text-muted">—</span>}</td>
+                      <td className="tabular-nums text-foreground">{npr(marketVal)}</td>
                       <td className={`tabular-nums font-semibold ${h.unrealizedPnl != null ? (h.unrealizedPnl >= 0 ? "text-up" : "text-down") : ""}`}>
                         {h.unrealizedPnl != null ? `${h.unrealizedPnl >= 0 ? "+" : ""}${npr(h.unrealizedPnl)}` : <span className="text-muted">—</span>}
+                      </td>
+                      <td className={`tabular-nums font-semibold ${retPct != null ? (retPct >= 0 ? "text-up" : "text-down") : ""}`}>
+                        {retPct != null ? `${retPct >= 0 ? "+" : ""}${retPct.toFixed(2)}%` : <span className="text-muted">—</span>}
                       </td>
                       <td>{sig ? <span className={`font-semibold ${sig.momentumScore >= 0 ? "text-up" : "text-down"}`}>{sig.momentumScore.toFixed(0)}</span> : <span className="text-muted">—</span>}</td>
                       <td>{sig ? <span className={`font-semibold ${sig.smartMoneyScore >= 0 ? "text-up" : "text-down"}`}>{sig.smartMoneyScore.toFixed(0)}</span> : <span className="text-muted">—</span>}</td>
@@ -370,16 +341,12 @@ export default function PaperTradingPage() {
       </div>
 
       {/* ── History & Performance ── */}
-      <div className="rounded-xl border border-border bg-surface">
+      <div className="mb-6 rounded-xl border border-border bg-surface">
         <div className="flex border-b border-border">
           <button onClick={() => setActiveSubTab("history")}
-            className={`px-4 py-2.5 text-xs font-bold transition ${activeSubTab === "history" ? "border-b-2 border-primary text-primary" : "text-muted hover:text-foreground"}`}>
-            Trade History
-          </button>
+            className={`px-4 py-2.5 text-xs font-bold transition ${activeSubTab === "history" ? "border-b-2 border-primary text-primary" : "text-muted hover:text-foreground"}`}>Trade History</button>
           <button onClick={() => setActiveSubTab("performance")}
-            className={`px-4 py-2.5 text-xs font-bold transition ${activeSubTab === "performance" ? "border-b-2 border-primary text-primary" : "text-muted hover:text-foreground"}`}>
-            Performance
-          </button>
+            className={`px-4 py-2.5 text-xs font-bold transition ${activeSubTab === "performance" ? "border-b-2 border-primary text-primary" : "text-muted hover:text-foreground"}`}>Performance</button>
         </div>
 
         {activeSubTab === "history" ? (
@@ -389,14 +356,7 @@ export default function PaperTradingPage() {
             ) : (
               <table className="w-full text-[10px]">
                 <thead className="bg-surface text-left text-[9px] font-semibold uppercase text-muted">
-                  <tr>
-                    <th className="px-4 py-2">Date</th>
-                    <th>Symbol</th>
-                    <th>Side</th>
-                    <th>Qty</th>
-                    <th>Price</th>
-                    <th>Realized P&L</th>
-                  </tr>
+                  <tr><th className="px-4 py-2">Date</th><th>Symbol</th><th>Side</th><th>Qty</th><th>Price</th><th>Fees</th><th>Realized P&L</th></tr>
                 </thead>
                 <tbody>
                   {history.map((t) => (
@@ -406,6 +366,7 @@ export default function PaperTradingPage() {
                       <td className={`font-semibold ${t.side === "BUY" ? "text-up" : "text-down"}`}>{t.side}</td>
                       <td className="tabular-nums text-foreground">{num(t.quantity)}</td>
                       <td className="tabular-nums text-foreground">{npr(t.price)}</td>
+                      <td className="tabular-nums text-muted">{t.fees > 0 ? npr(t.fees) : "—"}</td>
                       <td className={`tabular-nums font-semibold ${t.realized_pnl != null ? (t.realized_pnl >= 0 ? "text-up" : "text-down") : "text-muted"}`}>
                         {t.realized_pnl != null ? `${t.realized_pnl >= 0 ? "+" : ""}${npr(t.realized_pnl)}` : "—"}
                       </td>
@@ -431,20 +392,26 @@ export default function PaperTradingPage() {
                 </div>
               </div>
               <div className="rounded-lg border border-border bg-surface-2 p-3">
+                <div className="text-[9px] text-muted">Total Fees Paid</div>
+                <div className="text-base font-black tabular-nums text-muted">
+                  {perf ? `(${npr(perf.totalFees)})` : "—"}
+                </div>
+              </div>
+              <div className="rounded-lg border border-border bg-surface-2 p-3">
                 <div className="text-[9px] text-muted">Win Rate</div>
                 <div className="text-base font-black tabular-nums text-foreground">{perf && perf.winRate != null ? `${(perf.winRate * 100).toFixed(1)}%` : "—"}</div>
               </div>
-              <div className="rounded-lg border border-border bg-surface-2 p-3">
-                <div className="text-[9px] text-muted">Total Trades</div>
-                <div className="text-base font-black tabular-nums text-foreground">{perf ? perf.tradeCount : "—"}</div>
-              </div>
             </div>
-            <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
+            <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
               <div className="rounded-lg border border-border bg-surface-2 p-3">
                 <div className="text-[9px] text-muted">Avg P&L / Trade</div>
                 <div className={`text-sm font-bold tabular-nums ${perf && perf.avgPnl != null ? (perf.avgPnl >= 0 ? "text-up" : "text-down") : ""}`}>
                   {perf && perf.avgPnl != null ? `${perf.avgPnl >= 0 ? "+" : ""}${npr(perf.avgPnl)}` : "—"}
                 </div>
+              </div>
+              <div className="rounded-lg border border-border bg-surface-2 p-3">
+                <div className="text-[9px] text-muted">Total Trades</div>
+                <div className="text-sm font-bold tabular-nums text-foreground">{perf ? perf.tradeCount : "—"}</div>
               </div>
               <div className="rounded-lg border border-border bg-surface-2 p-3">
                 <div className="text-[9px] text-muted">Best Trade</div>
@@ -456,7 +423,6 @@ export default function PaperTradingPage() {
               </div>
             </div>
 
-            {/* Equity curve */}
             {perf && perf.snapshots && perf.snapshots.length > 1 && (
               <div className="mb-3 rounded-lg border border-border bg-surface-2 p-3">
                 <div className="mb-2 text-[10px] font-bold text-muted">Equity Curve</div>
@@ -484,14 +450,14 @@ export default function PaperTradingPage() {
       </div>
 
       {/* ── Reset ── */}
-      <div className="mt-6 flex items-center justify-between rounded-xl border border-border bg-surface p-4">
+      <div className="flex items-center justify-between rounded-xl border border-border bg-surface p-4">
         <div>
           <div className="text-xs font-bold text-foreground">Reset Account</div>
-          <div className="text-[10px] text-muted">Clears holdings & cancels orders. Trade history is preserved.</div>
+          <div className="text-[10px] text-muted">Clears holdings & cancels orders. Trade history preserved.</div>
         </div>
         {resetConfirm ? (
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-semibold text-down">Are you sure?</span>
+            <span className="text-[10px] font-semibold text-down">Sure?</span>
             <button onClick={handleReset} className="rounded-lg bg-down px-3 py-1.5 text-[10px] font-bold text-white hover:opacity-90">Confirm</button>
             <button onClick={() => setResetConfirm(false)} className="rounded-lg border border-border px-3 py-1.5 text-[10px] font-semibold text-muted hover:bg-surface-2">Cancel</button>
           </div>

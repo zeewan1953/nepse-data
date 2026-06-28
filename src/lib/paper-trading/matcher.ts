@@ -42,8 +42,29 @@ export type Trade = {
   quantity: number;
   price: number;
   realized_pnl: number | null;
+  fees: number;
   executed_at: number;
 };
+
+export type FeeBreakdown = {
+  sebon: number;
+  brokerage: number;
+  dp: number;
+  total: number;
+};
+
+export function calcFees(side: "BUY" | "SELL", tradeValue: number): FeeBreakdown {
+  const sebon = tradeValue * 0.00015;
+  const brokerageRate = tradeValue >= 500_000 ? 0.0015 : 0.003;
+  const brokerage = Math.max(50, tradeValue * brokerageRate);
+  const dp = side === "SELL" ? 25 : 0;
+  return {
+    sebon: Math.round(sebon * 100) / 100,
+    brokerage: Math.round(brokerage * 100) / 100,
+    dp,
+    total: Math.round((sebon + brokerage + dp) * 100) / 100,
+  };
+}
 
 export type EquitySnapshot = {
   date: string;
@@ -118,7 +139,7 @@ export function getHolding(accountId: number, symbol: string): Promise<Holding |
 
 export function getTrades(accountId: number, limit = 100): Promise<Trade[]> {
   return db.execute({
-    sql: `SELECT id, account_id, symbol, side, quantity, price, realized_pnl, executed_at
+    sql: `SELECT id, account_id, symbol, side, quantity, price, realized_pnl, fees, executed_at
           FROM paper_trade_history WHERE account_id = ? ORDER BY executed_at DESC LIMIT ?`,
     args: [accountId, limit],
   }).then((r) => r.rows.map(mapTrade));
@@ -148,9 +169,11 @@ export async function placeOrder(
   if (limitPrice <= 0) return { ok: false, error: "Price must be positive" };
 
   if (side === "BUY") {
-    const cost = limitPrice * quantity;
-    if (cost > account.cash_balance) {
-      return { ok: false, error: `Insufficient cash. Need ${npr(cost)}, have ${npr(account.cash_balance)}` };
+    const tradeValue = limitPrice * quantity;
+    const fees = calcFees("BUY", tradeValue);
+    const totalCost = tradeValue + fees.total;
+    if (totalCost > account.cash_balance) {
+      return { ok: false, error: `Insufficient cash. Need ${npr(totalCost)} (${npr(tradeValue)} + ${npr(fees.total)} fees), have ${npr(account.cash_balance)}` };
     }
   } else {
     const holding = await getHolding(accountId, symbol);
@@ -218,11 +241,14 @@ export async function matchOrders(ltpMap: LtpMap): Promise<number> {
 
     const accountId = order.account_id;
 
+    const tradeValue = order.limit_price * order.quantity;
+    const fees = calcFees(order.side, tradeValue);
+
     if (order.side === "BUY") {
-      const cost = order.limit_price * order.quantity;
+      const totalCost = tradeValue + fees.total;
       const updated = await db.execute({
         sql: `UPDATE paper_trading_account SET cash_balance = cash_balance - ? WHERE id = ? AND cash_balance >= ?`,
-        args: [cost, accountId, cost],
+        args: [totalCost, accountId, totalCost],
       });
       if (updated.rowsAffected === 0) {
         await db.execute({
@@ -263,19 +289,20 @@ export async function matchOrders(ltpMap: LtpMap): Promise<number> {
         });
       }
       await db.execute({
-        sql: `INSERT INTO paper_trade_history (account_id, symbol, side, quantity, price, realized_pnl, executed_at)
-              VALUES (?, ?, 'BUY', ?, ?, NULL, ?)`,
-        args: [accountId, order.symbol, order.quantity, order.limit_price, Date.now()],
+        sql: `INSERT INTO paper_trade_history (account_id, symbol, side, quantity, price, realized_pnl, fees, executed_at)
+              VALUES (?, ?, 'BUY', ?, ?, NULL, ?, ?)`,
+        args: [accountId, order.symbol, order.quantity, order.limit_price, fees.total, Date.now()],
       });
     } else {
       const holding = await getHolding(accountId, order.symbol);
       if (!holding) continue;
       const newQty = holding.quantity - order.quantity;
-      const realizedPnl = (order.limit_price - holding.avg_buy_price) * order.quantity;
-      const cashProceeds = order.limit_price * order.quantity;
+      const grossPnl = (order.limit_price - holding.avg_buy_price) * order.quantity;
+      const realizedPnl = grossPnl - fees.total;
+      const netProceeds = tradeValue - fees.total;
       await db.execute({
         sql: `UPDATE paper_trading_account SET cash_balance = cash_balance + ? WHERE id = ?`,
-        args: [cashProceeds, accountId],
+        args: [netProceeds, accountId],
       });
       if (newQty <= 0) {
         await db.execute({
@@ -289,9 +316,9 @@ export async function matchOrders(ltpMap: LtpMap): Promise<number> {
         });
       }
       await db.execute({
-        sql: `INSERT INTO paper_trade_history (account_id, symbol, side, quantity, price, realized_pnl, executed_at)
-              VALUES (?, ?, 'SELL', ?, ?, ?, ?)`,
-        args: [accountId, order.symbol, order.quantity, order.limit_price, realizedPnl, Date.now()],
+        sql: `INSERT INTO paper_trade_history (account_id, symbol, side, quantity, price, realized_pnl, fees, executed_at)
+              VALUES (?, ?, 'SELL', ?, ?, ?, ?, ?)`,
+        args: [accountId, order.symbol, order.quantity, order.limit_price, realizedPnl, fees.total, Date.now()],
       });
     }
 
@@ -348,6 +375,7 @@ export async function getPerformance(accountId: number) {
   const holdings = await getHoldings(accountId);
   const trades = await getTradeHistory(accountId);
 
+  const totalFees = trades.reduce((s, t) => s + t.fees, 0);
   const realizedPnl = trades
     .filter((t) => t.realized_pnl != null)
     .reduce((s, t) => s + t.realized_pnl!, 0);
@@ -378,6 +406,7 @@ export async function getPerformance(accountId: number) {
     startingBalance: account.starting_balance,
     totalReturnPct: 0,
     realizedPnl,
+    totalFees,
     winRate,
     avgPnl,
     bestTrade,
@@ -465,6 +494,7 @@ function mapTrade(row: any): Trade {
     quantity: Number(row.quantity),
     price: Number(row.price),
     realized_pnl: row.realized_pnl != null ? Number(row.realized_pnl) : null,
+    fees: Number(row.fees ?? 0),
     executed_at: Number(row.executed_at),
   };
 }

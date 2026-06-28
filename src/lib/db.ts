@@ -313,6 +313,7 @@ async function migrateSchema(): Promise<void> {
       quantity INTEGER NOT NULL,
       price REAL NOT NULL,
       realized_pnl REAL,
+      fees REAL NOT NULL DEFAULT 0,
       executed_at INTEGER NOT NULL
     )
   `);
@@ -325,6 +326,11 @@ async function migrateSchema(): Promise<void> {
       PRIMARY KEY (date, account_id)
     )
   `);
+
+  // Add fees column to paper_trade_history if missing
+  try {
+    await db.execute("ALTER TABLE paper_trade_history ADD COLUMN fees REAL NOT NULL DEFAULT 0");
+  } catch {}
 
   // Add hash + buy/sell qty columns to merolagani_broker_daily for change detection
   try {
