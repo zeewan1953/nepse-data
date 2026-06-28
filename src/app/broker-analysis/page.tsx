@@ -868,40 +868,49 @@ function BrokerFavoriteTab({ brokers, range }: { brokers: BrokerOption[]; range:
               })}
             </tbody>
           </table>
-          {/* Expanded stock details */}
+          {/* Expanded stock details — smooth collapsible */}
           {favs.map((code) => {
             const brokerStockList = stocks[code] || [];
             const expandedB = brokers.find((x) => x.broker === code);
-            if (expandedBroker !== code || brokerStockList.length === 0) return null;
+            const isExp = expandedBroker === code;
             return (
-              <div key={`exp-${code}`} className="border-t border-border bg-surface-2 p-2">
-                <div className="grid grid-cols-5 gap-1">
-                  {brokerStockList.map((stock: any, idx: number) => (
-                    <div
-                      key={idx}
-                      onClick={() => setPopupStock({ symbol: stock.symbol, buyAmt: stock.buyAmt || 0, sellAmt: stock.sellAmt || 0, netAmt: stock.netAmt || 0, brokerName: expandedB?.name || code })}
-                      className="rounded border border-border bg-surface p-1.5 text-center hover:border-primary/50 hover:shadow-sm cursor-pointer transition"
-                      title={`${stock.symbol}: Buy ${compact(stock.buyAmt)} | Sell ${compact(stock.sellAmt)}`}
-                    >
-                      <div className="text-[8px] font-bold text-foreground truncate">{stock.symbol}</div>
-                      <div className="text-[7px] text-up font-semibold">B: {compact(stock.buyAmt || 0).replace("Rs. ", "")}</div>
-                      <div className="text-[7px] text-down font-semibold">S: {compact(stock.sellAmt || 0).replace("Rs. ", "")}</div>
-                      <div className={`text-[7px] font-semibold ${stock.netAmt >= 0 ? "text-up" : "text-down"}`}>
-                        {stock.netAmt >= 0 ? "+" : ""}{compact(stock.netAmt || 0).replace("Rs. ", "")}
-                      </div>
+              <div
+                key={`exp-${code}`}
+                className={`border-t border-border transition-all duration-300 ease-in-out overflow-hidden ${
+                  isExp ? "max-h-[5000px] opacity-100" : "max-h-0 opacity-0 border-transparent"
+                }`}
+              >
+                {isExp && brokerStockList.length > 0 && (
+                  <div className="bg-surface-2 p-2">
+                    <div className="grid grid-cols-5 gap-1">
+                      {brokerStockList.map((stock: any, idx: number) => (
+                        <div
+                          key={idx}
+                          onClick={() => setPopupStock({ symbol: stock.symbol, buyAmt: stock.buyAmt || 0, sellAmt: stock.sellAmt || 0, netAmt: stock.netAmt || 0, brokerName: expandedB?.name || code })}
+                          className="rounded border border-border bg-surface p-1.5 text-center hover:border-primary/50 hover:shadow-sm cursor-pointer transition"
+                          title={`${stock.symbol}: Buy ${compact(stock.buyAmt)} | Sell ${compact(stock.sellAmt)}`}
+                        >
+                          <div className="text-[8px] font-bold text-foreground truncate">{stock.symbol}</div>
+                          <div className="text-[7px] text-up font-semibold">B: {compact(stock.buyAmt || 0).replace("Rs. ", "")}</div>
+                          <div className="text-[7px] text-down font-semibold">S: {compact(stock.sellAmt || 0).replace("Rs. ", "")}</div>
+                          <div className={`text-[7px] font-semibold ${stock.netAmt >= 0 ? "text-up" : "text-down"}`}>
+                            {stock.netAmt >= 0 ? "+" : ""}{compact(stock.netAmt || 0).replace("Rs. ", "")}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </div>
+                )}
               </div>
             );
           })}
         </div>
       )}
 
-      {/* Stock popup */}
+      {/* Stock popup — smooth entrance */}
       {popupStock && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40" onClick={() => setPopupStock(null)}>
-          <div className="bg-surface rounded-xl border border-border shadow-xl w-[260px] p-4" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 animate-fadeIn" onClick={() => setPopupStock(null)}>
+          <div className="bg-surface rounded-xl border border-border shadow-xl w-[260px] p-4 animate-scaleIn" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-bold text-foreground">{popupStock.symbol}</h3>
               <button onClick={() => setPopupStock(null)} className="text-muted hover:text-foreground text-lg leading-none">&times;</button>
