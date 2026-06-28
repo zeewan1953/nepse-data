@@ -52,3 +52,5 @@ next-env.d.ts
 *.zip
 .vercel
 *.png
+
+.vercel/output
