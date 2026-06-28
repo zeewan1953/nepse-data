@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from "react";
 import { BrokerStocksGrid } from "@/components/BrokerStocksGrid";
 import { BrokerStockActivityChart } from "@/components/BrokerStockActivityChart";
+import { RANGE_LABELS } from "@/lib/trading-constants";
 
 type TimeRange = "1D" | "3D" | "1W" | "1M" | "3M";
 type BrokerPerformance = {
@@ -26,22 +27,6 @@ type RangeData = {
   topBrokerSell: BrokerPerformance;
 };
 
-const RANGE_LABELS: Record<TimeRange, string> = {
-  "1D": "1 Day",
-  "3D": "3 Days",
-  "1W": "1 Week",
-  "1M": "1 Month",
-  "3M": "3 Months",
-};
-
-const RANGE_DAYS: Record<TimeRange, number> = {
-  "1D": 0,
-  "3D": 2,
-  "1W": 6,
-  "1M": 21,
-  "3M": 63,
-};
-
 export function BrokerPerformanceSection() {
   const [selectedRange, setSelectedRange] = useState<TimeRange>("1D");
   const [rangeData, setRangeData] = useState<Record<TimeRange, RangeData>>({} as any);
@@ -50,45 +35,43 @@ export function BrokerPerformanceSection() {
   const [expandedBroker, setExpandedBroker] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchAllRangesData();
-  }, []);
-
-  const fetchAllRangesData = async () => {
-    setLoading(true);
-    const ranges = ["1D", "3D", "1W", "1M", "3M"] as TimeRange[];
-    try {
-      // Fetch all ranges in parallel and show each as soon as it resolves,
-      // so the first range renders fast instead of waiting for all five.
-      await Promise.all(
-        ranges.map(async (range) => {
-          try {
-            const response = await fetch(`/api/broker-performance?range=${range}`);
-            const data = await response.json();
-            if (data.brokers && data.brokers.length > 0) {
-              const entry: RangeData = {
-                range,
-                brokers: data.brokers || [],
-                marketTurnover: data.marketTurnover || 0,
-                totalTransactions: data.totalTransactions || 0,
-                avgNetFlow: data.avgNetFlow || 0,
-                topBrokerBuy: data.topBrokerBuy,
-                topBrokerSell: data.topBrokerSell,
-              };
-              setRangeData((prev) => ({ ...prev, [range]: entry }));
-              // First data in → drop the full-page spinner immediately.
-              setLoading(false);
+    const fetchAllRangesData = async () => {
+      setLoading(true);
+      const ranges = ["1D", "3D", "1W", "1M", "3M"] as TimeRange[];
+      try {
+        await Promise.all(
+          ranges.map(async (range) => {
+            try {
+              const response = await fetch(`/api/broker-performance?range=${range}`);
+              const data = await response.json();
+              if (data.brokers && data.brokers.length > 0) {
+                const entry: RangeData = {
+                  range,
+                  brokers: data.brokers || [],
+                  marketTurnover: data.marketTurnover || 0,
+                  totalTransactions: data.totalTransactions || 0,
+                  avgNetFlow: data.avgNetFlow || 0,
+                  topBrokerBuy: data.topBrokerBuy,
+                  topBrokerSell: data.topBrokerSell,
+                };
+                setRangeData((prev) => ({ ...prev, [range]: entry }));
+                setLoading(false);
+              }
+            } catch (error) {
+              console.error(`Failed to fetch ${range} data:`, error);
             }
-          } catch (error) {
-            console.error(`Failed to fetch ${range} data:`, error);
-          }
-        }),
-      );
-    } catch (error) {
-      console.error("Failed to fetch broker performance:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
+          }),
+        );
+      } catch (error) {
+        console.error("Failed to fetch broker performance:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchAllRangesData();
+    const id = setInterval(fetchAllRangesData, 5000);
+    return () => clearInterval(id);
+  }, []);
 
   const currentData = rangeData[selectedRange];
 

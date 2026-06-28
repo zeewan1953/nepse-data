@@ -457,14 +457,19 @@ function BrokerWiseTab({ range }: { range: TimeRange }) {
       .catch(() => {});
   }, []);
 
-  // Fetch broker-wise data when selection or range changes
+  // Fetch broker-wise data when selection or range changes (auto-refresh 5s)
   useEffect(() => {
     if (!selected) { setData(null); return; }
+    const fetchData = () => {
+      fetch(`/api/broker-wise/${selected.broker}?range=${range}`)
+        .then((r) => r.json())
+        .then((d) => { setData(d); setLoading(false); })
+        .catch(() => setLoading(false));
+    };
     setLoading(true);
-    fetch(`/api/broker-wise/${selected.broker}?range=${range}`)
-      .then((r) => r.json())
-      .then((d) => { setData(d); setLoading(false); })
-      .catch(() => setLoading(false));
+    fetchData();
+    const id = setInterval(fetchData, 5000);
+    return () => clearInterval(id);
   }, [selected, range]);
 
   const filteredBrokers = useMemo(() => {
@@ -598,14 +603,16 @@ function SummaryTab({ range }: { range: TimeRange }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const fetchData = () => {
+      fetch("/api/stock-summary")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => { setData(d); setLoading(false); })
+        .catch(() => setLoading(false));
+    };
     setLoading(true);
-    fetch("/api/stock-summary")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        setData(d);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
+    fetchData();
+    const id = setInterval(fetchData, 5000);
+    return () => clearInterval(id);
   }, [range]);
 
   if (loading) {
@@ -730,40 +737,45 @@ function BrokerFavoriteTab({ brokers, range }: { brokers: BrokerOption[]; range:
       setStocks({});
       return;
     }
-    setLoading(true);
-    Promise.all(
-      favs.map((code) =>
-        Promise.all([
-          fetch(`/api/broker-wise/${code}?range=${range}`)
-            .then((r) => (r.ok ? r.json() : null))
-            .catch(() => null),
-          fetch(`/api/broker/${code}`)
-            .then((r) => (r.ok ? r.json() : null))
-            .catch(() => null),
-        ])
-      )
-    ).then((results) => {
-      const brokerCards: Record<string, any> = {};
-      const brokerStocks: Record<string, any[]> = {};
-      favs.forEach((code, i) => {
-        brokerCards[code] = results[i][0];
-        const apiStocks = results[i][1]?.stocks || [];
-        brokerStocks[code] = apiStocks
-          .map((stock: any) => ({
-            symbol: stock.symbol || stock.name || 'UNKNOWN',
-            buyAmt: stock.buyAmt || 0,
-            sellAmt: stock.sellAmt || 0,
-            buyQty: stock.buyQty || 0,
-            sellQty: stock.sellQty || 0,
-            netAmt: stock.netAmt || 0,
-          }))
-          .sort((a: any, b: any) => (b.netAmt || 0) - (a.netAmt || 0))
-          .slice(0, 25);
+    const fetchData = () => {
+      Promise.all(
+        favs.map((code) =>
+          Promise.all([
+            fetch(`/api/broker-wise/${code}?range=${range}`)
+              .then((r) => (r.ok ? r.json() : null))
+              .catch(() => null),
+            fetch(`/api/broker/${code}`)
+              .then((r) => (r.ok ? r.json() : null))
+              .catch(() => null),
+          ])
+        )
+      ).then((results) => {
+        const brokerCards: Record<string, any> = {};
+        const brokerStocks: Record<string, any[]> = {};
+        favs.forEach((code, i) => {
+          brokerCards[code] = results[i][0];
+          const apiStocks = results[i][1]?.stocks || [];
+          brokerStocks[code] = apiStocks
+            .map((stock: any) => ({
+              symbol: stock.symbol || stock.name || 'UNKNOWN',
+              buyAmt: stock.buyAmt || 0,
+              sellAmt: stock.sellAmt || 0,
+              buyQty: stock.buyQty || 0,
+              sellQty: stock.sellQty || 0,
+              netAmt: stock.netAmt || 0,
+            }))
+            .sort((a: any, b: any) => (b.netAmt || 0) - (a.netAmt || 0))
+            .slice(0, 25);
+        });
+        setCards(brokerCards);
+        setStocks(brokerStocks);
+        setLoading(false);
       });
-      setCards(brokerCards);
-      setStocks(brokerStocks);
-      setLoading(false);
-    });
+    };
+    setLoading(true);
+    fetchData();
+    const id = setInterval(fetchData, 5000);
+    return () => clearInterval(id);
   }, [favs, range]);
 
   const addAllBrokers = () => {

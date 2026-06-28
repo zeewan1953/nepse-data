@@ -60,22 +60,28 @@ export function StockBrokerFlow() {
   const [selected, setSelected] = useState<string | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
 
-  // Load all stocks + broker breakdown for the latest available date
+  // Load all stocks + broker breakdown — auto-refresh 5s
   useEffect(() => {
+    const fetchData = () => {
+      fetch("/api/fs-stock?live=true")
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+        .then((d: FsStockResp) => {
+          if ((d as any).error) throw new Error((d as any).error);
+          setResp((prev) => {
+            if (!prev && d.stocks?.length) setSelected(d.stocks[0].symbol);
+            return d;
+          });
+          setLoading(false);
+        })
+        .catch((e) => {
+          setError(e.message ?? "Failed to load");
+          setLoading(false);
+        });
+    };
     setLoading(true);
-    fetch("/api/fs-stock?live=true")
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then((d: FsStockResp) => {
-        if ((d as any).error) throw new Error((d as any).error);
-        setResp(d);
-        // auto-select the top stock by turnover
-        if (d.stocks?.length) setSelected(d.stocks[0].symbol);
-        setLoading(false);
-      })
-      .catch((e) => {
-        setError(e.message ?? "Failed to load");
-        setLoading(false);
-      });
+    fetchData();
+    const id = setInterval(fetchData, 5000);
+    return () => clearInterval(id);
   }, []);
 
   // Close dropdown on outside click

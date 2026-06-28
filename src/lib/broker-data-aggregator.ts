@@ -1,4 +1,5 @@
 import { execute } from "@/lib/db";
+import { TRADING_DAYS } from "@/lib/trading-periods";
 
 export interface BrokerAggregateData {
   brokerCode: string;
@@ -43,7 +44,7 @@ async function getStoredDates(): Promise<string[]> {
  * Aggregate broker data for a specific time range from merolagani_broker_daily DB.
  */
 export async function aggregateBrokerDataForRange(
-  range: "1D" | "3D" | "1W" | "1M" | "3M"
+  range: string
 ): Promise<AggregationResult> {
   const storedDates = await getStoredDates();
   if (!storedDates.length) {
@@ -54,8 +55,7 @@ export async function aggregateBrokerDataForRange(
   const toDateStr = storedDates[0];
 
   // Compute number of trading days to go back
-  const lookbackDays: Record<string, number> = { "1D": 1, "3D": 3, "1W": 5, "1M": 22, "3M": 66 };
-  const nDays = lookbackDays[range] || 1;
+  const nDays = TRADING_DAYS[range] || 1;
 
   // Get the list of stored dates within range
   const cutoffIndex = Math.min(nDays, storedDates.length);

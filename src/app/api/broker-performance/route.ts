@@ -1,24 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { aggregateBrokerDataForRange } from "@/lib/broker-data-aggregator";
+import { TRADING_DAYS } from "@/lib/trading-periods";
 
-type TimeRange = "1D" | "3D" | "1W" | "1M" | "3M";
-
-const RANGE_DAYS: Record<TimeRange, number> = {
-  "1D": 0,
-  "3D": 2,
-  "1W": 6,
-  "1M": 21,
-  "3M": 63,
-};
+const VALID_RANGES = new Set(Object.keys(TRADING_DAYS));
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
-    const range = (req.nextUrl.searchParams.get("range") || "1D") as TimeRange;
+    const range = req.nextUrl.searchParams.get("range") || "1D";
 
-    if (!RANGE_DAYS.hasOwnProperty(range)) {
+    if (!VALID_RANGES.has(range)) {
       return NextResponse.json({ error: "Invalid range" }, { status: 400 });
     }
 

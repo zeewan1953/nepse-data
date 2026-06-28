@@ -1,5 +1,6 @@
 import { getNepse, cached, safeNepseCall } from "@/lib/nepse";
 import { db } from "@/lib/db";
+import { TRADING_DAYS, getTradingDaysForRange } from "@/lib/trading-periods";
 import type { FloorSheet, FloorSheetItem } from "@rumess/nepse-api";
 
 export const runtime = "nodejs";
@@ -7,6 +8,8 @@ export const dynamic = "force-dynamic";
 
 const SIZE = 500;
 const MAX_PAGES = 50;
+
+const VALID_RANGES = new Set(["1D", "3D", "1W", "1M", "3M"]);
 
 type Row = { symbol: string; name: string; buyQty: number; buyAmt: number; sellQty: number; sellAmt: number };
 
@@ -48,22 +51,21 @@ export async function GET(req: Request, ctx: { params: Promise<{ code: string }>
   const { code } = await ctx.params;
   const broker = Number(code);
   const url = new URL(req.url);
-  const range = url.searchParams.get("range") || "TODAY";
+  const range = url.searchParams.get("range") || "1D";
   if (!broker) return Response.json({ error: "Invalid broker number" }, { status: 400 });
+  if (!VALID_RANGES.has(range)) return Response.json({ error: `Invalid range: ${range}` }, { status: 400 });
 
   try {
-    // DB-first: try local floorsheet + broker_daily_agg
-    const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kathmandu" });
-    const lookback: Record<string, number> = { "TODAY": 0, "1D": 0, "3D": 2, "1W": 6, "1M": 21, "3M": 63 };
-    const days = lookback[range] ?? 0;
-    const fromDate = new Date();
-    fromDate.setDate(fromDate.getDate() - days);
-    const fromStr = fromDate.toLocaleDateString("en-CA", { timeZone: "Asia/Kathmandu" });
-    const toStr = todayStr;
+    // DB-first: use exact trading days from broker_daily_agg
+    const targetDates = getTradingDaysForRange(range);
+    if (!targetDates.length) {
+      return Response.json({ broker, stocks: [], totals: { buyAmt: 0, sellAmt: 0, netAmt: 0 }, source: "database" });
+    }
+    const placeholders = targetDates.map(() => "?").join(",");
 
     const dbRows = await db.execute({
-      sql: `SELECT stockSymbol, MAX(stockSymbol) as name, SUM(buyQty) as buyQty, SUM(buyAmt) as buyAmt, SUM(sellQty) as sellQty, SUM(sellAmt) as sellAmt FROM broker_daily_agg WHERE brokerId = ? AND tradeDate >= ? AND tradeDate <= ? GROUP BY stockSymbol ORDER BY SUM(buyAmt + sellAmt) DESC`,
-      args: [String(broker), fromStr, toStr],
+      sql: `SELECT stockSymbol, MAX(stockSymbol) as name, SUM(buyQty) as buyQty, SUM(buyAmt) as buyAmt, SUM(sellQty) as sellQty, SUM(sellAmt) as sellAmt FROM broker_daily_agg WHERE brokerId = ? AND tradeDate IN (${placeholders}) GROUP BY stockSymbol ORDER BY SUM(buyAmt + sellAmt) DESC`,
+      args: [String(broker), ...targetDates],
     });
 
     if (dbRows.rows.length > 0) {
