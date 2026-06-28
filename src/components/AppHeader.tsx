@@ -41,6 +41,7 @@ const NAV: Array<{ href: string; label: string; icon: string; badge?: boolean }>
   { href: "/market", label: "Live Market", icon: icons.trending },
   { href: "/broker-analysis", label: "Broker Analysis", icon: icons.exchange },
   { href: "/orderflow", label: "Order Flow", icon: "📊" },
+  { href: "/paper-trading", label: "Paper Trading", icon: "📈", badge: true },
   { href: "/news", label: "News", icon: icons.news },
 ];
 
@@ -335,32 +336,37 @@ export default function AppHeader() {
               {NAV.map((item) => {
                 const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
                 return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className="relative flex items-center gap-1 rounded-[7px] px-2.5 py-1 text-[11px] font-medium transition-all"
-                    style={active ? { background: "#0F6E56", color: "#fff" } : { background: "transparent", color: "#555" }}
-                    onMouseEnter={(e) => {
-                      if (!active) {
-                        e.currentTarget.style.background = "#fff";
-                        e.currentTarget.style.color = "#1a1a1a";
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!active) {
-                        e.currentTarget.style.background = "transparent";
-                        e.currentTarget.style.color = "#555";
-                      }
-                    }}
-                  >
-                    <Icon d={item.icon} size={13} />
-                    <span className="inline whitespace-nowrap">{item.label}</span>
-                    {item.badge && (
-                      <span className="absolute -right-1 -top-1 grid h-3.5 min-w-3.5 place-items-center rounded-full px-1 text-[8px] font-bold text-white" style={{ background: "#c0392b" }}>
-                        {newsCount}
-                      </span>
-                    )}
-                  </Link>
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className="relative flex items-center gap-1 rounded-[7px] px-2.5 py-1 text-[11px] font-medium transition-all"
+                      style={active ? { background: "#0F6E56", color: "#fff" } : { background: "transparent", color: "#555" }}
+                      onMouseEnter={(e) => {
+                        if (!active) {
+                          e.currentTarget.style.background = "#fff";
+                          e.currentTarget.style.color = "#1a1a1a";
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!active) {
+                          e.currentTarget.style.background = "transparent";
+                          e.currentTarget.style.color = "#555";
+                        }
+                      }}
+                    >
+                      <Icon d={item.icon} size={13} />
+                      <span className="inline whitespace-nowrap">{item.label}</span>
+                      {item.href === "/paper-trading" ? (
+                        <span className="rounded border px-1 py-0.5 text-[7px] font-bold uppercase leading-none tracking-wider"
+                          style={{ borderColor: "#d4af37", color: "#d4af37" }}>
+                          DEMO
+                        </span>
+                      ) : item.badge ? (
+                        <span className="absolute -right-1 -top-1 grid h-3.5 min-w-3.5 place-items-center rounded-full px-1 text-[8px] font-bold text-white" style={{ background: "#c0392b" }}>
+                          {newsCount}
+                        </span>
+                      ) : null}
+                    </Link>
                 );
               })}
             </div>
@@ -687,21 +693,26 @@ export default function AppHeader() {
             {NAV.map((item) => {
               const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
               return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition"
-                  style={active ? { background: "#0F6E56", color: "#fff" } : { background: "transparent", color: "#555" }}
-                >
-                  <Icon d={item.icon} size={18} />
-                  <span>{item.label}</span>
-                  {item.badge && (
-                    <span className="ml-auto grid h-5 min-w-5 place-items-center rounded-full px-1.5 text-[10px] font-bold text-white" style={{ background: "#c0392b" }}>
-                      {newsCount}
-                    </span>
-                  )}
-                </Link>
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition"
+                    style={active ? { background: "#0F6E56", color: "#fff" } : { background: "transparent", color: "#555" }}
+                  >
+                    <Icon d={item.icon} size={18} />
+                    <span>{item.label}</span>
+                    {item.href === "/paper-trading" ? (
+                      <span className="ml-auto rounded border px-1 py-0.5 text-[8px] font-bold uppercase leading-none tracking-wider"
+                        style={{ borderColor: "#d4af37", color: "#d4af37" }}>
+                        DEMO
+                      </span>
+                    ) : item.badge ? (
+                      <span className="ml-auto grid h-5 min-w-5 place-items-center rounded-full px-1.5 text-[10px] font-bold text-white" style={{ background: "#c0392b" }}>
+                        {newsCount}
+                      </span>
+                    ) : null}
+                  </Link>
               );
             })}
           </nav>

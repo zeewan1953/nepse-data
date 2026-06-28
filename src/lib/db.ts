@@ -261,6 +261,71 @@ async function migrateSchema(): Promise<void> {
     // index may already exist or table was created differently
   }
 
+  // ─── Paper Trading Tables ────────────────────────────────────────────
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS paper_trading_account (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL DEFAULT 'default',
+      cash_balance REAL NOT NULL DEFAULT 1000000.00,
+      starting_balance REAL NOT NULL DEFAULT 1000000.00,
+      created_at INTEGER NOT NULL,
+      reset_count INTEGER NOT NULL DEFAULT 0,
+      last_reset_at INTEGER
+    )
+  `);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS paper_order (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      account_id INTEGER NOT NULL REFERENCES paper_trading_account(id),
+      symbol TEXT NOT NULL,
+      side TEXT NOT NULL CHECK (side IN ('BUY','SELL')),
+      limit_price REAL NOT NULL,
+      quantity INTEGER NOT NULL CHECK (quantity > 0),
+      status TEXT NOT NULL DEFAULT 'PENDING'
+        CHECK (status IN ('PENDING','FILLED','EXPIRED','CANCELLED')),
+      placed_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      filled_at INTEGER,
+      filled_price REAL
+    )
+  `);
+
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_paper_order_pending ON paper_order (status, symbol) WHERE status = 'PENDING'`);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS paper_holding (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      account_id INTEGER NOT NULL REFERENCES paper_trading_account(id),
+      symbol TEXT NOT NULL,
+      quantity INTEGER NOT NULL,
+      avg_buy_price REAL NOT NULL,
+      UNIQUE (account_id, symbol)
+    )
+  `);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS paper_trade_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      account_id INTEGER NOT NULL REFERENCES paper_trading_account(id),
+      symbol TEXT NOT NULL,
+      side TEXT NOT NULL,
+      quantity INTEGER NOT NULL,
+      price REAL NOT NULL,
+      realized_pnl REAL,
+      executed_at INTEGER NOT NULL
+    )
+  `);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS paper_equity_snapshot (
+      date TEXT NOT NULL,
+      account_id INTEGER NOT NULL REFERENCES paper_trading_account(id),
+      total_equity REAL NOT NULL,
+      PRIMARY KEY (date, account_id)
+    )
+  `);
+
   // Add hash + buy/sell qty columns to merolagani_broker_daily for change detection
   try {
     await db.execute("ALTER TABLE merolagani_broker_daily ADD COLUMN hash TEXT");
