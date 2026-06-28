@@ -705,7 +705,7 @@ function SummaryTab({ range }: { range: TimeRange }) {
             </tbody>
           </table>
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -871,6 +871,7 @@ function BrokerFavoriteTab({ brokers, range }: { brokers: BrokerOption[]; range:
           {/* Expanded stock details */}
           {favs.map((code) => {
             const brokerStockList = stocks[code] || [];
+            const expandedB = brokers.find((x) => x.broker === code);
             if (expandedBroker !== code || brokerStockList.length === 0) return null;
             return (
               <div key={`exp-${code}`} className="border-t border-border bg-surface-2 p-2">
@@ -878,7 +879,7 @@ function BrokerFavoriteTab({ brokers, range }: { brokers: BrokerOption[]; range:
                   {brokerStockList.map((stock: any, idx: number) => (
                     <div
                       key={idx}
-                      onClick={() => setPopupStock({ symbol: stock.symbol, buyAmt: stock.buyAmt || 0, sellAmt: stock.sellAmt || 0, netAmt: stock.netAmt || 0, brokerName: b?.name || code })}
+                      onClick={() => setPopupStock({ symbol: stock.symbol, buyAmt: stock.buyAmt || 0, sellAmt: stock.sellAmt || 0, netAmt: stock.netAmt || 0, brokerName: expandedB?.name || code })}
                       className="rounded border border-border bg-surface p-1.5 text-center hover:border-primary/50 hover:shadow-sm cursor-pointer transition"
                       title={`${stock.symbol}: Buy ${compact(stock.buyAmt)} | Sell ${compact(stock.sellAmt)}`}
                     >
@@ -1025,8 +1026,8 @@ export default function BrokerAnalysisPage() {
             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 font-semibold text-emerald-500">
               ✓ Real data
             </span>
-        </div>
-      </div>
+          </div>
+        )}
       </div>
 
       {/* Tabs — top left, compact */}
