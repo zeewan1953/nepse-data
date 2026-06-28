@@ -107,6 +107,8 @@ export function BrokerStockPanels({ onlyBrokers }: { onlyBrokers?: string[] } = 
     return rightPanels.filter((p) => p.id.toLowerCase().includes(q));
   }, [rightPanels, search]);
 
+  const [popup, setPopup] = useState<{ brokerId: string; side: "buy" | "sell"; items: StockPick[]; totalQty: number } | null>(null);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -158,63 +160,128 @@ export function BrokerStockPanels({ onlyBrokers }: { onlyBrokers?: string[] } = 
       </div>
 
       <div className="flex flex-col gap-6 lg:flex-row">
-        {/* Left: Top Buyers */}
+        {/* Left: Top Buyers Table */}
         <div className="flex-1">
           <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-up">Top Buyers</div>
-          <div className="space-y-2">
-            {filteredLeft.map((p) => (
-              <div key={p.id} className="rounded-lg border border-border bg-surface p-2.5">
-                <div className="mb-1 flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-foreground">Broker {p.id}</span>
-                  <span className="text-[9px] text-muted">B {fmt(p.totalBuyQty)}</span>
-                </div>
-                {p.topBuys.length === 0 ? (
-                  <div className="text-[10px] text-muted">—</div>
-                ) : (
-                  <ul className="space-y-0.5">
-                    {p.topBuys.map((s) => (
-                      <li key={s.symbol} className="flex items-center justify-between text-[10px]">
-                        <span className="font-semibold text-foreground">{s.aggressive ? "⚡ " : ""}{s.symbol}</span>
-                        <span className="tabular-nums text-up">{fmt(s.qty)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            ))}
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <table className="w-full text-[10px]">
+              <thead>
+                <tr className="bg-surface-2 border-b border-border text-muted text-[9px] font-semibold uppercase tracking-wider">
+                  <th className="text-left px-2 py-1.5 w-8">#</th>
+                  <th className="text-left px-2 py-1.5">Broker</th>
+                  <th className="text-right px-2 py-1.5">Qty</th>
+                  <th className="text-right px-2 py-1.5">Stocks</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {filteredLeft.map((p, idx) => (
+                  <tr key={p.id} className="hover:bg-surface-2 transition cursor-pointer" onClick={() => setPopup({ brokerId: p.id, side: "buy", items: p.topBuys, totalQty: p.totalBuyQty })}>
+                    <td className="px-2 py-1 text-muted text-[9px]">{idx + 1}</td>
+                    <td className="px-2 py-1 font-medium text-foreground">Broker {p.id}</td>
+                    <td className="px-2 py-1 text-right tabular-nums text-up font-semibold">{fmt(p.totalBuyQty)}</td>
+                    <td className="px-2 py-1 text-right">
+                      {p.topBuys.length === 0 ? (
+                        <span className="text-muted">—</span>
+                      ) : (
+                        <span className="inline-flex flex-wrap gap-0.5 justify-end">
+                          {p.topBuys.map((s) => (
+                            <span key={s.symbol} className="rounded bg-up/10 px-1 py-0.5 font-semibold text-up">
+                              {s.aggressive ? "⚡" : ""}{s.symbol}
+                            </span>
+                          ))}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
 
-        {/* Right: Top Sellers */}
+        {/* Right: Top Sellers Table */}
         <div className="flex-1">
           <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-down">Top Sellers</div>
-          <div className="space-y-2">
-            {filteredRight.map((p) => (
-              <div key={p.id} className="rounded-lg border border-border bg-surface p-2.5">
-                <div className="mb-1 flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-foreground">Broker {p.id}</span>
-                  <span className="text-[9px] text-muted">S {fmt(p.totalSellQty)}</span>
-                </div>
-                {p.topSells.length === 0 ? (
-                  <div className="text-[10px] text-muted">—</div>
-                ) : (
-                  <ul className="space-y-0.5">
-                    {p.topSells.map((s) => (
-                      <li key={s.symbol} className="flex items-center justify-between text-[10px]">
-                        <span className="font-semibold text-foreground">{s.aggressive ? "⚡ " : ""}{s.symbol}</span>
-                        <span className="tabular-nums text-down">{fmt(s.qty)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            ))}
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <table className="w-full text-[10px]">
+              <thead>
+                <tr className="bg-surface-2 border-b border-border text-muted text-[9px] font-semibold uppercase tracking-wider">
+                  <th className="text-left px-2 py-1.5 w-8">#</th>
+                  <th className="text-left px-2 py-1.5">Broker</th>
+                  <th className="text-right px-2 py-1.5">Qty</th>
+                  <th className="text-right px-2 py-1.5">Stocks</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {filteredRight.map((p, idx) => (
+                  <tr key={p.id} className="hover:bg-surface-2 transition cursor-pointer" onClick={() => setPopup({ brokerId: p.id, side: "sell", items: p.topSells, totalQty: p.totalSellQty })}>
+                    <td className="px-2 py-1 text-muted text-[9px]">{idx + 1}</td>
+                    <td className="px-2 py-1 font-medium text-foreground">Broker {p.id}</td>
+                    <td className="px-2 py-1 text-right tabular-nums text-down font-semibold">{fmt(p.totalSellQty)}</td>
+                    <td className="px-2 py-1 text-right">
+                      {p.topSells.length === 0 ? (
+                        <span className="text-muted">—</span>
+                      ) : (
+                        <span className="inline-flex flex-wrap gap-0.5 justify-end">
+                          {p.topSells.map((s) => (
+                            <span key={s.symbol} className="rounded bg-down/10 px-1 py-0.5 font-semibold text-down">
+                              {s.aggressive ? "⚡" : ""}{s.symbol}
+                            </span>
+                          ))}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
 
       {search && filteredLeft.length === 0 && filteredRight.length === 0 && (
         <div className="py-8 text-center text-xs text-muted">No broker matches &quot;{search}&quot;</div>
+      )}
+
+      {/* ── Popup Modal ── */}
+      {popup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setPopup(null)}>
+          <div className="mx-4 w-full max-w-sm rounded-xl border border-border bg-white p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-sm font-bold text-foreground">
+                Broker {popup.brokerId} — {popup.side === "buy" ? "Top Buys" : "Top Sells"}
+              </span>
+              <button onClick={() => setPopup(null)} className="text-lg leading-none text-muted hover:text-foreground">&times;</button>
+            </div>
+            <div className="mb-2 text-[11px] text-muted">
+              Total {popup.side === "buy" ? "Buy" : "Sell"} Qty: <span className="font-bold text-foreground">{fmt(popup.totalQty)}</span>
+            </div>
+            {popup.items.length === 0 ? (
+              <div className="py-4 text-center text-xs text-muted">No stocks above {MIN_KITTA.toLocaleString("en-IN")} kitta.</div>
+            ) : (
+              <table className="w-full text-[10px]">
+                <thead>
+                  <tr className="border-b border-border text-muted text-[9px] font-semibold uppercase tracking-wider">
+                    <th className="text-left px-1 py-1">Symbol</th>
+                    <th className="text-right px-1 py-1">Qty</th>
+                    <th className="text-right px-1 py-1">Amount</th>
+                    <th className="text-center px-1 py-1 w-6"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {popup.items.map((s) => (
+                    <tr key={s.symbol}>
+                      <td className="px-1 py-1 font-semibold text-foreground">{s.symbol}</td>
+                      <td className="px-1 py-1 text-right tabular-nums">{fmt(s.qty)}</td>
+                      <td className="px-1 py-1 text-right tabular-nums">{fmt(s.amt)}</td>
+                      <td className="px-1 py-1 text-center">{s.aggressive ? "⚡" : ""}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );
