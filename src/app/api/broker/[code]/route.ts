@@ -35,8 +35,8 @@ async function fetchSide(broker: number, side: "buy" | "sell"): Promise<FloorShe
 
 function normalizeDbRow(row: any): Row {
   return {
-    symbol: String(row.stockSymbol || row.s || ""),
-    name: String(row.securityName || row.name || row.symbol || ""),
+    symbol: String(row.stockSymbol || ""),
+    name: String(row.name || row.stockSymbol || ""),
     buyQty: Number(row.buyQty || 0),
     buyAmt: Number(row.buyAmt || 0),
     sellQty: Number(row.sellQty || 0),
@@ -62,7 +62,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ code: string }>
     const toStr = todayStr;
 
     const dbRows = await db.execute({
-      sql: `SELECT stockSymbol, securityName, SUM(buyQty) as buyQty, SUM(buyAmt) as buyAmt, SUM(sellQty) as sellQty, SUM(sellAmt) as sellAmt FROM broker_daily_agg WHERE brokerId = ? AND tradeDate >= ? AND tradeDate <= ? GROUP BY stockSymbol ORDER BY ABS(SUM(buyAmt) - SUM(sellAmt)) DESC`,
+      sql: `SELECT stockSymbol, MAX(stockSymbol) as name, SUM(buyQty) as buyQty, SUM(buyAmt) as buyAmt, SUM(sellQty) as sellQty, SUM(sellAmt) as sellAmt FROM broker_daily_agg WHERE brokerId = ? AND tradeDate >= ? AND tradeDate <= ? GROUP BY stockSymbol ORDER BY SUM(buyAmt + sellAmt) DESC`,
       args: [String(broker), fromStr, toStr],
     });
 
