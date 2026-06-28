@@ -32,7 +32,11 @@ export async function captureDailySnapshot(): Promise<{ inserted: number; date: 
   let stockWiseData: any[] = [];
   try {
     const res = await fetch(`${getBaseUrl()}/api/stock-wise?date=${dateStr}`, { cache: "no-store" });
-    if (res.ok) stockWiseData = await res.json();
+    if (res.ok) {
+      const json = await res.json();
+      stockWiseData = json.stocks || json;
+      if (!Array.isArray(stockWiseData)) stockWiseData = [];
+    }
   } catch {}
 
   // Fetch tactical signals (momentumScore, smartMoneyScore, divergenceFlag)
@@ -86,8 +90,9 @@ export async function captureDailySnapshot(): Promise<{ inserted: number; date: 
     const flowRes = await fetch(`${getBaseUrl()}/api/broker-flow/stocks?date=${dateStr}`, { cache: "no-store" });
     if (flowRes.ok) {
       const flowData = await flowRes.json();
-      if (Array.isArray(flowData)) {
-        for (const item of flowData) {
+      const items = flowData.stocks || flowData;
+      if (Array.isArray(items)) {
+        for (const item of items) {
           try {
             await execute(
               `INSERT OR IGNORE INTO signal_daily_snapshot (trade_date, symbol, signal_name, signal_value, computed_at)
