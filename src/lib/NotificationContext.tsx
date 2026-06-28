@@ -29,7 +29,7 @@ const DEFAULT_SETTINGS: NotificationSettings = {
   signal: true,
   price: true,
   sound: true,
-  desktop: false,
+  desktop: true,
 };
 
 type NotifCtx = {

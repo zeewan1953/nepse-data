@@ -1,7 +1,6 @@
 "use client";
-import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { usePoll } from "@/lib/useLive";
-import { useNotification } from "@/lib/NotificationContext";
 
 type NewsItem = {
   id: string;
@@ -28,36 +27,6 @@ const CATEGORY_COLORS: Record<string, string> = {
 
 export default function NewsPage() {
   const news = usePoll<NewsResp>("/api/news", 600_000); // Refresh every 10 minutes
-  const { notify } = useNotification();
-  const prevIdsRef = useRef<Set<string>>(new Set());
-
-  // Notify for EVERY new news item
-  useEffect(() => {
-    if (!news.data?.news?.length) return;
-    
-    const currentIds = new Set(news.data.news.map(n => n.id));
-    const previousIds = prevIdsRef.current;
-    
-    // Find new news items that weren't there before
-    const newNews = news.data.news.filter(n => !previousIds.has(n.id));
-    
-    if (previousIds.size > 0 && newNews.length > 0) {
-      // Send individual notification for each new news
-      newNews.forEach((item, idx) => {
-        setTimeout(() => {
-          notify(
-            "📰 New News",
-            item.title.substring(0, 100),
-            "news",
-            item.image || undefined
-          );
-        }, idx * 500); // Stagger notifications by 500ms
-      });
-    }
-    
-    // Update the tracked IDs
-    prevIdsRef.current = currentIds;
-  }, [news.data?.news, notify]);
   const [filter, setFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [selectedArticle, setSelectedArticle] = useState<NewsItem | null>(null);

@@ -5,6 +5,7 @@ import AppHeader from "@/components/AppHeader";
 import { ThemeProvider } from "@/lib/ThemeProvider";
 import { AuthProvider } from "@/lib/useAuth";
 import { NotificationProvider } from "@/lib/NotificationContext";
+import NotificationWatcher from "@/components/NotificationWatcher";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -56,6 +57,7 @@ export default function RootLayout({
         <ThemeProvider>
           <AuthProvider>
             <NotificationProvider>
+              <NotificationWatcher />
               <AppHeader />
               <main className="w-full flex-1 px-4 py-4">{children}</main>
             </NotificationProvider>
