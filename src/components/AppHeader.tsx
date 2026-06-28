@@ -11,6 +11,7 @@ import { useAuth } from "@/lib/useAuth";
 import { useNotification } from "@/lib/NotificationContext";
 import { getMarketSession, getMarketStatusLabel, getNPTNow } from "@/lib/market-hours";
 import { Logo } from "@/components/Logo";
+import NotificationBell from "@/components/NotificationBell";
 
 /* ─── SVG Icon helper ─── */
 const Icon = ({ d, size = 16, cls = "" }: { d: string; size?: number; cls?: string }) => (
@@ -42,6 +43,7 @@ const NAV: Array<{ href: string; label: string; icon: string; badge?: boolean }>
   { href: "/broker-analysis", label: "Broker Analysis", icon: icons.exchange },
   { href: "/orderflow", label: "Order Flow", icon: "📊" },
   { href: "/paper-trading", label: "Paper Trading", icon: "📈", badge: true },
+  { href: "/alerts", label: "Alerts", icon: icons.bell },
   { href: "/news", label: "News", icon: icons.news },
 ];
 
@@ -244,7 +246,6 @@ export default function AppHeader() {
 
   /* Dropdown states */
   const [searchOpen, setSearchOpen] = useState(false);
-  const [bellOpen, setBellOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [avatarOpen, setAvatarOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
@@ -252,12 +253,10 @@ export default function AppHeader() {
 
   /* Refs for click-outside */
   const searchRef = useRef<HTMLDivElement>(null);
-  const bellRef = useRef<HTMLDivElement>(null);
   const settingsRef = useRef<HTMLDivElement>(null);
   const avatarRef = useRef<HTMLDivElement>(null);
 
   useClickOutside(searchRef, () => setSearchOpen(false));
-  useClickOutside(bellRef, () => setBellOpen(false));
   useClickOutside(settingsRef, () => setSettingsOpen(false));
   useClickOutside(avatarRef, () => setAvatarOpen(false));
 
@@ -300,9 +299,8 @@ export default function AppHeader() {
         .toUpperCase()
     : "";
 
-  const toggleOnly = (which: "search" | "bell" | "settings" | "avatar") => {
+  const toggleOnly = (which: "search" | "settings" | "avatar") => {
     setSearchOpen(which === "search" ? !searchOpen : false);
-    setBellOpen(which === "bell" ? !bellOpen : false);
     setSettingsOpen(which === "settings" ? !settingsOpen : false);
     setAvatarOpen(which === "avatar" ? !avatarOpen : false);
   };
@@ -371,69 +369,8 @@ export default function AppHeader() {
               )}
             </div>
 
-            {/* Bell / Notifications */}
-            <div ref={bellRef} className="relative">
-              <IconBtn d={icons.bell} active={bellOpen} badge={notif.unread > 0} onClick={() => toggleOnly("bell")} />
-              {bellOpen && (
-                <div className="absolute right-0 top-full mt-2 w-[300px] sm:w-80 overflow-hidden rounded-xl border border-border bg-surface shadow-xl z-50">
-                  <div className="flex items-center justify-between border-b border-border px-3 py-2">
-                    <span className="text-sm font-bold text-foreground">Notifications</span>
-                    {notif.toasts.length > 0 && (
-                      <button onClick={notif.clear} className="text-[10px] font-semibold text-primary hover:underline">
-                        Clear all
-                      </button>
-                    )}
-                  </div>
-                  <div className="max-h-80 overflow-y-auto">
-                    {notif.toasts.length === 0 && <div className="px-3 py-6 text-center text-xs text-muted">No notifications yet</div>}
-                    {notif.toasts.map((t) => {
-                      const typeColors = {
-                        news: "#0F6E56",
-                        broker: "#e67e22",
-                        signal: "#9b59b6",
-                        price: "#3498db",
-                        info: "#95a5a6",
-                      };
-                      const typeLabels = {
-                        news: "📰 News",
-                        broker: "📊 Broker",
-                        signal: "🎯 Signal",
-                        price: "💰 Price",
-                        info: "ℹ️ Info",
-                      };
-                      const timeAgo = t.time ? Math.floor((Date.now() - t.time) / 60000) : 0;
-                      const timeStr = timeAgo < 1 ? "Just now" : timeAgo < 60 ? `${timeAgo}m ago` : `${Math.floor(timeAgo / 60)}h ago`;
-
-                      return (
-                        <div key={t.id} className="flex gap-2 border-b border-border px-3 py-2 last:border-0 hover:bg-surface-2 transition">
-                          {/* Thumbnail for news */}
-                          {t.image ? (
-                            <div className="h-16 w-20 shrink-0 overflow-hidden rounded-lg bg-surface-2">
-                              <img src={t.image} alt="" className="h-full w-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-                            </div>
-                          ) : (
-                            <span className="mt-0.5 h-2 w-2 shrink-0 rounded-full" style={{ background: typeColors[t.type] }} />
-                          )}
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-start justify-between gap-1">
-                              <div className="text-xs font-semibold text-foreground">{t.title}</div>
-                              <span className="text-[9px] text-muted whitespace-nowrap">{timeStr}</span>
-                            </div>
-                            <div className="text-[10px] text-muted line-clamp-2 mt-0.5">{t.message}</div>
-                            <div className="text-[9px] font-semibold mt-1" style={{ color: typeColors[t.type] }}>
-                              {typeLabels[t.type]}
-                            </div>
-                          </div>
-                          <button onClick={() => notif.dismiss(t.id)} className="text-muted hover:text-foreground shrink-0">
-                            <Icon d={icons.x} size={12} />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
+            {/* Alert Bell (in-app alerts) */}
+            <NotificationBell />
 
             {/* Settings - hidden on mobile */}
             <div ref={settingsRef} className="relative hidden sm:block">

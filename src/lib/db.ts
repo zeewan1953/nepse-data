@@ -435,6 +435,53 @@ async function migrateSchema(): Promise<void> {
   try {
     await db.execute("CREATE INDEX IF NOT EXISTS idx_company_news_symbol ON company_news(symbol)");
   } catch {}
+
+  // ── User Alerts ──────────────────────────────────────────────────────────────────
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS user_alerts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      alert_type TEXT NOT NULL CHECK (alert_type IN ('price','signal','broker_flow')),
+      symbol TEXT,
+      broker_id TEXT,
+      signal_name TEXT,
+      condition TEXT NOT NULL CHECK (condition IN ('above','below','crosses_up','crosses_down')),
+      threshold NUMERIC NOT NULL,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at INTEGER NOT NULL,
+      last_triggered_at INTEGER
+    )
+  `);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS alert_trigger_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      alert_id INTEGER NOT NULL,
+      triggered_at INTEGER NOT NULL,
+      observed_value NUMERIC,
+      message TEXT NOT NULL,
+      is_read INTEGER NOT NULL DEFAULT 0,
+      FOREIGN KEY (alert_id) REFERENCES user_alerts(id) ON DELETE CASCADE
+    )
+  `);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      endpoint TEXT NOT NULL,
+      p256dh_key TEXT NOT NULL,
+      auth_key TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    )
+  `);
+
+  try {
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_user_alerts_user ON user_alerts(user_id)");
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_alert_trigger_log_alert ON alert_trigger_log(alert_id)");
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_alert_trigger_log_read ON alert_trigger_log(is_read)");
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user ON push_subscriptions(user_id)");
+  } catch {}
 }
 migrateSchema().catch(console.error);
 
