@@ -46,9 +46,7 @@ export default function IndicatorsPage() {
     }
   }
 
-  // Filter to indicators that have at least 1 BUY
-  const activeIndicators = [...indicatorMap.values()]
-    .filter(e => e.buys.length > 0);
+  const indicators = [...indicatorMap.values()];
 
   return (
     <div className="indicators-page">
@@ -58,7 +56,7 @@ export default function IndicatorsPage() {
           <div className="indicators-subtitle">
             <span className="badge-daily">Daily timeframe</span>
             {date && <span className="indicators-date">{date}</span>}
-            <span className="indicators-count">{activeIndicators.length} indicators with BUY signals</span>
+            <span className="indicators-count">BUY signals shown · max 5 per indicator</span>
           </div>
         </div>
       </div>
@@ -70,19 +68,15 @@ export default function IndicatorsPage() {
 
       {loading ? (
         <div className="loading">Loading indicators...</div>
-      ) : activeIndicators.length === 0 ? (
-        <div className="empty-state">No BUY signals for today.</div>
       ) : (
         <div className="card-list">
-          {activeIndicators.map(({ meta, buys }) => (
+          {indicators.map(({ meta, buys }) => (
             <div key={meta.name} className="indicator-card">
               <div className="card-label">{meta.label}</div>
               <div className="card-symbols">
-                {buys.map(sym => (
-                  <Link key={sym} href={`/stock/${sym}`} className="symbol-tag">
-                    {sym}
-                  </Link>
-                ))}
+                {buys.length > 0 ? buys.map(sym => (
+                  <Link key={sym} href={`/stock/${sym}`} className="symbol-tag">{sym}</Link>
+                )) : <span className="no-buy">—</span>}
               </div>
             </div>
           ))}
@@ -182,6 +176,10 @@ export default function IndicatorsPage() {
         .symbol-tag:hover {
           background: #003322;
           border-color: #008844;
+        }
+        .no-buy {
+          color: #444;
+          font-size: 12px;
         }
       `}</style>
     </div>
