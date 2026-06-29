@@ -44,46 +44,49 @@ export default function IndicatorsPage() {
   const indicators = INDICATOR_META.map(meta => ({ meta, buys: indicatorMap.get(meta.name) || [] }));
 
   return (
-    <div className="indicators-page">
-      <div className="indicators-header">
-        <div>
-          <h1 className="indicators-title">Indicator Signals — BUY</h1>
-          <div className="indicators-subtitle">
-            <span className="badge-daily">Daily timeframe</span>
-            {date && <span className="indicators-date">{date}</span>}
-            <span className="indicators-count">max 5 stocks per indicator</span>
-          </div>
+    <div className="p-3 text-[#e0e0e0] max-w-2xl mx-auto">
+      <div className="mb-2">
+        <h1 className="text-sm font-bold text-white m-0">Indicator Signals — BUY</h1>
+        <div className="flex items-center gap-2 mt-1">
+          <span className="bg-[#1a3a5c] text-[#8ab4f8] text-[10px] px-2 py-0.5 rounded border border-[#2a5a8c]">Daily timeframe</span>
+          {date && <span className="text-[#999] text-[11px]">{date}</span>}
+          <span className="text-[#00cc44] text-[11px]">max 5 per indicator</span>
         </div>
       </div>
 
-      <div className="disclaimer-box">
-        Technical indicators are based on historical data and formulas. Not financial advice.
+      <div className="bg-[#1a1a00] border border-[#664400] text-[#cc9900] px-3 py-1.5 rounded text-[10px] mb-2">
+        Backtested · not financial advice
       </div>
 
       {loading ? (
-        <div className="loading">Loading...</div>
+        <div className="text-[#888] py-8 text-center text-xs">Loading...</div>
       ) : (
-        <div className="table-wrap">
-          <table className="indicator-table">
+        <div className="overflow-x-auto rounded-lg border border-[#1a1a2e]">
+          <table className="w-full text-[10px]">
             <thead>
-              <tr>
-                <th className="th-indicator">Indicator</th>
-                <th className="th-stocks">Stocks (BUY)</th>
+              <tr className="bg-[#0f0f1e] border-b border-[#1a1a2e] text-[#667] text-[9px] font-semibold uppercase tracking-wider">
+                <th className="text-left px-2 py-1.5">#</th>
+                <th className="text-left px-2 py-1.5">Indicator</th>
+                <th className="text-right px-2 py-1.5">Stocks (BUY)</th>
               </tr>
             </thead>
-            <tbody>
-              {indicators.map(({ meta, buys }, i) => (
-                <tr key={meta.name} className={i % 2 === 0 ? "row-even" : "row-odd"}>
-                  <td className="td-label">{meta.label}</td>
-                  <td className="td-stocks">
+            <tbody className="divide-y divide-[#1a1a2e]">
+              {indicators.map(({ meta, buys }, idx) => (
+                <tr key={meta.name} className="hover:bg-[#0f0f1e]/60 transition">
+                  <td className="px-2 py-1 text-[#556] text-[9px]">{idx + 1}</td>
+                  <td className="px-2 py-1 font-medium text-[#7aa8f0] text-[10px] whitespace-nowrap">{meta.label}</td>
+                  <td className="px-2 py-1 text-right">
                     {buys.length > 0 ? (
-                      <div className="tag-group">
+                      <span className="inline-flex flex-wrap gap-0.5 justify-end">
                         {buys.map(sym => (
-                          <Link key={sym} href={`/stock/${sym}`} className="buy-tag">{sym}</Link>
+                          <Link key={sym} href={`/stock/${sym}`}
+                            className="rounded bg-[#00cc44]/10 px-1.5 py-0.5 font-semibold text-[#00cc44] text-[9px] no-underline hover:bg-[#00cc44]/20">
+                            {sym}
+                          </Link>
                         ))}
-                      </div>
+                      </span>
                     ) : (
-                      <span className="no-signal">—</span>
+                      <span className="text-[#333]">—</span>
                     )}
                   </td>
                 </tr>
@@ -92,29 +95,6 @@ export default function IndicatorsPage() {
           </table>
         </div>
       )}
-
-      <style>{`
-        .indicators-page { padding: 16px; color: #e0e0e0; max-width: 800px; margin: 0 auto; }
-        .indicators-header { margin-bottom: 8px; }
-        .indicators-title { font-size: 15px; font-weight: 700; margin: 0; color: #fff; }
-        .indicators-subtitle { display: flex; align-items: center; gap: 8px; margin-top: 4px; flex-wrap: wrap; }
-        .badge-daily { background: #1a3a5c; color: #8ab4f8; font-size: 11px; padding: 2px 8px; border-radius: 4px; border: 1px solid #2a5a8c; }
-        .indicators-date { color: #999; font-size: 13px; }
-        .indicators-count { color: #00cc44; font-size: 12px; }
-        .disclaimer-box { background: #1a1a00; border: 1px solid #664400; color: #cc9900; padding: 8px 12px; border-radius: 4px; font-size: 12px; margin-bottom: 12px; }
-        .loading { color: #888; padding: 40px; text-align: center; }
-        .table-wrap { overflow-x: auto; border: 1px solid #1a1a2e; border-radius: 8px; }
-        .indicator-table { width: 100%; border-collapse: collapse; font-size: 12px; background: #0a0a16; }
-        .indicator-table th { padding: 6px 10px; text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: #556; background: #0f0f1e; border-bottom: 1px solid #1a1a2e; }
-        .indicator-table td { padding: 4px 10px; }
-        .row-even { background: #0a0a16; }
-        .row-odd { background: #0e0e1c; }
-        .td-label { color: #7aa8f0; font-weight: 600; font-size: 11px; min-width: 130px; white-space: nowrap; }
-        .tag-group { display: flex; flex-wrap: wrap; gap: 3px; }
-        .buy-tag { display: inline-block; background: #002211; color: #00cc44; font-size: 10px; font-weight: 600; padding: 1px 7px; border-radius: 3px; border: 1px solid #004422; text-decoration: none; transition: 0.12s; }
-        .buy-tag:hover { background: #003322; border-color: #008844; }
-        .no-signal { color: #333; font-size: 11px; }
-      `}</style>
     </div>
   );
 }
