@@ -382,6 +382,50 @@ async function migrateSchema(): Promise<void> {
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_error_logs_ts ON error_logs(ts)`);
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_error_logs_source ON error_logs(source)`);
 
+  // ─── IPO/FPO Tables ─────────────────────────────────────────────────────
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS ipo_issues (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_name TEXT NOT NULL,
+      symbol TEXT,
+      issue_type TEXT NOT NULL CHECK (issue_type IN ('IPO','FPO','RIGHTS','MUTUAL_FUND','DEBENTURE')),
+      units_offered BIGINT,
+      price_per_unit REAL,
+      min_application_units INT,
+      max_application_units INT,
+      eligibility TEXT,
+      opening_date TEXT,
+      closing_date TEXT,
+      allotment_date TEXT,
+      listing_date TEXT,
+      registrar_name TEXT,
+      status TEXT NOT NULL DEFAULT 'upcoming'
+        CHECK (status IN ('upcoming','open','closed','allotment_pending','allotted','listed')),
+      source_vendor TEXT NOT NULL,
+      source_url TEXT,
+      last_scraped_at INTEGER,
+      created_at INTEGER DEFAULT (cast(julianday('now') - 2440587.5 as integer) * 86400),
+      updated_at INTEGER DEFAULT (cast(julianday('now') - 2440587.5 as integer) * 86400)
+    )
+  `);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS ipo_allotment_lookups (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      issue_id INT REFERENCES ipo_issues(id),
+      boid_hash TEXT NOT NULL,
+      result_status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (result_status IN ('pending','allotted','not_allotted','unavailable')),
+      allotted_units INT,
+      registrar_source TEXT,
+      checked_at INTEGER DEFAULT (cast(julianday('now') - 2440587.5 as integer) * 86400),
+      UNIQUE(issue_id, boid_hash)
+    )
+  `);
+
+  await db.execute("CREATE INDEX IF NOT EXISTS idx_ipo_status ON ipo_issues(status)");
+  await db.execute("CREATE INDEX IF NOT EXISTS idx_ipo_closing ON ipo_issues(closing_date)");
+
   // Self-healer action log
   await db.execute(`
     CREATE TABLE IF NOT EXISTS healer_log (
@@ -1278,4 +1322,123 @@ export async function markPipelineRunComplete(
     sql: `UPDATE pipeline_run_log SET status = ?, rows_written = ?, completed_at = ? WHERE run_date = ? AND pipeline = ?`,
     args: [status, rowsWritten, Date.now(), runDate, pipeline],
   });
+}
+
+// ─── IPO/FPO Functions ────────────────────────────────────────────────────
+
+export async function getIPOIssues(status?: string): Promise<any[]> {
+  let sql = `SELECT * FROM ipo_issues`;
+  const args: any[] = [];
+  if (status && status !== "all") {
+    sql += ` WHERE status = ?`;
+    args.push(status);
+  }
+  sql += ` ORDER BY closing_date ASC NULLS LAST, created_at DESC`;
+  const r = await db.execute({ sql, args });
+  return r.rows.map(normalizeIPOIssue);
+}
+
+export async function getIPOIssueById(id: number): Promise<any | null> {
+  const r = await db.execute({ sql: `SELECT * FROM ipo_issues WHERE id = ?`, args: [id] });
+  return r.rows.length > 0 ? normalizeIPOIssue(r.rows[0]) : null;
+}
+
+export async function upsertIPOIssue(issue: {
+  company_name: string; symbol?: string; issue_type: string;
+  units_offered?: number; price_per_unit?: number;
+  min_application_units?: number; max_application_units?: number;
+  eligibility?: string; opening_date?: string; closing_date?: string;
+  allotment_date?: string; listing_date?: string; registrar_name?: string;
+  status?: string; source_vendor: string; source_url?: string;
+}): Promise<number> {
+  const existing = await db.execute({
+    sql: `SELECT id FROM ipo_issues WHERE company_name = ? AND opening_date = ?`,
+    args: [issue.company_name, issue.opening_date ?? null],
+  });
+  if (existing.rows.length > 0) {
+    const id = Number(existing.rows[0].id);
+    await db.execute({
+      sql: `UPDATE ipo_issues SET symbol=?,issue_type=?,units_offered=?,price_per_unit=?,
+            min_application_units=?,max_application_units=?,eligibility=?,
+            closing_date=?,allotment_date=?,listing_date=?,registrar_name=?,
+            status=?,source_url=?,last_scraped_at=?,updated_at=?
+            WHERE id=?`,
+      args: [
+        issue.symbol ?? null, issue.issue_type, issue.units_offered ?? null,
+        issue.price_per_unit ?? null, issue.min_application_units ?? null,
+        issue.max_application_units ?? null, issue.eligibility ?? null,
+        issue.closing_date ?? null, issue.allotment_date ?? null,
+        issue.listing_date ?? null, issue.registrar_name ?? null,
+        issue.status ?? 'upcoming', issue.source_url ?? null,
+        Date.now(), Date.now(), id,
+      ],
+    });
+    return id;
+  }
+  const r = await db.execute({
+    sql: `INSERT INTO ipo_issues (company_name,symbol,issue_type,units_offered,price_per_unit,
+          min_application_units,max_application_units,eligibility,opening_date,closing_date,
+          allotment_date,listing_date,registrar_name,status,source_vendor,source_url,last_scraped_at)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    args: [
+      issue.company_name, issue.symbol ?? null, issue.issue_type,
+      issue.units_offered ?? null, issue.price_per_unit ?? null,
+      issue.min_application_units ?? null, issue.max_application_units ?? null,
+      issue.eligibility ?? null, issue.opening_date ?? null,
+      issue.closing_date ?? null, issue.allotment_date ?? null,
+      issue.listing_date ?? null, issue.registrar_name ?? null,
+      issue.status ?? 'upcoming', issue.source_vendor, issue.source_url ?? null,
+      Date.now(),
+    ],
+  });
+  return Number(r.lastInsertRowid);
+}
+
+export async function checkAllotmentCache(issueId: number, boidHash: string): Promise<any | null> {
+  const sixHoursAgo = Date.now() - 6 * 3600 * 1000;
+  const r = await db.execute({
+    sql: `SELECT * FROM ipo_allotment_lookups WHERE issue_id = ? AND boid_hash = ? AND checked_at > ?`,
+    args: [issueId, boidHash, sixHoursAgo],
+  });
+  return r.rows.length > 0 ? {
+    result_status: String(r.rows[0].result_status),
+    allotted_units: r.rows[0].allotted_units != null ? Number(r.rows[0].allotted_units) : null,
+  } : null;
+}
+
+export async function saveAllotmentResult(issueId: number, boidHash: string, result: {
+  result_status: string; allotted_units?: number; registrar_source?: string;
+}): Promise<void> {
+  await db.execute({
+    sql: `INSERT INTO ipo_allotment_lookups (issue_id,boid_hash,result_status,allotted_units,registrar_source,checked_at)
+          VALUES (?,?,?,?,?,?)
+          ON CONFLICT(issue_id,boid_hash) DO UPDATE SET result_status=excluded.result_status,
+            allotted_units=excluded.allotted_units,registrar_source=excluded.registrar_source,checked_at=excluded.checked_at`,
+    args: [
+      issueId, boidHash, result.result_status,
+      result.allotted_units ?? null, result.registrar_source ?? null, Date.now(),
+    ],
+  });
+}
+
+function normalizeIPOIssue(row: any): any {
+  return {
+    id: Number(row.id),
+    company_name: String(row.company_name),
+    symbol: row.symbol != null ? String(row.symbol) : null,
+    issue_type: String(row.issue_type),
+    units_offered: row.units_offered != null ? Number(row.units_offered) : null,
+    price_per_unit: row.price_per_unit != null ? Number(row.price_per_unit) : null,
+    min_application_units: row.min_application_units != null ? Number(row.min_application_units) : null,
+    max_application_units: row.max_application_units != null ? Number(row.max_application_units) : null,
+    eligibility: row.eligibility != null ? String(row.eligibility) : null,
+    opening_date: row.opening_date != null ? String(row.opening_date) : null,
+    closing_date: row.closing_date != null ? String(row.closing_date) : null,
+    allotment_date: row.allotment_date != null ? String(row.allotment_date) : null,
+    listing_date: row.listing_date != null ? String(row.listing_date) : null,
+    registrar_name: row.registrar_name != null ? String(row.registrar_name) : null,
+    status: String(row.status),
+    source_url: row.source_url != null ? String(row.source_url) : null,
+    last_scraped_at: row.last_scraped_at != null ? Number(row.last_scraped_at) : null,
+  };
 }
