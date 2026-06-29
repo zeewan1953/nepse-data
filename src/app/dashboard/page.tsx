@@ -290,50 +290,6 @@ export default function Dashboard() {
   return (
     <div className="flex min-h-screen bg-background">
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* ── Top bar ── */}
-        <header className="flex items-center gap-4 border-b border-border bg-surface px-4 py-2.5">
-          <Logo size={36} />
-
-
-          {/* Index + turnover/volume */}
-          <div className="flex items-center gap-5 border-l border-border pl-4">
-            <div className="leading-tight">
-              <div className="text-[9px] font-semibold uppercase tracking-wider text-muted">NEPSE</div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-lg font-extrabold text-foreground tabular-nums">
-                  {s ? fmt(s.nepseIndex, 2) : "—"}
-                </span>
-              </div>
-              {s && (
-                <div className={`text-[11px] font-semibold ${chgCls(s.change)}`}>
-                  {s.change > 0 ? "+" : ""}{fmt(s.change, 2)} ({s.changePct > 0 ? "+" : ""}{fmt(s.changePct, 2)}%)
-                </div>
-              )}
-            </div>
-            <div className="hidden leading-tight sm:block">
-              <div className="text-[9px] font-semibold uppercase tracking-wider text-muted">Total Turnover</div>
-              <div className="text-sm font-bold text-foreground tabular-nums">{s ? cr(s.totalValue) : "—"}</div>
-            </div>
-            <div className="hidden leading-tight lg:block">
-              <div className="text-[9px] font-semibold uppercase tracking-wider text-muted">Total Volume</div>
-              <div className="text-sm font-bold text-foreground tabular-nums">{s ? int(s.totalVolume) : "—"}</div>
-            </div>
-          </div>
-
-          {/* Right controls */}
-          <div className="ml-auto flex items-center gap-2">
-            <button className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-muted hover:bg-surface-2" title="Search">🔍</button>
-            <span className="flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-[11px] font-semibold text-muted">
-              <span className="h-2 w-2 rounded-full bg-gray-400" /> CLOSED
-            </span>
-            {mounted && (
-              <button onClick={toggle} className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-muted hover:bg-surface-2" title="Theme">
-                {dark ? "☀️" : "🌙"}
-              </button>
-            )}
-          </div>
-        </header>
-
         {/* ── Body ── */}
         <main className="grid flex-1 grid-cols-1 gap-4 p-4">
           {/* Row 1: NEPSE INDEX + AI Summary (TOP) */}
@@ -350,7 +306,6 @@ export default function Dashboard() {
 
               <div className="mt-3 flex items-center gap-2 text-xs font-semibold text-muted">
                 NEPSE INDEX
-                <span className="rounded-full border border-border px-2 py-0.5 text-[10px]">● CLOSED</span>
               </div>
               <div className="mt-1 flex items-baseline gap-3">
                 <span className={`text-4xl font-extrabold tabular-nums ${s ? chgCls(s.change) : "text-foreground"}`}>

@@ -7,10 +7,10 @@ import type { MarketStatus, NepseIndex, NepseSubIndex, LiveMarketData } from "@/
 import { classifySymbol, TYPE_BADGE } from "@/lib/types";
 import { npr, num, pct } from "@/lib/format";
 import { useTheme } from "@/lib/ThemeProvider";
-import { useAuth } from "@/lib/useAuth";
 import { useNotification } from "@/lib/NotificationContext";
 import { getMarketSession, getMarketStatusLabel, getNPTNow } from "@/lib/market-hours";
 import { Logo } from "@/components/Logo";
+import StockSearchPopup from "@/components/StockSearchPopup";
 import NotificationBell from "@/components/NotificationBell";
 
 /* ─── SVG Icon helper ─── */
@@ -43,11 +43,10 @@ const NAV: Array<{ href: string; label: string; icon: string; badge?: boolean }>
   { href: "/broker-analysis", label: "Broker Analysis", icon: icons.exchange },
   { href: "/orderflow", label: "Order Flow", icon: "📊" },
   { href: "/paper-trading", label: "Paper Trading", icon: "📈", badge: true },
-  { href: "/alerts", label: "Alerts", icon: icons.bell },
   { href: "/signals/performance", label: "Signal Perf", icon: icons.chart },
   { href: "/indicators", label: "Indicators", icon: icons.spreadsheet },
-  { href: "/sectors", label: "Sectors", icon: icons.chart },
-  { href: "/portfolio/compare", label: "Compare", icon: icons.exchange },
+  { href: "/portfolio", label: "Portfolio", icon: icons.chart },
+  { href: "/fundamental", label: "Fundamental", icon: icons.spreadsheet },
   { href: "/news", label: "News", icon: icons.news },
 ];
 
@@ -56,36 +55,27 @@ type LiveResp = { data: LiveMarketData[]; count: number; source?: string };
 
 /* ─── Live Market Stats + Breadth ─── */
 const LiveHeaderBar = ({ nepse, liveData }: { nepse?: NepseIndex; liveData: LiveMarketData[] | undefined }) => {
-  const now = getNPTNow();
-  const { label, color } = getMarketStatusLabel(now);
-  const session = getMarketSession(now);
-  const isOpen = session === "open";
   const adv = liveData?.filter(s => s.percentageChange > 0).length ?? 0;
   const dec = liveData?.filter(s => s.percentageChange < 0).length ?? 0;
   const unc = liveData?.filter(s => s.percentageChange === 0).length ?? 0;
   const total = liveData?.length ?? 0;
   return (
-    <div className="border-b" style={{ borderColor: "rgba(0,0,0,0.12)", background: "#f8f9fa" }}>
-      <div className="mx-auto flex max-w-[1400px] items-center gap-2 sm:gap-4 px-2 sm:px-4 py-1 text-[10px] sm:text-xs tabular-nums overflow-x-auto whitespace-nowrap flex-wrap sm:flex-nowrap">
-        <span className="font-bold text-foreground">{nepse?.index || "NEPSE Index"}</span>
-        <span className="font-semibold text-foreground">{num(nepse?.currentValue ?? 0)}</span>
-        <span className={nepse && nepse.perChange >= 0 ? "text-up" : "text-down"}>
-          {nepse ? `${nepse.perChange >= 0 ? "+" : ""}${nepse.perChange.toFixed(2)}%` : "—"}
-        </span>
-        <span className="text-muted">|</span>
-        <span className="text-muted">Adv</span>
-        <span className="font-semibold text-up">{adv}</span>
-        <span className="text-muted">Dec</span>
-        <span className="font-semibold text-down">{dec}</span>
-        <span className="text-muted">Unch</span>
-        <span className="font-semibold text-foreground">{unc}</span>
-        <span className="text-muted">|</span>
-        <span className="text-muted">Trx</span>
-        <span className="font-semibold text-foreground">{total}</span>
-        <span className={`ml-auto rounded px-1.5 py-0.5 text-[8px] sm:text-[9px] font-bold uppercase ${isOpen ? "bg-up/10 text-up" : "bg-down/10 text-down"}`}>
-          {label}
-        </span>
-      </div>
+    <div className="flex items-center gap-2 sm:gap-4 text-[10px] sm:text-xs tabular-nums overflow-x-auto whitespace-nowrap">
+      <span className="font-bold text-foreground">{nepse?.index || "NEPSE Index"}</span>
+      <span className="font-semibold text-foreground">{num(nepse?.currentValue ?? 0)}</span>
+      <span className={nepse && nepse.perChange >= 0 ? "text-up" : "text-down"}>
+        {nepse ? `${nepse.perChange >= 0 ? "+" : ""}${nepse.perChange.toFixed(2)}%` : "—"}
+      </span>
+      <span className="text-muted">|</span>
+      <span className="text-muted">Adv</span>
+      <span className="font-semibold text-up">{adv}</span>
+      <span className="text-muted">Dec</span>
+      <span className="font-semibold text-down">{dec}</span>
+      <span className="text-muted">Unch</span>
+      <span className="font-semibold text-foreground">{unc}</span>
+      <span className="text-muted">|</span>
+      <span className="text-muted">Trx</span>
+      <span className="font-semibold text-foreground">{total}</span>
     </div>
   );
 };
@@ -168,7 +158,6 @@ export default function AppHeader() {
   const pathname = usePathname();
   const clock = useNPTClock();
   const theme = useTheme();
-  const auth = useAuth();
   const notif = useNotification();
 
   const status = usePoll<MarketStatus>("/api/market-status", 30_000);
@@ -177,31 +166,31 @@ export default function AppHeader() {
   const mkt = useMarketSession();
   const open = mkt.session !== "closed";
 
-  /* Dropdown states */
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [avatarOpen, setAvatarOpen] = useState(false);
-  const [loginOpen, setLoginOpen] = useState(false);
-  const [loginMode, setLoginMode] = useState<"login" | "signup">("login");
-
-  /* Refs for click-outside */
-  const searchRef = useRef<HTMLDivElement>(null);
-  const settingsRef = useRef<HTMLDivElement>(null);
-  const avatarRef = useRef<HTMLDivElement>(null);
-
-  useClickOutside(searchRef, () => setSearchOpen(false));
-  useClickOutside(settingsRef, () => setSettingsOpen(false));
-  useClickOutside(avatarRef, () => setAvatarOpen(false));
-
-  /* Search state */
-  const [sq, setSq] = useState("");
-  const searchResults = useMemo(() => {
-    if (!sq.trim() || !live.data?.data) return [];
-    const q = sq.toLowerCase();
-    return live.data.data
-      .filter((r) => r.symbol.toLowerCase().includes(q) || (r.securityName ?? "").toLowerCase().includes(q))
-      .slice(0, 8);
-  }, [sq, live.data]);
+  /* Calculate real market stats from live data */
+  const marketStats = useMemo(() => {
+    const liveData = live.data?.data ?? [];
+    const totalVolume = liveData.reduce((sum, s) => sum + (s.lastTradedVolume ?? 0), 0);
+    const totalValue = liveData.reduce((sum, s) => sum + (s.totalTradeValue ?? 0), 0);
+    
+    // Format turnover in Crores
+    const turnoverCr = totalValue / 100000000;
+    const turnoverFormatted = turnoverCr >= 1 ? `Rs. ${turnoverCr.toFixed(2)} Cr` : `Rs. ${(turnoverCr * 100).toFixed(2)} L`;
+    
+    // Format volume
+    const volumeFormatted = totalVolume >= 10000000 
+      ? `${(totalVolume / 10000000).toFixed(2)} Cr` 
+      : totalVolume >= 100000 
+        ? `${(totalVolume / 100000).toFixed(2)} L` 
+        : totalVolume.toLocaleString();
+    
+    return {
+      totalVolume: volumeFormatted,
+      totalValue: turnoverFormatted,
+      adv: liveData.filter(s => s.percentageChange > 0).length,
+      dec: liveData.filter(s => s.percentageChange < 0).length,
+      unc: liveData.filter(s => s.percentageChange === 0).length,
+    };
+  }, [live.data]);
 
   /* Build ticker */
   const ticks = useMemo(() => {
@@ -223,24 +212,55 @@ export default function AppHeader() {
   }, [indices.data, live.data]);
 
   const newsCount = 5;
-  const userInitials = auth.user
-    ? auth.user.name
-        .split(" ")
-        .map((w) => w[0])
-        .join("")
-        .slice(0, 2)
-        .toUpperCase()
-    : "";
-
-  const toggleOnly = (which: "search" | "settings" | "avatar") => {
-    setSearchOpen(which === "search" ? !searchOpen : false);
-    setSettingsOpen(which === "settings" ? !settingsOpen : false);
-    setAvatarOpen(which === "avatar" ? !avatarOpen : false);
-  };
 
   return (
     <header className="sticky top-0 z-50">
-      {/* ── Vertical Navigation List (top) ──────────────────── */}
+      {/* ── Main Header Bar: Logo + Market Stats + Search ──── */}
+      <div className="border-b" style={{ borderColor: "rgba(0,0,0,0.12)", background: "#fff" }}>
+        <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-2 sm:gap-4 px-2 sm:px-4 py-2 sm:py-2.5">
+          {/* Left: Logo + Market Stats */}
+          <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
+            {/* Logo */}
+            <Link href="/" className="flex shrink-0 items-center">
+              <Logo variant="medium" size={32} />
+            </Link>
+
+            {/* Market Stats - Big Size */}
+            <div className="flex items-center gap-3 sm:gap-5 text-xs sm:text-sm font-semibold overflow-x-auto whitespace-nowrap flex-1 min-w-0">
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-[10px] sm:text-xs text-muted font-medium">NEPSE</span>
+                <span className="text-lg sm:text-xl font-bold text-foreground">{num(indices.data?.index?.find(i => i.index === "NEPSE Index")?.currentValue ?? 0)}</span>
+                <span className={`text-sm sm:text-base font-bold ${(() => {
+                  const nepse = indices.data?.index?.find(i => i.index === "NEPSE Index");
+                  return (nepse?.perChange ?? 0) >= 0 ? "text-up" : "text-down";
+                })()}`}>
+                  {(() => {
+                    const nepse = indices.data?.index?.find(i => i.index === "NEPSE Index");
+                    return nepse ? `${nepse.perChange >= 0 ? "+" : ""}${nepse.perChange.toFixed(2)}%` : "—";
+                  })()}
+                </span>
+              </div>
+              <div className="hidden sm:flex items-center gap-3 text-xs">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-muted font-medium">Turnover</span>
+                  <span className="font-bold text-foreground">{marketStats.totalValue}</span>
+                </div>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-muted font-medium">Volume</span>
+                  <span className="font-bold text-foreground">{marketStats.totalVolume}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Right: Notification Bell */}
+          <div className="flex items-center gap-2 shrink-0">
+            <NotificationBell />
+          </div>
+        </div>
+      </div>
+
+      {/* ── Navigation (second line) ──────────────────── */}
       <nav className="border-b" style={{ borderColor: "rgba(0,0,0,0.12)", background: "#fff" }}>
         <div className="mx-auto max-w-[1400px] px-2 sm:px-4 py-1">
           <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5">
@@ -268,284 +288,17 @@ export default function AppHeader() {
         </div>
       </nav>
 
-      {/* ── Main Header Bar ──────────────────────────────── */}
-      <div className="border-b" style={{ borderColor: "rgba(0,0,0,0.12)", background: "#fff" }}>
-        <div className="mx-auto flex max-w-[1400px] items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1 sm:py-1.5">
-          {/* Logo - NEPSE AXION */}
-          <Link href="/" className="flex shrink-0 items-center">
-            <Logo variant="medium" size={32} />
-          </Link>
-
-          {/* ── Right Side Icons - Mobile optimized ── */}
-          <div className="ml-auto flex items-center gap-0.5 sm:gap-1">
-            {/* Search - hidden on very small screens */}
-            <div ref={searchRef} className="relative hidden xs:block">
-              <IconBtn d={icons.search} active={searchOpen} onClick={() => toggleOnly("search")} />
-              {searchOpen && (
-                <div className="absolute right-0 top-full mt-2 w-[280px] sm:w-72 overflow-hidden rounded-xl border border-border bg-surface shadow-xl z-50">
-                  <div className="relative border-b border-border">
-                    <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                      <circle cx="11" cy="11" r="8" />
-                      <path d="m21 21-4.3-4.3" />
-                    </svg>
-                    <input
-                      autoFocus
-                      type="text"
-                      value={sq}
-                      onChange={(e) => setSq(e.target.value)}
-                      placeholder="Search stocks..."
-                      className="w-full bg-transparent py-2.5 pl-9 pr-3 text-sm outline-none placeholder:text-muted"
-                    />
-                  </div>
-                  <div className="max-h-64 overflow-y-auto">
-                    {searchResults.length === 0 && sq.trim() && <div className="px-3 py-4 text-center text-xs text-muted">No results</div>}
-                    {searchResults.map((r) => {
-                      const sType = classifySymbol(r.symbol, r.securityName);
-                      return (
-                        <Link
-                          key={r.symbol}
-                          href={`/stock/${r.symbol}`}
-                          onClick={() => {
-                            setSearchOpen(false);
-                            setSq("");
-                          }}
-                          className="flex items-center justify-between gap-2 px-3 py-2 text-xs hover:bg-surface-2"
-                        >
-                          <span className="flex items-center gap-1.5">
-                            <span className="font-bold text-primary">{r.symbol}</span>
-                            <span className={`rounded px-1 text-[8px] font-bold uppercase ${TYPE_BADGE[sType]}`}>{sType}</span>
-                          </span>
-                          <span className="flex items-center gap-1.5 tabular-nums">
-                            <span className="text-muted">{npr(r.lastTradedPrice)}</span>
-                            <span className={`w-12 text-right font-bold ${r.percentageChange >= 0 ? "text-up" : "text-down"}`}>
-                              {r.percentageChange >= 0 ? "+" : ""}
-                              {pct(r.percentageChange)}
-                            </span>
-                          </span>
-                        </Link>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Alert Bell (in-app alerts) */}
-            <NotificationBell />
-
-            {/* Settings - hidden on mobile */}
-            <div ref={settingsRef} className="relative hidden sm:block">
-              <IconBtn d={icons.settings} active={settingsOpen} onClick={() => toggleOnly("settings")} />
-              {settingsOpen && (
-                <div className="absolute right-0 top-full mt-2 w-[280px] sm:w-72 max-h-[80vh] overflow-y-auto rounded-xl border border-border bg-surface shadow-xl z-50">
-                  <div className="sticky top-0 border-b border-border bg-surface px-3 py-2">
-                    <span className="text-sm font-bold text-foreground">Settings</span>
-                  </div>
-                  <div className="p-3 space-y-3">
-                    {/* Theme toggle */}
-                    <div className="flex items-center justify-between rounded-lg px-2 py-2 hover:bg-surface-2">
-                      <div className="flex items-center gap-2 text-xs text-foreground">
-                        <Icon d={theme.dark ? icons.moon : icons.sun} size={14} />
-                        <span>{theme.dark ? "Dark Mode" : "Light Mode"}</span>
-                      </div>
-                      <button
-                        onClick={theme.toggle}
-                        className="relative h-5 w-9 rounded-full transition"
-                        style={{ background: theme.dark ? "#0F6E56" : "#ccc" }}
-                      >
-                        <span className="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all" style={{ left: theme.dark ? 18 : 2 }} />
-                      </button>
-                    </div>
-
-                    <hr className="border-border" />
-
-                    {/* Notifications Section */}
-                    <div>
-                      <div className="text-[10px] font-bold text-muted uppercase tracking-wider mb-2 px-2">Notifications</div>
-                      
-                      {/* Master Toggle */}
-                      <div className="flex items-center justify-between rounded-lg px-2 py-2 hover:bg-surface-2 mb-1">
-                        <div className="flex items-center gap-2 text-xs text-foreground">
-                          <Icon d={icons.bell} size={14} />
-                          <span>All Notifications</span>
-                        </div>
-                        <button
-                          onClick={() => notif.updateSettings({ enabled: !notif.settings.enabled })}
-                          className="relative h-5 w-9 rounded-full transition"
-                          style={{ background: notif.settings.enabled ? "#0F6E56" : "#ccc" }}
-                        >
-                          <span className="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all" style={{ left: notif.settings.enabled ? 18 : 2 }} />
-                        </button>
-                      </div>
-
-                      {/* Notification Types */}
-                      {notif.settings.enabled && (
-                        <div className="space-y-1 ml-2 border-l-2 border-border pl-3">
-                          {/* News */}
-                          <div className="flex items-center justify-between rounded-lg px-2 py-1.5 hover:bg-surface-2">
-                            <div className="flex items-center gap-2">
-                              <span className="h-2 w-2 rounded-full" style={{ background: "#0F6E56" }} />
-                              <span className="text-[11px] text-foreground">News</span>
-                            </div>
-                            <button
-                              onClick={() => notif.toggleType("news")}
-                              className="relative h-4 w-7 rounded-full transition"
-                              style={{ background: notif.settings.news ? "#0F6E56" : "#ccc" }}
-                            >
-                              <span className="absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-all" style={{ left: notif.settings.news ? 14 : 2 }} />
-                            </button>
-                          </div>
-
-                          {/* Broker */}
-                          <div className="flex items-center justify-between rounded-lg px-2 py-1.5 hover:bg-surface-2">
-                            <div className="flex items-center gap-2">
-                              <span className="h-2 w-2 rounded-full" style={{ background: "#e67e22" }} />
-                              <span className="text-[11px] text-foreground">Broker Flow</span>
-                            </div>
-                            <button
-                              onClick={() => notif.toggleType("broker")}
-                              className="relative h-4 w-7 rounded-full transition"
-                              style={{ background: notif.settings.broker ? "#0F6E56" : "#ccc" }}
-                            >
-                              <span className="absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-all" style={{ left: notif.settings.broker ? 14 : 2 }} />
-                            </button>
-                          </div>
-
-                          {/* Signals */}
-                          <div className="flex items-center justify-between rounded-lg px-2 py-1.5 hover:bg-surface-2">
-                            <div className="flex items-center gap-2">
-                              <span className="h-2 w-2 rounded-full" style={{ background: "#9b59b6" }} />
-                              <span className="text-[11px] text-foreground">Trading Signals</span>
-                            </div>
-                            <button
-                              onClick={() => notif.toggleType("signal")}
-                              className="relative h-4 w-7 rounded-full transition"
-                              style={{ background: notif.settings.signal ? "#0F6E56" : "#ccc" }}
-                            >
-                              <span className="absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-all" style={{ left: notif.settings.signal ? 14 : 2 }} />
-                            </button>
-                          </div>
-
-                          {/* Price Alerts */}
-                          <div className="flex items-center justify-between rounded-lg px-2 py-1.5 hover:bg-surface-2">
-                            <div className="flex items-center gap-2">
-                              <span className="h-2 w-2 rounded-full" style={{ background: "#3498db" }} />
-                              <span className="text-[11px] text-foreground">Price Alerts</span>
-                            </div>
-                            <button
-                              onClick={() => notif.toggleType("price")}
-                              className="relative h-4 w-7 rounded-full transition"
-                              style={{ background: notif.settings.price ? "#0F6E56" : "#ccc" }}
-                            >
-                              <span className="absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-all" style={{ left: notif.settings.price ? 14 : 2 }} />
-                            </button>
-                          </div>
-
-                          {/* Info */}
-                          <div className="flex items-center justify-between rounded-lg px-2 py-1.5 hover:bg-surface-2">
-                            <div className="flex items-center gap-2">
-                              <span className="h-2 w-2 rounded-full" style={{ background: "#95a5a6" }} />
-                              <span className="text-[11px] text-foreground">System Info</span>
-                            </div>
-                            <button
-                              onClick={() => notif.toggleType("info")}
-                              className="relative h-4 w-7 rounded-full transition"
-                              style={{ background: notif.settings.info ? "#0F6E56" : "#ccc" }}
-                            >
-                              <span className="absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-all" style={{ left: notif.settings.info ? 14 : 2 }} />
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    <hr className="border-border" />
-
-                    {/* Sound & Desktop */}
-                    <div>
-                      <div className="text-[10px] font-bold text-muted uppercase tracking-wider mb-2 px-2">Preferences</div>
-                      
-                      {/* Sound */}
-                      <div className="flex items-center justify-between rounded-lg px-2 py-2 hover:bg-surface-2">
-                        <span className="text-xs text-foreground">🔔 Sound</span>
-                        <button
-                          onClick={() => notif.toggleType("sound")}
-                          className="relative h-5 w-9 rounded-full transition"
-                          style={{ background: notif.settings.sound ? "#0F6E56" : "#ccc" }}
-                        >
-                          <span className="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all" style={{ left: notif.settings.sound ? 18 : 2 }} />
-                        </button>
-                      </div>
-
-                      {/* Desktop Notifications */}
-                      <div className="flex items-center justify-between rounded-lg px-2 py-2 hover:bg-surface-2">
-                        <span className="text-xs text-foreground">💻 Desktop</span>
-                        <button
-                          onClick={() => notif.toggleType("desktop")}
-                          className="relative h-5 w-9 rounded-full transition"
-                          style={{ background: notif.settings.desktop ? "#0F6E56" : "#ccc" }}
-                        >
-                          <span className="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all" style={{ left: notif.settings.desktop ? 18 : 2 }} />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="sticky bottom-0 border-t border-border bg-surface px-3 py-2 text-[10px] text-muted text-center">
-                    NEPSE AXION v2.0 — NEPSE Analytics
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Divider */}
-            <div className="mx-1 h-6 w-px" style={{ background: "rgba(0,0,0,0.12)" }} />
-
-            {/* Avatar */}
-            <div ref={avatarRef} className="relative">
-              <button
-                onClick={() => {
-                  if (auth.user) toggleOnly("avatar");
-                  else {
-                    setLoginOpen(true);
-                    setAvatarOpen(false);
-                  }
-                }}
-                className="grid h-8 w-8 place-items-center rounded-full text-[11px] font-bold text-white"
-                style={{ background: auth.user ? "#0F6E56" : "#999", border: `2px solid ${auth.user ? "#0F6E56" : "#999"}` }}
-              >
-                {auth.user ? userInitials : "?"}
-              </button>
-
-              {/* Logged-in dropdown */}
-              {avatarOpen && auth.user && (
-                <AvatarDropdown user={auth.user} onLogout={auth.logout} onChangePassword={auth.changePassword} onClose={() => setAvatarOpen(false)} />
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── Live Market Stats (NEPSE, breadth, session) ──── */}
-      <LiveHeaderBar nepse={indices.data?.index?.find(i => i.index === "NEPSE Index")} liveData={live.data?.data} />
-
       {/* ── Live Ticker Bar ──────────────────────────────── */}
       <div className="flex items-center overflow-hidden border-b" style={{ height: 26, background: "#F5F5F0", borderColor: "rgba(0,0,0,0.12)" }}>
-        <div className="flex shrink-0 items-center gap-1 border-r px-2 sm:px-3" style={{ borderColor: "rgba(0,0,0,0.12)" }}>
-          {mkt.session !== "closed" ? (
-            <>
-              <span className="relative flex h-1.5 w-1.5 sm:h-2 sm:w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-75" style={{ background: mkt.color }} />
-                <span className="relative inline-flex h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full" style={{ background: mkt.color }} />
-              </span>
-              <span className="text-[9px] sm:text-[11px] font-semibold" style={{ color: mkt.color }}>{mkt.label}</span>
-            </>
-          ) : (
-            <>
-              <span className="h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full" style={{ background: "#999" }} />
-              <span className="text-[9px] sm:text-[11px] font-semibold" style={{ color: "#999" }}>Closed</span>
-            </>
-          )}
+        <div className="flex shrink-0 items-center gap-3 border-r px-3" style={{ borderColor: "rgba(0,0,0,0.12)" }}>
+          <div className="flex items-center gap-2 text-[10px] sm:text-xs tabular-nums">
+            <span className="text-muted">Adv</span>
+            <span className="font-semibold text-up">{live.data?.data?.filter(s => s.percentageChange > 0).length ?? 0}</span>
+            <span className="text-muted">Dec</span>
+            <span className="font-semibold text-down">{live.data?.data?.filter(s => s.percentageChange < 0).length ?? 0}</span>
+            <span className="text-muted">Unch</span>
+            <span className="font-semibold text-foreground">{live.data?.data?.filter(s => s.percentageChange === 0).length ?? 0}</span>
+          </div>
         </div>
         <div className="flex-1 overflow-hidden">
           <div className="ticker-scroll flex whitespace-nowrap">
@@ -594,9 +347,6 @@ export default function AppHeader() {
         ))}
       </div>
 
-      {/* ── Login Modal ── */}
-      {loginOpen && <LoginModal mode={loginMode} setMode={setLoginMode} onClose={() => setLoginOpen(false)} />}
-
       {/* Ticker + toast animation styles */}
       <style jsx>{`
         .ticker-scroll {
@@ -624,155 +374,5 @@ export default function AppHeader() {
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       `}</style>
     </header>
-  );
-}
-
-/* ─── Avatar Dropdown ─── */
-function AvatarDropdown({
-  user,
-  onLogout,
-  onChangePassword,
-  onClose,
-}: {
-  user: { name: string; email: string; loggedInAt: string };
-  onLogout: () => void;
-  onChangePassword: (oldPw: string, newPw: string) => { ok: boolean; error?: string };
-  onClose: () => void;
-}) {
-  const [showPwForm, setShowPwForm] = useState(false);
-  const [oldPw, setOldPw] = useState("");
-  const [newPw, setNewPw] = useState("");
-  const [pwMsg, setPwMsg] = useState<{ ok: boolean; text: string } | null>(null);
-
-  const handlePwChange = () => {
-    const res = onChangePassword(oldPw, newPw);
-    if (res.ok) {
-      setPwMsg({ ok: true, text: "Password updated!" });
-      setOldPw("");
-      setNewPw("");
-      setTimeout(() => setShowPwForm(false), 1500);
-    } else {
-      setPwMsg({ ok: false, text: res.error ?? "Error" });
-    }
-  };
-
-  return (
-    <div className="absolute right-0 top-full mt-2 w-[260px] sm:w-64 rounded-xl border border-border bg-surface shadow-xl z-50">
-      {/* User info */}
-      <div className="border-b border-border px-4 py-3">
-        <div className="text-sm font-bold text-foreground">{user.name}</div>
-        <div className="text-[11px] text-muted">{user.email}</div>
-        <div className="mt-1 text-[9px] text-muted">Logged in: {new Date(user.loggedInAt).toLocaleString()}</div>
-      </div>
-
-      {/* Login Email */}
-      <div className="border-b border-border px-4 py-2">
-        <div className="text-[9px] font-semibold uppercase tracking-wide text-muted">Login Email</div>
-        <div className="text-xs font-semibold text-foreground">{user.email}</div>
-      </div>
-
-      {/* Change Password */}
-      <div className="border-b border-border px-4 py-2">
-        <button onClick={() => setShowPwForm(!showPwForm)} className="text-xs font-semibold text-primary hover:underline">
-          {showPwForm ? "Cancel" : "Change Password"}
-        </button>
-        {showPwForm && (
-          <div className="mt-2 space-y-2">
-            <input type="password" value={oldPw} onChange={(e) => setOldPw(e.target.value)} placeholder="Current password" className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs outline-none focus:border-primary" />
-            <input type="password" value={newPw} onChange={(e) => setNewPw(e.target.value)} placeholder="New password" className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs outline-none focus:border-primary" />
-            <button onClick={handlePwChange} className="w-full rounded bg-primary py-1.5 text-xs font-bold text-white hover:opacity-90">
-              Update Password
-            </button>
-            {pwMsg && <div className={`text-[10px] ${pwMsg.ok ? "text-up" : "text-down"}`}>{pwMsg.text}</div>}
-          </div>
-        )}
-      </div>
-
-      {/* Logout */}
-      <div className="px-4 py-2">
-        <button
-          onClick={() => {
-            onLogout();
-            onClose();
-          }}
-          className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-xs font-semibold text-down hover:bg-down-bg"
-        >
-          <Icon d={icons.logout} size={14} />
-          Logout
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/* ─── Login Modal ─── */
-function LoginModal({ mode, setMode, onClose }: { mode: "login" | "signup"; setMode: (m: "login" | "signup") => void; onClose: () => void }) {
-  const auth = useAuth();
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-
-  const handleSubmit = () => {
-    setError("");
-    const res = mode === "login" ? auth.login(name || email.split("@")[0], email, password) : auth.signup(name, email, password);
-    if (res.ok) onClose();
-    else setError(res.error ?? "Failed");
-  };
-
-  return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div className="relative mx-3 w-full max-w-[360px] sm:max-w-sm rounded-2xl border border-border bg-surface p-4 sm:p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <button onClick={onClose} className="absolute right-3 top-3 text-muted hover:text-foreground">
-          <Icon d={icons.x} size={18} />
-        </button>
-
-        <div className="mb-4 flex items-center gap-2">
-          <span className="grid h-8 w-8 place-items-center rounded-lg text-sm font-black text-white" style={{ background: "#0F6E56" }}>
-            A
-          </span>
-          <span className="text-lg font-extrabold text-foreground">NEPSE AXION</span>
-        </div>
-
-        <h2 className="mb-1 text-base font-bold text-foreground">{mode === "login" ? "Welcome back" : "Create account"}</h2>
-        <p className="mb-4 text-xs text-muted">{mode === "login" ? "Sign in to your account" : "Sign up for free"}</p>
-
-        {error && <div className="mb-3 rounded-lg bg-down-bg px-3 py-2 text-xs text-down">{error}</div>}
-
-        <div className="space-y-3">
-          {mode === "signup" && (
-            <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary placeholder:text-muted" />
-          )}
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email address" className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary placeholder:text-muted" />
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary placeholder:text-muted" />
-        </div>
-
-        <button
-          onClick={handleSubmit}
-          className="mt-4 w-full rounded-lg py-2.5 text-sm font-bold text-white transition hover:opacity-90"
-          style={{ background: "#0F6E56" }}
-        >
-          {mode === "login" ? "Sign In" : "Create Account"}
-        </button>
-
-        <p className="mt-4 text-center text-xs text-muted">
-          {mode === "login" ? (
-            <>
-              New here?{" "}
-              <button onClick={() => setMode("signup")} className="font-semibold text-primary hover:underline">
-                Create account
-              </button>
-            </>
-          ) : (
-            <>
-              Already have an account?{" "}
-              <button onClick={() => setMode("login")} className="font-semibold text-primary hover:underline">
-                Sign in
-              </button>
-            </>
-          )}
-        </p>
-      </div>
-    </div>
   );
 }

@@ -112,7 +112,7 @@ export default function AlertsPage() {
         </div>
       )}
 
-      <AlertConfigModal open={showCreate} onClose={() => setShowCreate(false)} onSaved={fetchAlerts} />
+      <AlertConfigModal isOpen={showCreate} onClose={() => setShowCreate(false)} />
     </div>
   );
 }

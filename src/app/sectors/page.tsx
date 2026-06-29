@@ -1,110 +1,175 @@
 "use client";
+import { useEffect, useMemo, useState } from "react";
+import { usePoll } from "@/lib/useLive";
+import { num } from "@/lib/format";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
-import { npr } from "@/lib/format";
-
-function fmtPct(v: number): string {
-  return `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`;
-}
-
-interface SectorTile {
+type SectorData = {
   sector: string;
   stockCount: number;
   totalTurnover: number;
   avgPctChange: number | null;
   topGainer: { symbol: string; pctChange: number } | null;
   topLoser: { symbol: string; pctChange: number } | null;
-}
+};
 
-export default function SectorHeatmapPage() {
-  const [date, setDate] = useState("");
-  const [sectors, setSectors] = useState<SectorTile[]>([]);
-  const [loading, setLoading] = useState(true);
+type HeatmapResp = {
+  date: string | null;
+  sectors: SectorData[];
+};
 
-  useEffect(() => {
-    fetch("/api/sectors/heatmap")
-      .then(r => r.json())
-      .then(j => {
-        setDate(j.date || "");
-        setSectors(j.sectors || []);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+export default function SectorsPage() {
+  const heatmap = usePoll<HeatmapResp>("/api/sectors/heatmap", 30_000);
+  const [selectedSector, setSelectedSector] = useState<string | null>(null);
 
+  const sectors = heatmap.data?.sectors ?? [];
   const maxTurnover = Math.max(...sectors.map(s => s.totalTurnover), 1);
 
-  const tileBg = (pct: number | null): string => {
-    if (pct === null) return "bg-[#1a1a2e]";
-    if (pct >= 0) {
-      const intensity = Math.min(Math.abs(pct) / 3, 1);
-      const g = Math.round(0x11 + (0x44 - 0x11) * intensity);
-      return `rgb(0, ${g}, 0)`;
-    }
-    const intensity = Math.min(Math.abs(pct) / 3, 1);
-    const r = Math.round(0x33 + (0x66 - 0x33) * intensity);
-    return `rgb(${r}, 0, 0)`;
+  const getTileColor = (avgPctChange: number | null) => {
+    if (avgPctChange === null || avgPctChange === undefined) return "bg-gray-600";
+    if (avgPctChange > 2) return "bg-[#00cc44]";
+    if (avgPctChange > 1) return "bg-[#33d466]";
+    if (avgPctChange > 0) return "bg-[#66dd88]";
+    if (avgPctChange === 0) return "bg-gray-500";
+    if (avgPctChange > -1) return "bg-[#ff6666]";
+    if (avgPctChange > -2) return "bg-[#ff3333]";
+    return "bg-[#e60000]";
   };
 
-  const textColor = (pct: number | null): string => {
-    if (pct === null) return "text-[#555]";
-    if (pct >= 0) return "text-[#00cc44]";
-    return "text-[#e60000]";
+  const getTileTextColor = (avgPctChange: number | null) => {
+    if (avgPctChange === null || avgPctChange === undefined) return "text-gray-300";
+    return "text-white";
   };
-
-  if (loading) {
-    return <div className="p-4 text-sm text-[#888]">Loading...</div>;
-  }
 
   return (
-    <div className="p-3 text-[#e0e0e0] max-w-4xl mx-auto">
-      <div className="mb-3">
-        <h1 className="text-sm font-bold text-white">Sector Heatmap</h1>
-        {date && <span className="text-[#999] text-[11px]">{date}</span>}
+    <div className="max-w-7xl mx-auto space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold font-space">Sector Heatmap</h1>
+        {heatmap.data?.date && (
+          <span className="text-xs text-muted font-mono">
+            {heatmap.data.date}
+          </span>
+        )}
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-        {sectors.map(s => {
-          const pct = s.avgPctChange;
-          const tileW = Math.max(60, (s.totalTurnover / maxTurnover) * 100);
-          return (
-            <Link
-              key={s.sector}
-              href={`/market?sector=${encodeURIComponent(s.sector)}`}
-              className="block rounded-lg border border-[#1a1a2e] p-3 transition hover:border-[#334] no-underline"
-              style={{ background: tileBg(pct), gridColumn: `span ${tileW > 80 ? 2 : 1}` }}
-            >
-              <div className="text-[11px] font-semibold text-white truncate">{s.sector}</div>
-              <div className={`text-[13px] font-bold tabular-nums mt-1 ${textColor(pct)}`}>
-                {pct !== null ? `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%` : "—"}
-              </div>
-              <div className="flex items-center gap-2 mt-1 text-[9px] text-[#667]">
-                <span>{s.stockCount} stocks</span>
-                <span>{npr(s.totalTurnover)}</span>
-              </div>
-              {(s.topGainer || s.topLoser) && (
-                <div className="mt-1 text-[8px] leading-tight">
-                  {s.topGainer && (
-                    <div className="text-[#00cc44]">
-                      ▲ {s.topGainer.symbol} {fmtPct(s.topGainer.pctChange)}
+      {sectors.length === 0 ? (
+        <div className="card p-8 text-center text-muted">
+          <p>No sector data available for today</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+          {sectors.map((sector) => {
+            const tileSize = Math.max(
+              1,
+              Math.round((sector.totalTurnover / maxTurnover) * 4)
+            );
+            const colSpan = tileSize >= 3 ? "md:col-span-2" : "";
+            const rowSpan = tileSize >= 4 ? "md:row-span-2" : "";
+
+            return (
+              <button
+                key={sector.sector}
+                onClick={() =>
+                  setSelectedSector(
+                    selectedSector === sector.sector ? null : sector.sector
+                  )
+                }
+                className={`${colSpan} ${rowSpan} ${getTileColor(
+                  sector.avgPctChange
+                )} ${getTileTextColor(sector.avgPctChange)} 
+                  p-3 rounded-lg hover:opacity-80 transition-all text-left border border-border/20`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-sm font-space truncate">
+                      {sector.sector}
                     </div>
-                  )}
-                  {s.topLoser && (
-                    <div className="text-[#e60000]">
-                      ▼ {s.topLoser.symbol} {fmtPct(s.topLoser.pctChange)}
+                    <div className="text-xs mt-1 opacity-80">
+                      {sector.stockCount} stocks
                     </div>
-                  )}
+                  </div>
+                  <div className="text-right">
+                    <div className="text-lg font-bold font-mono">
+                      {sector.avgPctChange !== null &&
+                      sector.avgPctChange !== undefined
+                        ? `${sector.avgPctChange > 0 ? "+" : ""}${
+                            sector.avgPctChange
+                          }%`
+                        : "—"}
+                    </div>
+                    <div className="text-xs opacity-70">
+                      {num(sector.totalTurnover)}
+                    </div>
+                  </div>
                 </div>
-              )}
-            </Link>
-          );
-        })}
-      </div>
-
-      {sectors.length === 0 && !loading && (
-        <div className="text-center text-[#555] text-xs py-8">No sector data available</div>
+              </button>
+            );
+          })}
+        </div>
       )}
+
+      {selectedSector && (
+        <div className="card p-4">
+          <h2 className="text-lg font-bold font-space mb-3">
+            {selectedSector} Details
+          </h2>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div>
+              <span className="text-muted">Stocks:</span>
+              <span className="ml-2 font-mono">
+                {sectors.find(s => s.sector === selectedSector)?.stockCount}
+              </span>
+            </div>
+            <div>
+              <span className="text-muted">Turnover:</span>
+              <span className="ml-2 font-mono">
+                {num(sectors.find(s => s.sector === selectedSector)?.totalTurnover ?? 0)}
+              </span>
+            </div>
+            <div>
+              <span className="text-muted">Top Gainer:</span>
+              <span className="ml-2 font-mono text-up">
+                {sectors.find(s => s.sector === selectedSector)?.topGainer?.symbol ?? "—"}
+              </span>
+            </div>
+            <div>
+              <span className="text-muted">Top Loser:</span>
+              <span className="ml-2 font-mono text-down">
+                {sectors.find(s => s.sector === selectedSector)?.topLoser?.symbol ?? "—"}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="card p-3 text-xs text-muted">
+        <div className="flex items-center gap-4 flex-wrap">
+          <span>Legend:</span>
+          <span className="flex items-center gap-1">
+            <span className="inline-block w-3 h-3 bg-[#00cc44] rounded"></span>
+            Strong Positive (&gt;2%)
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="inline-block w-3 h-3 bg-[#66dd88] rounded"></span>
+            Positive (0-2%)
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="inline-block w-3 h-3 bg-gray-500 rounded"></span>
+            Flat (0%)
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="inline-block w-3 h-3 bg-[#ff6666] rounded"></span>
+            Negative (0 to -2%)
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="inline-block w-3 h-3 bg-[#e60000] rounded"></span>
+            Strong Negative (&lt;-2%)
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="inline-block w-3 h-3 bg-gray-600 rounded"></span>
+            No Data (—)
+          </span>
+        </div>
+      </div>
     </div>
   );
 }

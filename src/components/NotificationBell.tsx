@@ -1,125 +1,180 @@
 "use client";
-import { useState, useEffect, useRef, useCallback } from "react";
-import Link from "next/link";
-import { getUserId } from "@/lib/user-id";
+import { useState, useEffect, useRef } from "react";
 
-type NotifItem = {
+interface Notification {
   id: number;
   alert_id: number;
   triggered_at: number;
   observed_value: number | null;
   message: string;
-  is_read: number;
+  is_read: boolean;
   alert_type: string;
   symbol: string | null;
-};
+  signal_name: string | null;
+}
 
 export default function NotificationBell() {
-  const [open, setOpen] = useState(false);
-  const [notifs, setNotifs] = useState<NotifItem[]>([]);
-  const [unread, setUnread] = useState(0);
-  const ref = useRef<HTMLDivElement>(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const fetchNotifs = useCallback(async () => {
+  // Fetch notifications
+  const fetchNotifications = async (unreadOnly = false) => {
     try {
-      const uid = getUserId();
-      const res = await fetch(`/api/notifications?unread=true&limit=20`, {
-        headers: { "x-user-id": uid },
+      setIsLoading(true);
+      const response = await fetch(`/api/notifications?unread=${unreadOnly}`, {
+        headers: { "x-user-id": "anonymous" }, // Replace with actual user ID from auth
       });
-      if (res.ok) {
-        const json = await res.json();
-        setNotifs(json.notifications || []);
-        setUnread(json.notifications?.length || 0);
+      if (response.ok) {
+        const data = await response.json();
+        setNotifications(data.notifications);
+        setUnreadCount(data.unreadCount);
       }
-      // Also fetch all for dropdown display
-      const resAll = await fetch(`/api/notifications?limit=20`, {
-        headers: { "x-user-id": uid },
-      });
-      if (resAll.ok) {
-        const json = await resAll.json();
-        setNotifs(json.notifications || []);
-      }
-    } catch {}
-  }, []);
-
-  useEffect(() => {
-    fetchNotifs();
-    const id = setInterval(fetchNotifs, 30_000);
-    return () => clearInterval(id);
-  }, [fetchNotifs]);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
-  const markRead = async (id: number) => {
-    try {
-      await fetch(`/api/notifications/${id}`, {
-        method: "POST",
-        headers: { "x-user-id": getUserId() },
-      });
-      setNotifs((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: 1 } : n)));
-    } catch {}
+    } catch (error) {
+      console.error("Failed to fetch notifications:", error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const toggle = () => {
-    setOpen(!open);
-    if (!open) fetchNotifs();
+  // Mark notification as read
+  const markAsRead = async (id: number) => {
+    try {
+      await fetch(`/api/notifications?id=${id}`, {
+        method: "PATCH",
+        headers: { "x-user-id": "anonymous" },
+      });
+      // Refresh notifications
+      fetchNotifications();
+    } catch (error) {
+      console.error("Failed to mark as read:", error);
+    }
+  };
+
+  // Poll for new notifications every 30 seconds
+  useEffect(() => {
+    fetchNotifications(true);
+    const interval = setInterval(() => fetchNotifications(true), 30_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Open dropdown and mark all as viewed
+  const handleOpen = () => {
+    setIsOpen(!isOpen);
+    if (!isOpen) {
+      fetchNotifications();
+    }
+  };
+
+  // Format timestamp
+  const formatTime = (timestamp: number) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+
+    if (diffMins < 1) return "Just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return date.toLocaleDateString();
+  };
+
+  // Get icon based on alert type
+  const getAlertIcon = (type: string) => {
+    switch (type) {
+      case "price": return "💰";
+      case "signal": return "🎯";
+      case "broker_flow": return "💵";
+      default: return "🔔";
+    }
   };
 
   return (
-    <div ref={ref} className="relative">
+    <div className="relative" ref={dropdownRef}>
+      {/* Bell Icon */}
       <button
-        onClick={toggle}
-        className="relative grid h-7 w-7 sm:h-8 sm:w-8 place-items-center rounded-lg transition"
-        style={{ background: open ? "#0F6E56" : "transparent", color: open ? "#fff" : "#555" }}
+        onClick={handleOpen}
+        className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-border text-muted hover:bg-surface-2 transition-colors"
+        title="Notifications"
       >
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-          <path d="M12 20h.01M8.6 4.6a1 1 0 012.8 0A7 7 0 0119 11v2l2 3H3l2-3v-2a7 7 0 017.6-6.4z" />
-        </svg>
-        {unread > 0 && (
-          <span className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full" style={{ background: "#c0392b" }} />
+        🔔
+        {unreadCount > 0 && (
+          <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+            {unreadCount > 9 ? "9+" : unreadCount}
+          </span>
         )}
       </button>
 
-      {open && (
-        <div className="absolute right-0 top-full mt-2 w-[300px] sm:w-80 rounded-xl border border-border bg-surface shadow-xl z-50 max-h-[70vh] flex flex-col">
-          <div className="flex items-center justify-between border-b border-border px-3 py-2 shrink-0">
-            <span className="text-sm font-bold text-foreground">Alerts</span>
-            <Link href="/alerts" onClick={() => setOpen(false)} className="text-[10px] font-semibold text-primary hover:underline">
-              Manage Alerts
-            </Link>
+      {/* Dropdown Panel */}
+      {isOpen && (
+        <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-xl border border-border bg-surface shadow-2xl z-50">
+          {/* Header */}
+          <div className="flex items-center justify-between border-b border-border px-4 py-3">
+            <h3 className="text-sm font-bold text-foreground">Notifications</h3>
+            {unreadCount > 0 && (
+              <span className="text-xs text-muted">{unreadCount} unread</span>
+            )}
           </div>
-          <div className="overflow-y-auto flex-1">
-            {notifs.length === 0 && (
-              <div className="px-3 py-6 text-center text-xs text-muted">
-                No alerts yet — set one from any stock page
+
+          {/* Content */}
+          <div className="max-h-96 overflow-y-auto">
+            {isLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-blue-500" />
+              </div>
+            ) : notifications.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
+                <div className="mb-2 text-3xl">🔔</div>
+                <p className="text-sm text-muted">No alerts yet</p>
+                <p className="mt-1 text-xs text-muted">Set one from any stock page</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-border">
+                {notifications.map((notif) => (
+                  <div
+                    key={notif.id}
+                    className={`px-4 py-3 hover:bg-surface-2 transition-colors cursor-pointer ${
+                      !notif.is_read ? "bg-blue-500/5" : ""
+                    }`}
+                    onClick={() => markAsRead(notif.id)}
+                  >
+                    <div className="flex items-start gap-3">
+                      <span className="text-lg">{getAlertIcon(notif.alert_type)}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs sm:text-sm text-foreground">{notif.message}</p>
+                        <p className="mt-1 text-[10px] sm:text-xs text-muted">
+                          {formatTime(notif.triggered_at)}
+                        </p>
+                      </div>
+                      {!notif.is_read && (
+                        <span className="h-2 w-2 rounded-full bg-blue-500 mt-1" />
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
-            {notifs.map((n) => (
-              <div
-                key={n.id}
-                onClick={() => markRead(n.id)}
-                className="flex items-start gap-2 px-3 py-2 border-b border-border last:border-0 hover:bg-surface-2 transition cursor-pointer"
-                style={{ opacity: n.is_read ? 0.6 : 1 }}
-              >
-                <span className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${n.is_read ? "bg-gray-300" : ""}`}
-                  style={{ background: n.is_read ? undefined : n.alert_type === "price" ? "#3498db" : n.alert_type === "signal" ? "#9b59b6" : "#e67e22" }}
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="text-xs font-semibold text-foreground leading-tight">{n.message}</div>
-                  <div className="text-[9px] text-muted mt-0.5">
-                    {n.symbol && <span className="font-bold">{n.symbol} · </span>}
-                    {new Date(n.triggered_at).toLocaleString()}
-                  </div>
-                </div>
-                {!n.is_read && <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: "#0F6E56" }} />}
-              </div>
-            ))}
+          </div>
+
+          {/* Footer */}
+          <div className="border-t border-border px-4 py-3">
+            <button className="w-full text-xs text-blue-500 hover:text-blue-600 font-medium">
+              Manage Alerts →
+            </button>
           </div>
         </div>
       )}
