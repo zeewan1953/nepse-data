@@ -217,20 +217,20 @@ export default function AppHeader() {
     <header className="sticky top-0 z-50">
       {/* ── Main Header Bar: Logo + Market Stats + Search ──── */}
       <div className="border-b" style={{ borderColor: "rgba(0,0,0,0.12)", background: "#fff" }}>
-        <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-2 sm:gap-4 px-2 sm:px-4 py-2 sm:py-2.5">
+        <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-1.5 sm:gap-4 px-2 sm:px-4 py-1.5 sm:py-2.5">
           {/* Left: Logo + Market Stats */}
-          <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
+          <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0">
             {/* Logo */}
             <Link href="/" className="flex shrink-0 items-center">
-              <Logo variant="medium" size={32} />
+              <Logo variant="medium" size={28} />
             </Link>
 
-            {/* Market Stats - Big Size */}
-            <div className="flex items-center gap-3 sm:gap-5 text-xs sm:text-sm font-semibold overflow-x-auto whitespace-nowrap flex-1 min-w-0">
-              <div className="flex items-baseline gap-1.5">
-                <span className="text-[10px] sm:text-xs text-muted font-medium">NEPSE</span>
-                <span className="text-lg sm:text-xl font-bold text-foreground">{num(indices.data?.index?.find(i => i.index === "NEPSE Index")?.currentValue ?? 0)}</span>
-                <span className={`text-sm sm:text-base font-bold ${(() => {
+            {/* Market Stats - Responsive Size */}
+            <div className="flex items-center gap-2 sm:gap-5 text-xs sm:text-sm font-semibold overflow-x-auto whitespace-nowrap flex-1 min-w-0 scrollbar-hide">
+              <div className="flex items-baseline gap-1 sm:gap-1.5">
+                <span className="text-[9px] sm:text-xs text-muted font-medium">NEPSE</span>
+                <span className="text-base sm:text-xl font-bold text-foreground">{num(indices.data?.index?.find(i => i.index === "NEPSE Index")?.currentValue ?? 0)}</span>
+                <span className={`text-xs sm:text-base font-bold ${(() => {
                   const nepse = indices.data?.index?.find(i => i.index === "NEPSE Index");
                   return (nepse?.perChange ?? 0) >= 0 ? "text-up" : "text-down";
                 })()}`}>
@@ -240,7 +240,7 @@ export default function AppHeader() {
                   })()}
                 </span>
               </div>
-              <div className="hidden sm:flex items-center gap-3 text-xs">
+              <div className="hidden lg:flex items-center gap-3 text-xs">
                 <div className="flex items-baseline gap-1">
                   <span className="text-muted font-medium">Turnover</span>
                   <span className="font-bold text-foreground">{marketStats.totalValue}</span>
@@ -253,8 +253,12 @@ export default function AppHeader() {
             </div>
           </div>
 
-          {/* Right: Notification Bell */}
-          <div className="flex items-center gap-2 shrink-0">
+          {/* Right: Search + Notification Bell */}
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            {/* Search Button */}
+            <StockSearchPopup />
+            
+            {/* Notification Bell */}
             <NotificationBell />
           </div>
         </div>

@@ -140,49 +140,49 @@ export default function StockSearchPopup() {
 
       {/* Glassmorphism Modal */}
       {isOpen && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+        <div 
+          className="fixed inset-0 z-[9999] flex items-start justify-center pt-20 sm:pt-24 p-4"
+          onClick={() => { setIsOpen(false); setSelectedStock(null); setQuery(""); }}
+        >
           {/* Backdrop blur */}
           <div
             className="absolute inset-0"
             style={{
-              background: "rgba(0, 0, 0, 0.4)",
-              backdropFilter: "blur(8px)",
-              WebkitBackdropFilter: "blur(8px)",
+              background: "rgba(0, 0, 0, 0.3)",
+              backdropFilter: "blur(6px)",
+              WebkitBackdropFilter: "blur(6px)",
             }}
           />
 
-          {/* Modal Content */}
+          {/* Modal Content - Compact with Flex Layout */}
           <div
             ref={modalRef}
-            className="relative w-full max-w-lg rounded-2xl border border-white/20 shadow-2xl animate-slide-up"
+            className="relative w-full max-w-md rounded-xl border border-white/20 shadow-2xl flex flex-col max-h-[80vh]"
             style={{
-              background: "rgba(255, 255, 255, 0.85)",
+              background: "rgba(255, 255, 255, 0.95)",
               backdropFilter: "blur(20px)",
               WebkitBackdropFilter: "blur(20px)",
-              animation: "slideUp 0.3s ease-out",
+              animation: "slideUp 0.2s ease-out",
             }}
+            onClick={(e) => e.stopPropagation()}
           >
-            {/* Header */}
-            <div className="flex items-center justify-between border-b border-white/30 px-6 py-4">
-              <h2 className="text-lg font-bold text-foreground">Search Stocks</h2>
+            {/* Header - Compact */}
+            <div className="flex items-center justify-between border-b border-white/30 px-4 py-3">
+              <h2 className="text-sm font-bold text-foreground">🔍 Search Stocks</h2>
               <button
-                onClick={() => {
-                  setIsOpen(false);
-                  setSelectedStock(null);
-                  setQuery("");
-                }}
-                className="grid h-7 w-7 place-items-center rounded-lg hover:bg-surface-2 transition"
+                onClick={() => { setIsOpen(false); setSelectedStock(null); setQuery(""); }}
+                className="grid h-6 w-6 place-items-center rounded-lg hover:bg-surface-2 transition"
               >
-                <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                   <path d="M18 6L6 18M6 6l12 12" />
                 </svg>
               </button>
             </div>
 
-            {/* Search Input */}
-            <form onSubmit={handleSubmit} className="border-b border-white/30 px-6 py-4">
+            {/* Search Input - Compact */}
+            <form onSubmit={handleSubmit} className="border-b border-white/30 px-4 py-3">
               <div className="relative">
-                <svg className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                   <circle cx="11" cy="11" r="8" />
                   <path d="m21 21-4.3-4.3" />
                 </svg>
@@ -191,20 +191,34 @@ export default function StockSearchPopup() {
                   type="text"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Enter stock symbol (e.g. NABIL, NTC, HDL)..."
-                  className="w-full rounded-lg border border-white/40 bg-white/50 py-3 pl-10 pr-4 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 placeholder:text-muted"
+                  placeholder="Type symbol... (NABIL, NTC, HDL)"
+                  className="w-full rounded-lg border border-white/40 bg-white/50 py-2.5 pl-9 pr-4 text-xs outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 placeholder:text-muted"
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") {
+                      setIsOpen(false);
+                      setSelectedStock(null);
+                      setQuery("");
+                    }
+                  }}
                 />
               </div>
             </form>
 
-            {/* Search Results */}
+            {/* Search Results - Scrollable with Flex */}
             {!selectedStock && (
-              <div className="max-h-64 overflow-y-auto">
-                {query.trim() && searchResults.length === 0 && !error && (
-                  <div className="px-6 py-8 text-center text-sm text-muted">No stocks found matching "{query}"</div>
+              <div className="flex-1 overflow-y-auto overscroll-contain" style={{ maxHeight: "320px", scrollbarWidth: "thin", scrollbarColor: "rgba(0,0,0,0.2) transparent" }}>
+                {isLoading && (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                  </div>
+                )}
+                {query.trim() && searchResults.length === 0 && !error && !isLoading && (
+                  <div className="px-4 py-6 text-center text-xs text-muted">
+                    ❌ No stocks found for "{query}"
+                  </div>
                 )}
                 {error && (
-                  <div className="px-6 py-8 text-center text-sm text-down font-medium">{error}</div>
+                  <div className="px-4 py-6 text-center text-xs text-down font-medium">⚠️ {error}</div>
                 )}
                 {searchResults.map((r) => {
                   const sType = classifySymbol(r.symbol, r.securityName);
@@ -212,19 +226,19 @@ export default function StockSearchPopup() {
                     <button
                       key={r.symbol}
                       onClick={() => handleSelect(r)}
-                      className="flex w-full items-center justify-between gap-3 px-6 py-3 text-xs hover:bg-white/60 transition border-b border-white/20 last:border-b-0"
+                      className="flex w-full items-center justify-between gap-2 px-4 py-2.5 text-xs hover:bg-white/60 transition border-b border-white/20 last:border-b-0"
                     >
-                      <span className="flex items-center gap-2">
-                        <span className="font-bold text-primary">{r.symbol}</span>
-                        <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${TYPE_BADGE[sType]}`}>{sType}</span>
-                        {r.securityName && <span className="text-muted line-clamp-1">{r.securityName}</span>}
-                      </span>
-                      <span className="flex items-center gap-2 tabular-nums">
-                        <span className="text-muted">{npr(r.lastTradedPrice)}</span>
-                        <span className={`w-14 text-right font-bold ${r.percentageChange >= 0 ? "text-up" : "text-down"}`}>
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <span className="font-bold text-primary text-xs">{r.symbol}</span>
+                        <span className={`rounded px-1 py-0.5 text-[8px] font-bold uppercase shrink-0 ${TYPE_BADGE[sType]}`}>{sType}</span>
+                        {r.securityName && <span className="text-muted text-[10px] truncate">{r.securityName}</span>}
+                      </div>
+                      <div className="flex items-center gap-2 tabular-nums shrink-0">
+                        <span className="text-muted text-[10px]">{npr(r.lastTradedPrice)}</span>
+                        <span className={`w-12 text-right font-bold text-[10px] ${r.percentageChange >= 0 ? "text-up" : "text-down"}`}>
                           {r.percentageChange >= 0 ? "+" : ""}{pct(r.percentageChange)}
                         </span>
-                      </span>
+                      </div>
                     </button>
                   );
                 })}

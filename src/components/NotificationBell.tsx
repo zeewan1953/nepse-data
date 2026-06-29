@@ -1,5 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
+import AlertConfigModal from "@/components/AlertConfigModal";
 
 interface Notification {
   id: number;
@@ -18,7 +20,9 @@ export default function NotificationBell() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [showAlertConfig, setShowAlertConfig] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
 
   // Fetch notifications
   const fetchNotifications = async (unreadOnly = false) => {
@@ -171,13 +175,31 @@ export default function NotificationBell() {
           </div>
 
           {/* Footer */}
-          <div className="border-t border-border px-4 py-3">
-            <button className="w-full text-xs text-blue-500 hover:text-blue-600 font-medium">
-              Manage Alerts →
+          <div className="border-t border-border px-4 py-3 space-y-2">
+            <button 
+              onClick={() => {
+                setIsOpen(false);
+                setShowAlertConfig(true);
+              }}
+              className="w-full text-xs text-blue-500 hover:text-blue-600 font-medium py-2 rounded-lg hover:bg-blue-500/5 transition-colors"
+            >
+              ⚙️ Manage Alerts →
+            </button>
+            <button 
+              onClick={() => {
+                setIsOpen(false);
+                router.push('/alerts');
+              }}
+              className="w-full text-xs text-muted hover:text-foreground font-medium py-2 rounded-lg hover:bg-surface-2 transition-colors"
+            >
+              📋 View All Alerts
             </button>
           </div>
         </div>
       )}
+
+      {/* Alert Configuration Modal */}
+      <AlertConfigModal isOpen={showAlertConfig} onClose={() => setShowAlertConfig(false)} />
     </div>
   );
 }
