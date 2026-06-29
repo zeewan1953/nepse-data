@@ -129,7 +129,6 @@ export default function ComparePage() {
   const svgH = 220;
 
   const allSignalKeys = Array.from(new Set(data.flatMap(d => Object.keys(d.signals))));
-  // Order signals by a defined list
   const orderedSignals = [
     "momentum_score", "cmf", "mfi", "volume_zscore", "order_flow_est",
     "net_broker_flow", "rsi_14", "macd", "psar", "bollinger_b",
@@ -140,7 +139,10 @@ export default function ComparePage() {
 
   return (
     <div className="p-3 text-[#e0e0e0] max-w-4xl mx-auto">
-      <h1 className="text-sm font-bold text-white mb-2">Multi-Stock Comparison</h1>
+      <div className="flex items-center gap-3 mb-2">
+        <Link href="/portfolio" className="text-[#8ab4f8] hover:underline text-[11px]">&larr; Portfolio</Link>
+        <h1 className="text-sm font-bold text-white">Multi-Stock Comparison</h1>
+      </div>
 
       {/* Search */}
       <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -194,7 +196,6 @@ export default function ComparePage() {
               </div>
             </div>
             <svg viewBox={`0 0 ${svgW} ${svgH}`} className="w-full" style={{ maxHeight: svgH }}>
-              {/* Y-axis gridlines */}
               {[0, 1, 2, 3].map(i => (
                 <line key={i} x1="0" y1={(svgH / 4) * i} x2={svgW} y2={(svgH / 4) * i} stroke="#1a1a2e" strokeWidth="0.5" />
               ))}
