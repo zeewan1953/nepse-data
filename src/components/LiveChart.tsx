@@ -14,119 +14,106 @@ import {
   type LineData,
   type Time,
 } from "lightweight-charts";
+import TradingViewChart from "./TradingViewChart";
+import { usePoll } from "@/lib/useLive";
+import { isNepseMarketOpen, getNPTNow } from "@/lib/market-hours";
 
 type Bar = CandlestickData<Time>;
 type Vol = HistogramData<Time>;
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
-// ── Indicators ──────────────────────────────────────────────────────────────
-function sma(bars: Bar[], p: number): LineData<Time>[] {
-  const o: LineData<Time>[] = []; let s = 0;
-  for (let i = 0; i < bars.length; i++) { s += bars[i].close; if (i >= p) s -= bars[i - p].close; if (i >= p - 1) o.push({ time: bars[i].time, value: r2(s / p) }); }
-  return o;
-}
-function ema(bars: Bar[], p: number): LineData<Time>[] {
-  const o: LineData<Time>[] = []; const k = 2 / (p + 1); let e = bars[0]?.close ?? 0;
-  for (let i = 0; i < bars.length; i++) { e = bars[i].close * k + e * (1 - k); if (i >= p) o.push({ time: bars[i].time, value: r2(e) }); }
-  return o;
-}
-function rsi(bars: Bar[], p: number): LineData<Time>[] {
-  const o: LineData<Time>[] = []; let g = 0, l = 0;
-  for (let i = 1; i < bars.length; i++) {
-    const d = bars[i].close - bars[i - 1].close;
-    if (d > 0) g += d; else l -= d;
-    if (i >= p) {
-      const smaG = g / p, smaL = l / p;
-      const rs = smaL === 0 ? 100 : smaG / smaL;
-      o.push({ time: bars[i].time, value: r2(100 - 100 / (1 + rs)) });
-      const remove = bars[i - p + 1].close - bars[i - p].close;
-      if (remove > 0) g -= remove; else l += remove;
-    }
-  }
-  return o;
-}
-function macdLine(bars: Bar[], fast: number, slow: number, signal: number): { macd: LineData<Time>[]; sig: LineData<Time>[]; hist: HistogramData<Time>[] } {
-  const ef = emaFull(bars, fast), es = emaFull(bars, slow);
-  const m: number[] = []; const times: Time[] = [];
+function smaLine(bars: Bar[], period: number): LineData<Time>[] {
+  const out: LineData<Time>[] = [];
+  let sum = 0;
   for (let i = 0; i < bars.length; i++) {
-    if (ef[i] === undefined || es[i] === undefined) { m.push(0); continue; }
-    m.push(ef[i] - es[i]); times.push(bars[i].time);
+    sum += bars[i].close;
+    if (i >= period) sum -= bars[i - period].close;
+    if (i >= period - 1) out.push({ time: bars[i].time, value: r2(sum / period) });
   }
-  const sigArr = emaFullArr(m, signal);
-  const macd: LineData<Time>[] = []; const sig: LineData<Time>[] = []; const hist: HistogramData<Time>[] = [];
-  for (let i = signal; i < bars.length; i++) {
-    macd.push({ time: bars[i].time, value: r2(m[i]) });
-    sig.push({ time: bars[i].time, value: r2(sigArr[i]) });
-    hist.push({ time: bars[i].time, value: r2(m[i] - sigArr[i]), color: m[i] >= sigArr[i] ? "#26a69a" : "#ef5350" });
-  }
-  return { macd, sig, hist };
+  return out;
 }
-function emaFull(bars: Bar[], p: number): number[] {
-  const k = 2 / (p + 1); const o: number[] = []; let e = bars[0]?.close ?? 0;
-  for (let i = 0; i < bars.length; i++) { e = bars[i].close * k + e * (1 - k); o.push(e); }
-  return o;
-}
-function emaFullArr(vals: number[], p: number): number[] {
-  const k = 2 / (p + 1); const o: number[] = []; let e = vals[0] ?? 0;
-  for (let i = 0; i < vals.length; i++) { e = vals[i] * k + e * (1 - k); o.push(e); }
-  return o;
-}
-function bb(bars: Bar[], p: number, mult: number): { upper: LineData<Time>[]; middle: LineData<Time>[]; lower: LineData<Time>[] } {
-  const m = sma(bars, p); const upper: LineData<Time>[] = []; const lower: LineData<Time>[] = [];
-  for (let i = p - 1; i < bars.length; i++) {
-    const slice = bars.slice(i - p + 1, i + 1); const avg = slice.reduce((a, b) => a + b.close, 0) / p;
-    const sq = slice.reduce((a, b) => a + (b.close - avg) ** 2, 0) / p; const std = Math.sqrt(sq);
-    upper.push({ time: bars[i].time, value: r2(avg + mult * std) });
-    lower.push({ time: bars[i].time, value: r2(avg - mult * std) });
-  }
-  return { upper, middle: m.slice(p - 1), lower };
-}
-
-// ── Resolution presets ──────────────────────────────────────────────────────
-const RESOLUTIONS = [
-  { label: "1D", days: 1 },
-  { label: "5D", days: 5 },
-  { label: "1M", days: 30 },
-  { label: "3M", days: 90 },
-  { label: "6M", days: 180 },
-  { label: "1Y", days: 365 },
-  { label: "MAX", days: 9999 },
-] as const;
-
-type IndicatorKey = "sma9" | "sma20" | "sma50" | "ema9" | "ema20" | "ema50" | "rsi" | "macd" | "bb";
 
 interface LiveChartProps {
   symbol?: string;
+  height?: number;
+  showHeader?: boolean;
 }
 
-export default function LiveChart({ symbol = "NEPSE" }: LiveChartProps) {
+/**
+ * Smart Chart Wrapper
+ * 
+ * Priority:
+ * 1. TradingView Charting Library (if /public/tradingview/charting_library.js exists)
+ * 2. lightweight-charts (TradingView's own library - already installed)
+ * 
+ * The app works immediately with lightweight-charts.
+ * When you add the TradingView Charting Library files, it auto-upgrades.
+ */
+export default function LiveChart({
+  symbol = "NEPSE",
+  height = 420,
+  showHeader = true,
+}: LiveChartProps) {
+  const [useTradingView, setUseTradingView] = useState<boolean | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+  const maRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const legendRef = useRef<HTMLDivElement>(null);
   const barsRef = useRef<Bar[]>([]);
+  const esRef = useRef<EventSource | null>(null);
 
-  const [resolution, setResolution] = useState<number>(365);
-  const [indicators, setIndicators] = useState<Set<IndicatorKey>>(new Set(["sma20"]));
-  const [headerInfo, setHeaderInfo] = useState<{ p: number; ch: number; pct: number; o: number; h: number; l: number; v: number } | null>(null);
+  const [headerInfo, setHeaderInfo] = useState<{ price: number; change: number; pct: number } | null>(null);
   const [status, setStatus] = useState("loading");
-
-  const indicatorRefs = useRef<Map<string, ISeriesApi<any>>>(new Map());
+  const [barCount, setBarCount] = useState(0);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const isNepse = symbol === "NEPSE" || symbol === "NEPSE INDEX";
 
-  // ── History ───────────────────────────────────────────────────────────────
-  const loadHistory = useCallback(async (resDays: number) => {
-    try {
-      const toTs = Math.floor(Date.now() / 1000) + 86400;
-      const fromTs = toTs - resDays * 86400;
+  // Check if TradingView Charting Library is available
+  useEffect(() => {
+    const check = () => {
+      // Check if script is already loaded
+      if ((window as any).TradingView?.widget) {
+        setUseTradingView(true);
+        return;
+      }
+      // Try to load it
+      const script = document.createElement("script");
+      script.src = "/tradingview/charting_library.js";
+      script.async = true;
+      script.onload = () => {
+        if ((window as any).TradingView?.widget) {
+          setUseTradingView(true);
+        } else {
+          setUseTradingView(false);
+        }
+      };
+      script.onerror = () => setUseTradingView(false);
+      document.head.appendChild(script);
+    };
+    check();
+  }, []);
 
+  const updateLegend = useCallback((bar?: Bar) => {
+    const el = legendRef.current;
+    if (!el || !bar) return;
+    const up = bar.close >= bar.open;
+    const c = up ? "#26a69a" : "#ef5350";
+    el.innerHTML = `O <b style="color:${c}">${r2(bar.open)}</b> H <b style="color:${c}">${r2(bar.high)}</b> L <b style="color:${c}">${r2(bar.low)}</b> C <b style="color:${c}">${r2(bar.close)}</b>`;
+  }, []);
+
+  // ── Load historical data from /api/chart/history ────────────────────
+  const loadHistory = useCallback(async () => {
+    try {
       if (isNepse) {
-        const r = await fetch("/api/index-graph", { cache: "no-store" });
-        const j = await r.json();
-        if (!r.ok) throw new Error(j?.error ?? "No index data");
-        const pts = j.points as [number, number][];
+        const res = await fetch("/api/index-graph", { cache: "no-store" });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json?.error ?? "No index data");
+        const pts = json.points as [number, number][];
         if (!Array.isArray(pts) || pts.length < 2) throw new Error("No index data");
+
         const sec = 60;
         const bk = new Map<number, { o: number; h: number; l: number; c: number; v: number }>();
         for (const [t, v] of pts) {
@@ -139,134 +126,181 @@ export default function LiveChart({ symbol = "NEPSE" }: LiveChartProps) {
         const sorted = [...bk.entries()].sort((a, b) => a[0] - b[0]);
         const bars: Bar[] = sorted.map(([t, v]) => ({ time: t as Time, open: r2(v.o), high: r2(v.h), low: r2(v.l), close: r2(v.c) }));
         const vols: Vol[] = sorted.map(([, v], i) => ({ time: bars[i].time, value: v.v, color: v.c >= v.o ? "#26a69a44" : "#ef535044" }));
+
         barsRef.current = bars;
-        return { bars, vols, price: bars[bars.length - 1]?.close ?? 0, prevClose: bars[0]?.open ?? 0 };
+        setBarCount(bars.length);
+        candleRef.current?.setData(bars);
+        volRef.current?.setData(vols);
+        maRef.current?.setData(smaLine(bars, 20));
+        chartRef.current?.timeScale().fitContent();
+
+        const last = bars[bars.length - 1];
+        const first = bars[0];
+        if (last && first) {
+          const ch = last.close - first.open;
+          setHeaderInfo({ price: last.close, change: ch, pct: first.open > 0 ? (ch / first.open) * 100 : 0 });
+        }
+        setErrorMsg(null);
+        setStatus("ready");
+        return;
       }
 
+      // Individual stock: use /api/chart/history (UDF format)
+      const fromTs = Math.floor((Date.now() - 365 * 86400000) / 1000);
+      const toTs = Math.floor(Date.now() / 1000) + 86400;
       let res = await fetch(`/api/chart/history?symbol=${encodeURIComponent(symbol)}&resolution=D&from=${fromTs}&to=${toTs}`, { cache: "no-store" });
       let udf = await res.json();
+
       if (udf.s === "ok" && Array.isArray(udf.t) && udf.t.length > 0) {
-        const bars: Bar[] = udf.t.map((t: number, i: number) => ({ time: t as Time, open: udf.o[i], high: udf.h[i], low: udf.l[i], close: udf.c[i] }));
-        const vols: Vol[] = udf.t.map((t: number, i: number) => ({ time: t as Time, value: udf.v[i], color: udf.c[i] >= udf.o[i] ? "#26a69a44" : "#ef535044" }));
+        const bars: Bar[] = udf.t.map((t: number, i: number) => ({
+          time: t as Time, open: udf.o[i], high: udf.h[i], low: udf.l[i], close: udf.c[i],
+        }));
+        const vols: Vol[] = udf.t.map((t: number, i: number) => ({
+          time: t as Time, value: udf.v[i], color: udf.c[i] >= udf.o[i] ? "#26a69a44" : "#ef535044",
+        }));
+
         barsRef.current = bars;
+        setBarCount(bars.length);
+        candleRef.current?.setData(bars);
+        volRef.current?.setData(vols);
+        maRef.current?.setData(smaLine(bars, 20));
+        chartRef.current?.timeScale().fitContent();
+
         const last = bars[bars.length - 1];
         const prev = bars.length > 1 ? bars[bars.length - 2] : undefined;
-        return { bars, vols, price: last?.close ?? 0, prevClose: prev?.close ?? 0 };
+        if (last) {
+          const ch = prev ? last.close - prev.close : 0;
+          setHeaderInfo({ price: last.close, change: ch, pct: prev?.close ? (ch / prev.close) * 100 : 0 });
+        }
+        setErrorMsg(null);
+        setStatus("ready");
+        return;
       }
 
+      // Fallback: /api/security for stock daily history
       res = await fetch(`/api/security/${encodeURIComponent(symbol)}`, { cache: "no-store" });
       const json = await res.json();
-      if (!res.ok) throw new Error(json?.error ?? "Failed");
+      if (!res.ok) throw new Error(json?.error ?? "Failed to load");
       const content = (json.history?.content ?? []) as Array<{ businessDate: string; openPrice: number; highPrice: number; lowPrice: number; closePrice: number; totalTradedQuantity: number }>;
-      if (!content.length) throw new Error("No data");
-      const sorted = content.slice().sort((a, b) => a.businessDate.localeCompare(b.businessDate)).filter(c => c.closePrice > 0);
+      if (!content.length) throw new Error("No historical data");
+      const sorted = content.slice().sort((a, b) => a.businessDate.localeCompare(b.businessDate));
       const bars: Bar[] = sorted.map(c => ({ time: c.businessDate as Time, open: c.openPrice, high: c.highPrice, low: c.lowPrice, close: c.closePrice }));
       const vols: Vol[] = sorted.map(c => ({ time: c.businessDate as Time, value: c.totalTradedQuantity, color: c.closePrice >= c.openPrice ? "#26a69a44" : "#ef535044" }));
       barsRef.current = bars;
+      setBarCount(bars.length);
+      candleRef.current?.setData(bars);
+      volRef.current?.setData(vols);
+      maRef.current?.setData(smaLine(bars, 20));
+      chartRef.current?.timeScale().fitContent();
       const last = bars[bars.length - 1];
-      const prev = bars.length > 1 ? bars[bars.length - 2] : undefined;
-      return { bars, vols, price: last?.close ?? 0, prevClose: prev?.close ?? 0 };
-    } catch (e) { throw e; }
+      const prev = bars[bars.length - 2];
+      if (last) {
+        const ch = prev ? last.close - prev.close : 0;
+        setHeaderInfo({ price: last.close, change: ch, pct: prev?.close ? (ch / prev.close) * 100 : 0 });
+      }
+      setErrorMsg(null);
+      setStatus("ready");
+    } catch (e) {
+      setErrorMsg((e as Error).message);
+      setStatus("error");
+    }
   }, [symbol, isNepse]);
 
-  // ── Apply data to chart ──────────────────────────────────────────────────
-  const applyData = useCallback((bars: Bar[], vols: Vol[]) => {
-    const c = candleRef.current, v = volRef.current;
-    if (!c || !v) return;
-    c.setData(bars);
-    v.setData(vols);
-    chartRef.current?.timeScale().fitContent();
-  }, []);
-
-  // ── Update indicators ────────────────────────────────────────────────────
-  const applyIndicators = useCallback((bars: Bar[], active: Set<IndicatorKey>) => {
-    const chart = chartRef.current;
-    if (!chart) return;
-    const map = indicatorRefs.current;
-    map.forEach((s, k) => { if (!active.has(k as IndicatorKey)) { chart.removeSeries(s); map.delete(k); } });
-
-    if (active.has("sma9")) {
-      if (!map.has("sma9")) map.set("sma9", chart.addSeries(LineSeries, { color: "#F5A623", lineWidth: 1, priceLineVisible: false, lastValueVisible: false }));
-      map.get("sma9")?.setData(sma(bars, 9));
-    }
-    if (active.has("sma20")) {
-      if (!map.has("sma20")) map.set("sma20", chart.addSeries(LineSeries, { color: "#2962ff", lineWidth: 1, priceLineVisible: false, lastValueVisible: false }));
-      map.get("sma20")?.setData(sma(bars, 20));
-    }
-    if (active.has("sma50")) {
-      if (!map.has("sma50")) map.set("sma50", chart.addSeries(LineSeries, { color: "#9b59b6", lineWidth: 1, priceLineVisible: false, lastValueVisible: false }));
-      map.get("sma50")?.setData(sma(bars, 50));
-    }
-    if (active.has("ema9")) {
-      if (!map.has("ema9")) map.set("ema9", chart.addSeries(LineSeries, { color: "#e67e22", lineWidth: 1, priceLineVisible: false, lastValueVisible: false }));
-      map.get("ema9")?.setData(ema(bars, 9));
-    }
-    if (active.has("ema20")) {
-      if (!map.has("ema20")) map.set("ema20", chart.addSeries(LineSeries, { color: "#1abc9c", lineWidth: 1, priceLineVisible: false, lastValueVisible: false }));
-      map.get("ema20")?.setData(ema(bars, 20));
-    }
-    if (active.has("ema50")) {
-      if (!map.has("ema50")) map.set("ema50", chart.addSeries(LineSeries, { color: "#e74c3c", lineWidth: 1, priceLineVisible: false, lastValueVisible: false }));
-      map.get("ema50")?.setData(ema(bars, 50));
-    }
-    if (active.has("rsi")) {
-      if (!map.has("rsi_pane")) {
-        const p = chart.addSeries(LineSeries, { color: "#7f8c8d", lineWidth: 1, priceLineVisible: false, lastValueVisible: false, priceScaleId: "rsi" });
-        map.set("rsi_pane", p);
-        chart.priceScale("rsi").applyOptions({ scaleMargins: { top: 0.4, bottom: 0.25 }, visible: true });
-      }
-      map.get("rsi_pane")?.setData(rsi(bars, 14));
-    } else { const p = map.get("rsi_pane"); if (p) { chart.removeSeries(p); map.delete("rsi_pane"); } }
-
-    if (active.has("macd")) {
-      const { macd, sig, hist } = macdLine(bars, 12, 26, 9);
-      if (!map.has("macd_m")) { const s = chart.addSeries(LineSeries, { color: "#3498db", lineWidth: 1, priceLineVisible: false, lastValueVisible: false, priceScaleId: "macd" }); map.set("macd_m", s); chart.priceScale("macd").applyOptions({ scaleMargins: { top: 0.65, bottom: 0.1 }, visible: true }); }
-      if (!map.has("macd_s")) { const s = chart.addSeries(LineSeries, { color: "#e74c3c", lineWidth: 1, priceLineVisible: false, lastValueVisible: false, priceScaleId: "macd" }); map.set("macd_s", s); }
-      if (!map.has("macd_h")) { const s = chart.addSeries(HistogramSeries, { priceScaleId: "macd", priceFormat: { type: "volume" } }); map.set("macd_h", s); }
-      map.get("macd_m")?.setData(macd);
-      map.get("macd_s")?.setData(sig);
-      map.get("macd_h")?.setData(hist);
-    } else {
-      ["macd_m", "macd_s", "macd_h"].forEach(k => { const p = map.get(k); if (p) { chart.removeSeries(p); map.delete(k); } });
-    }
-
-    if (active.has("bb")) {
-      const { upper, middle, lower } = bb(bars, 20, 2);
-      if (!map.has("bb_u")) { const s = chart.addSeries(LineSeries, { color: "#e74c3c44", lineWidth: 1, priceLineVisible: false, lastValueVisible: false }); map.set("bb_u", s); }
-      if (!map.has("bb_m")) { const s = chart.addSeries(LineSeries, { color: "#e74c3c44", lineWidth: 1, priceLineVisible: false, lastValueVisible: false }); map.set("bb_m", s); }
-      if (!map.has("bb_l")) { const s = chart.addSeries(LineSeries, { color: "#e74c3c44", lineWidth: 1, priceLineVisible: false, lastValueVisible: false }); map.set("bb_l", s); }
-      map.get("bb_u")?.setData(upper);
-      map.get("bb_m")?.setData(middle);
-      map.get("bb_l")?.setData(lower);
-    } else {
-      ["bb_u", "bb_m", "bb_l"].forEach(k => { const p = map.get(k); if (p) { chart.removeSeries(p); map.delete(k); } });
-    }
-  }, []);
-
-  // ── Main load ────────────────────────────────────────────────────────────
-  const load = useCallback(async (resDays: number) => {
-    setStatus("loading");
+  // ── Poll /api/chart/today-snapshot for live updates ────────────────
+  const pollToday = useCallback(async () => {
+    if (isNepse) return;
     try {
-      const data = await loadHistory(resDays);
-      applyData(data.bars, data.vols);
-      applyIndicators(data.bars, indicators);
-      const ch = data.price - data.prevClose;
-      setHeaderInfo({ p: data.price, ch, pct: data.prevClose > 0 ? (ch / data.prevClose) * 100 : 0, o: data.bars[data.bars.length - 1]?.open ?? 0, h: data.bars.reduce((a, b) => Math.max(a, b.high), 0), l: data.bars.reduce((a, b) => Math.min(a, b.low), Infinity), v: data.vols.reduce((a, b) => a + b.value, 0) });
-      setStatus("live");
-    } catch { setStatus("error"); }
-  }, [loadHistory, applyData, applyIndicators, indicators]);
+      const res = await fetch(`/api/chart/today-snapshot?symbol=${encodeURIComponent(symbol)}`, { cache: "no-store" });
+      if (!res.ok) { setStatus("reconnecting"); return; }
+      const today = await res.json();
+      if (!today) { setStatus("ready"); return; }
 
-  // ── Create chart ─────────────────────────────────────────────────────────
+      setStatus("live");
+      const bar: Bar = { time: today.time as Time, open: today.open, high: today.high, low: today.low, close: today.close };
+
+      const bars = barsRef.current;
+      if (bars.length > 0) {
+        const lastIdx = bars.length - 1;
+        const lastTime = typeof bars[lastIdx].time === "string"
+          ? new Date(bars[lastIdx].time as string).getTime() / 1000
+          : (bars[lastIdx].time as number);
+
+        if (Math.abs(lastTime - today.time) < 86400) {
+          bars[lastIdx] = bar;
+          candleRef.current?.update(bar);
+        } else {
+          bars.push(bar);
+          if (bars.length > 500) barsRef.current = bars.slice(-500);
+          setBarCount(bars.length);
+          candleRef.current?.setData(bars);
+          volRef.current?.setData(bars.map(b => ({
+            time: b.time, value: 0, color: b.close >= b.open ? "#26a69a44" : "#ef535044",
+          })));
+          maRef.current?.setData(smaLine(bars, 20));
+        }
+
+        setHeaderInfo(prev => {
+          const ch = prev ? today.close - (prev.price - prev.change) : 0;
+          return { price: today.close, change: ch, pct: ch !== 0 ? (ch / (prev?.price ?? today.close)) * 100 : 0 };
+        });
+        updateLegend(bar);
+      }
+    } catch { setStatus("reconnecting"); }
+  }, [symbol, isNepse, updateLegend]);
+
+  // Poll every 10s during market hours
   useEffect(() => {
+    if (useTradingView || isNepse) return;
+    pollToday();
+    const id = setInterval(() => {
+      if (isNepseMarketOpen(getNPTNow())) {
+        pollToday();
+      }
+    }, 10_000);
+    return () => clearInterval(id);
+  }, [pollToday, useTradingView, isNepse]);
+
+  // Fallback SSE connect for symbols where today-snapshot returns null
+  const connectLive = useCallback(() => {
+    if (isNepse) return;
+    esRef.current?.close();
+    const es = new EventSource(`/api/stream?symbol=${encodeURIComponent(symbol)}`);
+    esRef.current = es;
+
+    es.onopen = () => { if (status !== "live") setStatus("live"); };
+    es.onerror = () => { /* ignore, poll handles reconnection */ };
+
+    es.addEventListener("tick", (e) => {
+      try {
+        const t = JSON.parse(e.data);
+        if (t.price <= 0) return;
+        const bars = barsRef.current;
+        if (bars.length > 0) {
+          const last = { ...bars[bars.length - 1] };
+          last.high = Math.max(last.high, t.price);
+          last.low = Math.min(last.low, t.price);
+          last.close = t.price;
+          bars[bars.length - 1] = last;
+          candleRef.current?.update(last);
+          updateLegend(last);
+        }
+      } catch { /* ignore */ }
+    });
+  }, [symbol, isNepse, updateLegend, status]);
+
+  // ── Create chart (once) ────────────────────────────────────────────
+  useEffect(() => {
+    // Skip if using TradingView
+    if (useTradingView) return;
     if (!containerRef.current) return;
+
     const chart = createChart(containerRef.current, {
-      layout: { background: { type: ColorType.Solid, color: "#0b0f19" }, textColor: "#787b86", fontSize: 11 },
-      grid: { vertLines: { color: "#1e2538" }, horzLines: { color: "#1e2538" } },
+      layout: { background: { type: ColorType.Solid, color: "transparent" }, textColor: "#8a93a6", fontSize: 11 },
+      grid: { vertLines: { color: "rgba(42,46,57,0.4)" }, horzLines: { color: "rgba(42,46,57,0.4)" } },
       crosshair: { mode: CrosshairMode.Normal },
-      rightPriceScale: { borderColor: "#1e2538" },
-      timeScale: { borderColor: "#1e2538", timeVisible: false, rightOffset: 4, barSpacing: 8 },
+      rightPriceScale: { borderColor: "#222a3a" },
+      timeScale: { borderColor: "#222a3a", timeVisible: true, secondsVisible: false, rightOffset: 4 },
       autoSize: true,
-      handleScroll: { vertTouchDrag: false },
     });
     chartRef.current = chart;
 
@@ -280,96 +314,96 @@ export default function LiveChart({ symbol = "NEPSE" }: LiveChartProps) {
     vol.priceScale().applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
     volRef.current = vol;
 
+    const ma = chart.addSeries(LineSeries, { color: "#2962ff", lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+    maRef.current = ma;
+
     chart.subscribeCrosshairMove(param => {
-      const bar = param.seriesData.get(candles) as Bar | undefined;
-      if (bar) {
-        setHeaderInfo(prev => ({ ...prev!, o: bar.open, h: bar.high, l: bar.low, p: bar.close, v: 0 }));
-      }
+      updateLegend(param.seriesData.get(candles) as Bar | undefined ?? barsRef.current[barsRef.current.length - 1]);
     });
 
-    return () => { chart.remove(); chartRef.current = null; candleRef.current = null; volRef.current = null; indicatorRefs.current.clear(); };
-  }, []);
+    return () => { chart.remove(); chartRef.current = null; candleRef.current = null; volRef.current = null; maRef.current = null; };
+  }, [updateLegend, useTradingView]);
 
-  // ── Load on mount & resolution change ────────────────────────────────────
-  useEffect(() => { load(resolution); }, [resolution, symbol]);
-
-  // ── Toggle indicator ─────────────────────────────────────────────────────
-  const toggleIndicator = useCallback((key: IndicatorKey) => {
-    setIndicators(prev => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key); else next.add(key);
-      return next;
-    });
-  }, []);
-
+  // ── Load + connect on symbol change ────────────────────────────────
   useEffect(() => {
-    if (barsRef.current.length > 0) {
-      applyIndicators(barsRef.current, indicators);
-    }
-  }, [indicators, applyIndicators]);
+    // Skip if using TradingView (it handles its own data)
+    if (useTradingView) return;
 
-  // ── Resolutions ──────────────────────────────────────────────────────────
-  const isUp = headerInfo ? headerInfo.ch >= 0 : true;
-  const accentColor = isUp ? "#26a69a" : "#ef5350";
+    barsRef.current = [];
+    setStatus("loading");
+    setErrorMsg(null);
+    loadHistory();
+    connectLive();
+    return () => { esRef.current?.close(); esRef.current = null; };
+  }, [loadHistory, connectLive, useTradingView]);
+
+  // ── Render ─────────────────────────────────────────────────────────
+  // If still checking, show loading
+  if (useTradingView === null) {
+    return (
+      <section className="flex h-full flex-col overflow-hidden rounded-xl border border-[#222a3a] bg-[#0b0f19]">
+        <div className="flex items-center justify-center" style={{ height }}>
+          <div className="text-center">
+            <div className="mb-2 h-8 w-8 animate-spin rounded-full border-2 border-[#2962ff] border-t-transparent mx-auto" />
+            <p className="text-xs text-[#8a93a6]">Loading chart engine...</p>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  // If TradingView is available, use it
+  if (useTradingView) {
+    return (
+      <section className="flex h-full flex-col overflow-hidden rounded-xl border border-[#222a3a] bg-[#0b0f19]">
+        {showHeader && (
+          <div className="flex items-center justify-between border-b border-[#222a3a] px-4 py-2">
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-bold text-white">{isNepse ? "📊 NEPSE Index" : `📈 ${symbol}`}</span>
+              <span className="rounded bg-[#2962ff] px-1.5 py-0.5 text-[9px] font-bold text-white">TradingView</span>
+            </div>
+          </div>
+        )}
+        <div className="relative min-h-0 flex-1" style={height < 9000 ? { height } : undefined}>
+          <TradingViewChart symbol={symbol} interval="5" autosize height={height} />
+        </div>
+      </section>
+    );
+  }
+
+  // Fallback to lightweight-charts
+  const statusLabel = status === "live" ? "LIVE" : status === "loading" ? "Loading…" : status === "reconnecting" ? "Reconnecting…" : status === "error" ? "" : "READY";
+  const statusColor = status === "live" ? "text-up" : status === "error" ? "text-down" : "text-muted";
 
   return (
-    <div className="flex h-full flex-col bg-[#0b0f19]">
-      {/* ── toolbar ──────────────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center gap-1 border-b border-[#1e2538] px-3 py-1">
-        {/* symbol & price */}
-        <div className="flex items-center gap-2 mr-3">
-          <span className="text-sm font-bold text-white">{symbol}</span>
-          {headerInfo && (
-            <>
-              <span className={`text-sm font-extrabold tabular-nums ${accentColor}`}>{r2(headerInfo.p)}</span>
-              <span className={`text-xs font-bold tabular-nums ${accentColor}`}>
-                {headerInfo.ch >= 0 ? "+" : ""}{r2(headerInfo.ch)} ({r2(headerInfo.pct)}%)
-              </span>
-            </>
-          )}
-        </div>
-
-        {/* intervals */}
-        <div className="flex items-center gap-0.5 border-r border-[#1e2538] pr-2 mr-2">
-          {RESOLUTIONS.map(r => (
-            <button key={r.label} onClick={() => setResolution(r.days)} className={`rounded px-2 py-0.5 text-[10px] font-semibold transition ${resolution === r.days ? "bg-[#2962ff] text-white" : "text-[#787b86] hover:text-white"}`}>
-              {r.label}
-            </button>
-          ))}
-        </div>
-
-        {/* indicators */}
-        <div className="flex items-center gap-0.5 flex-wrap">
-          {(["sma9", "sma20", "sma50", "ema9", "ema20", "ema50", "rsi", "macd", "bb"] as IndicatorKey[]).map(k => (
-            <button key={k} onClick={() => toggleIndicator(k)} className={`rounded px-1.5 py-0.5 text-[10px] font-semibold transition ${indicators.has(k) ? "bg-[#2962ff] text-white" : "text-[#787b86] hover:text-white"}`}>
-              {k.toUpperCase()}
-            </button>
-          ))}
-        </div>
-
-        {/* status */}
-        <div className="ml-auto flex items-center gap-2">
-          {status === "live" && <span className="flex items-center gap-1 text-[10px] font-bold text-[#26a69a]"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#26a69a]" />LIVE</span>}
-          {status === "loading" && <span className="text-[10px] text-[#787b86]">Loading...</span>}
-          {status === "error" && <span className="text-[10px] text-[#ef5350]">Error</span>}
-        </div>
-      </div>
-
-      {/* ── crosshair legend ─────────────────────────────────────────── */}
-      {headerInfo && (
-        <div className="flex items-center gap-3 border-b border-[#1e2538] px-3 py-1 text-[10px] tabular-nums text-[#787b86]">
-          <span>O: <b className={`${accentColor}`}>{r2(headerInfo.o)}</b></span>
-          <span>H: <b className={`${accentColor}`}>{r2(headerInfo.h)}</b></span>
-          <span>L: <b className={`${accentColor}`}>{r2(headerInfo.l)}</b></span>
-          <span>C: <b className={`${accentColor}`}>{r2(headerInfo.p)}</b></span>
-          <span>V: <b className="text-white">{r2(headerInfo.v)}</b></span>
+    <section className="flex h-full flex-col overflow-hidden rounded-xl border border-[#222a3a] bg-[#0b0f19]">
+      {showHeader && (
+        <div className="flex items-center justify-between border-b border-[#222a3a] px-4 py-2">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-bold text-white">{isNepse ? "📊 NEPSE Index" : `📈 ${symbol}`}</span>
+            {headerInfo && (
+              <>
+                <span className="text-sm font-extrabold tabular-nums text-white">{r2(headerInfo.price)}</span>
+                <span className={`text-xs font-bold tabular-nums ${headerInfo.change >= 0 ? "text-[#26a69a]" : "text-[#ef5350]"}`}>
+                  {headerInfo.change >= 0 ? "+" : ""}{r2(headerInfo.change)} ({r2(headerInfo.pct)}%)
+                </span>
+              </>
+            )}
+            <span ref={legendRef} className="hidden text-[10px] tabular-nums text-[#8a93a6] sm:inline" />
+          </div>
+          <div className="flex items-center gap-2">
+            {barCount > 0 && <span className="text-[10px] text-[#8a93a6]">{barCount} bars</span>}
+            <span className={`flex items-center gap-1 text-[10px] font-bold ${statusColor}`}>
+              {status === "live" && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#26a69a]" />}
+              {statusLabel}
+            </span>
+            {errorMsg && <span className="text-[10px] text-[#ef5350]">{errorMsg}</span>}
+          </div>
         </div>
       )}
-
-      {/* ── chart container ──────────────────────────────────────────── */}
-      <div className="flex-1 min-h-0">
-        <div ref={containerRef} className="h-full w-full" />
+      <div className="relative min-h-0 flex-1" style={height < 9000 ? { height } : undefined}>
+        <div ref={containerRef} className="absolute inset-0" />
       </div>
-    </div>
+    </section>
   );
 }
