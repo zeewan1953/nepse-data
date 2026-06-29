@@ -53,112 +53,6 @@ type IndicesResp = { index: NepseIndex[]; subIndices: NepseSubIndex[] };
 type LiveResp = { data: LiveMarketData[]; count: number; source?: string };
 
 /* ─── Live Market Stats Bar ─── */
-function LiveHeaderBar({
-  indices,
-  live,
-  mkt,
-}: {
-  indices: IndicesResp | null;
-  live: { data: LiveMarketData[]; count: number };
-  mkt: ReturnType<typeof useMarketSession>;
-}) {
-  /* Aggregate from live data */
-  const stats = useMemo(() => {
-    const d = live.data;
-    const turnover = d.reduce((s, r) => s + (r.totalTradeValue ?? 0), 0);
-    const volume = d.reduce((s, r) => s + (r.totalTradeQuantity ?? 0), 0);
-    const trades = d.reduce((s, r) => s + (r.lastTradedVolume ?? 0), 0);
-    const advancers = d.filter((r) => r.percentageChange > 0).length;
-    const decliners = d.filter((r) => r.percentageChange < 0).length;
-    const unchanged = d.filter((r) => r.percentageChange === 0).length;
-    return { turnover, volume, trades, advancers, decliners, unchanged };
-  }, [live.data]);
-
-  /* NEPSE index OHLC */
-  const nepse = (indices?.index?.find((i) => i.index === "NEPSE Index") ?? indices?.index?.[0]) as (NepseIndex & { open?: number }) | undefined;
-  const idxOpen = nepse?.open ?? nepse?.previousClose;
-  const idxHigh = nepse?.high;
-  const idxLow = nepse?.low;
-  const idxClose = nepse?.close;
-  const idxChg = nepse?.change;
-  const idxPct = nepse?.perChange;
-  const idxVal = nepse?.currentValue ?? idxClose;
-
-  const chgPos = (idxChg ?? 0) > 0;
-  const chgNeg = (idxChg ?? 0) < 0;
-
-  return (
-    <div className="flex items-center gap-0 border-b overflow-x-auto" style={{ height: 28, background: "#fafaf7", borderColor: "rgba(0,0,0,0.10)" }}>
-      {/* NEPSE Index OHLC */}
-      <div className="flex items-center gap-1.5 border-r px-2 sm:px-3 shrink-0" style={{ borderColor: "rgba(0,0,0,0.10)" }}>
-        <span className="text-[9px] sm:text-[10px] font-bold" style={{ color: "#1a1a1a" }}>NEPSE</span>
-        <span className={`text-[10px] sm:text-[11px] font-black tabular-nums ${chgPos ? "text-up" : chgNeg ? "text-down" : ""}`}>
-          {(idxVal ?? 0)?.toFixed(2)}
-        </span>
-        <span className={`text-[8px] sm:text-[9px] font-semibold tabular-nums ${chgPos ? "text-up" : chgNeg ? "text-down" : "text-gray-400"}`}>
-          {(idxChg ?? 0) >= 0 ? "+" : ""}{(idxChg ?? 0)?.toFixed(2)}
-        </span>
-      </div>
-
-      {/* OHLC mini — desktop only */}
-      <div className="hidden md:flex items-center gap-2 border-r px-3 text-[9px] shrink-0" style={{ borderColor: "rgba(0,0,0,0.10)" }}>
-        <span className="tabular-nums"><span className="text-gray-400">O:</span> {(idxOpen ?? 0)?.toFixed(2)}</span>
-        <span className="tabular-nums text-up"><span className="text-gray-400">H:</span> {(idxHigh ?? 0)?.toFixed(2)}</span>
-        <span className="tabular-nums text-down"><span className="text-gray-400">L:</span> {(idxLow ?? 0)?.toFixed(2)}</span>
-      </div>
-
-      {/* Turnover */}
-      <div className="flex items-center gap-1 border-r px-2 sm:px-3 text-[8px] sm:text-[9px] shrink-0" style={{ borderColor: "rgba(0,0,0,0.10)" }}>
-        <span className="text-gray-400 hidden sm:inline">Turnover</span>
-        <span className="font-bold tabular-nums" style={{ color: "#1a1a1a" }}>
-          {(stats.turnover / 1e8).toFixed(2)}Cr
-        </span>
-      </div>
-
-      {/* Volume — tablet+ */}
-      <div className="hidden sm:flex items-center gap-1 border-r px-3 text-[9px] shrink-0" style={{ borderColor: "rgba(0,0,0,0.10)" }}>
-        <span className="text-gray-400">Volume</span>
-        <span className="font-bold tabular-nums" style={{ color: "#1a1a1a" }}>
-          {(stats.volume / 1e6).toFixed(2)}M
-        </span>
-      </div>
-
-      {/* Trades — desktop only */}
-      <div className="hidden md:flex items-center gap-1 border-r px-3 text-[9px] shrink-0" style={{ borderColor: "rgba(0,0,0,0.10)" }}>
-        <span className="text-gray-400">Trades</span>
-        <span className="font-bold tabular-nums" style={{ color: "#1a1a1a" }}>{stats.trades.toLocaleString()}</span>
-      </div>
-
-      {/* Breadth */}
-      <div className="flex items-center gap-1 px-2 sm:px-3 text-[8px] sm:text-[9px] shrink-0">
-        <span className="text-up font-semibold">▲{stats.advancers}</span>
-        <span className="text-gray-300 hidden sm:inline">|</span>
-        <span className="text-down font-semibold">▼{stats.decliners}</span>
-        <span className="text-gray-300 hidden sm:inline">|</span>
-        <span className="text-gray-400 font-semibold hidden sm:inline">—{stats.unchanged}</span>
-      </div>
-
-      {/* Spacer */}
-      <div className="flex-1 min-w-2" />
-
-      {/* Session badge */}
-      <div className="flex items-center gap-1 border-l px-2 sm:px-3 shrink-0" style={{ borderColor: "rgba(0,0,0,0.10)" }}>
-        {mkt.session !== "closed" ? (
-          <>
-            <span className="relative flex h-1.5 w-1.5 sm:h-2 sm:w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-75" style={{ background: mkt.color }} />
-              <span className="relative inline-flex h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full" style={{ background: mkt.color }} />
-            </span>
-            <span className="text-[8px] sm:text-[9px] font-semibold" style={{ color: mkt.color }}>{mkt.label}</span>
-          </>
-        ) : (
-          <span className="text-[8px] sm:text-[9px] font-semibold text-gray-400">Closed</span>
-        )}
-      </div>
-    </div>
-  );
-}
-
 /* ─── Ticker items ─── */
 const STATIC_TICKS = [
   { s: "NEPSE", v: "2,134.58", ch: 12.4 },
@@ -595,10 +489,7 @@ export default function AppHeader() {
         </div>
       </nav>
 
-      {/* ── Live Market Stats Bar ─────────────────────────── */}
-      {live.data && live.data.data.length > 0 && (
-        <LiveHeaderBar indices={indices.data} live={live.data} mkt={mkt} />
-      )}
+
 
       {/* ── Live Ticker Bar ──────────────────────────────── */}
       <div className="flex items-center overflow-hidden border-b" style={{ height: 26, background: "#F5F5F0", borderColor: "rgba(0,0,0,0.12)" }}>
