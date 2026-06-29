@@ -516,6 +516,23 @@ async function migrateSchema(): Promise<void> {
   try {
     await db.execute("CREATE INDEX IF NOT EXISTS idx_signal_perf_lookup ON signal_performance_summary(signal_name, horizon_days, window_end)");
   } catch {}
+
+  // ── Indicator Daily Signal (24-indicator matrix, append-only) ──────────────────────
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS indicator_daily_signal (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      trade_date TEXT NOT NULL,
+      symbol TEXT NOT NULL,
+      indicator_name TEXT NOT NULL,
+      raw_value NUMERIC,
+      signal TEXT CHECK(signal IN ('BUY','SELL','NEUTRAL')),
+      calc_version INTEGER NOT NULL DEFAULT 1,
+      computed_at INTEGER NOT NULL
+    )
+  `);
+  try {
+    await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_indicator_daily_uniq ON indicator_daily_signal(trade_date, symbol, indicator_name, calc_version)");
+  } catch {}
 }
 migrateSchema().catch(console.error);
 
