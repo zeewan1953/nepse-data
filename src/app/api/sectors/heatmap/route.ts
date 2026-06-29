@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
          MIN((o.close - o.open) / NULLIF(o.open, 0)) * 100 AS min_pct_change
        FROM stock_daily_ohlcv o
        JOIN stock_sector_mapping m ON o.symbol = m.symbol
-       WHERE o.tradeDate = ?
+       WHERE o.tradeDate LIKE ? || '%'
          AND o.open > 0
        GROUP BY m.sector
        ORDER BY total_turnover DESC`,
@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
               ROUND(((o.close - o.open) / NULLIF(o.open, 0)) * 100, 2) AS pct_change
        FROM stock_daily_ohlcv o
        JOIN stock_sector_mapping m ON o.symbol = m.symbol
-       WHERE o.tradeDate = ? AND o.open > 0
+       WHERE o.tradeDate LIKE ? || '%' AND o.open > 0
        ORDER BY pct_change DESC`,
       [targetDate]
     );
@@ -64,7 +64,7 @@ export async function GET(req: NextRequest) {
               ROUND(((o.close - o.open) / NULLIF(o.open, 0)) * 100, 2) AS pct_change
        FROM stock_daily_ohlcv o
        JOIN stock_sector_mapping m ON o.symbol = m.symbol
-       WHERE o.tradeDate = ? AND o.open > 0
+       WHERE o.tradeDate LIKE ? || '%' AND o.open > 0
        ORDER BY pct_change ASC`,
       [targetDate]
     );
