@@ -95,8 +95,8 @@ export default function IndicatorsPage() {
 
       <style>{`
         .indicators-page { padding: 16px; color: #e0e0e0; max-width: 800px; margin: 0 auto; }
-        .indicators-header { margin-bottom: 12px; }
-        .indicators-title { font-size: 18px; font-weight: 700; margin: 0; color: #fff; }
+        .indicators-header { margin-bottom: 8px; }
+        .indicators-title { font-size: 15px; font-weight: 700; margin: 0; color: #fff; }
         .indicators-subtitle { display: flex; align-items: center; gap: 8px; margin-top: 4px; flex-wrap: wrap; }
         .badge-daily { background: #1a3a5c; color: #8ab4f8; font-size: 11px; padding: 2px 8px; border-radius: 4px; border: 1px solid #2a5a8c; }
         .indicators-date { color: #999; font-size: 13px; }
@@ -105,16 +105,15 @@ export default function IndicatorsPage() {
         .loading { color: #888; padding: 40px; text-align: center; }
         .table-wrap { overflow-x: auto; border: 1px solid #1a1a2e; border-radius: 8px; }
         .indicator-table { width: 100%; border-collapse: collapse; font-size: 12px; background: #0a0a16; }
-        .indicator-table th { padding: 10px 14px; text-align: left; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #667; background: #0f0f1e; border-bottom: 1px solid #1a1a2e; }
-        .indicator-table td { padding: 8px 14px; }
+        .indicator-table th { padding: 6px 10px; text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: #556; background: #0f0f1e; border-bottom: 1px solid #1a1a2e; }
+        .indicator-table td { padding: 4px 10px; }
         .row-even { background: #0a0a16; }
         .row-odd { background: #0e0e1c; }
-        .td-label { color: #7aa8f0; font-weight: 600; min-width: 140px; white-space: nowrap; }
-        .td-stocks { }
-        .tag-group { display: flex; flex-wrap: wrap; gap: 5px; }
-        .buy-tag { display: inline-block; background: #002211; color: #00cc44; font-size: 11px; font-weight: 600; padding: 2px 9px; border-radius: 3px; border: 1px solid #004422; text-decoration: none; transition: 0.12s; }
+        .td-label { color: #7aa8f0; font-weight: 600; font-size: 11px; min-width: 130px; white-space: nowrap; }
+        .tag-group { display: flex; flex-wrap: wrap; gap: 3px; }
+        .buy-tag { display: inline-block; background: #002211; color: #00cc44; font-size: 10px; font-weight: 600; padding: 1px 7px; border-radius: 3px; border: 1px solid #004422; text-decoration: none; transition: 0.12s; }
         .buy-tag:hover { background: #003322; border-color: #008844; }
-        .no-signal { color: #333; font-size: 13px; }
+        .no-signal { color: #333; font-size: 11px; }
       `}</style>
     </div>
   );
