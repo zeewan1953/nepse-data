@@ -588,6 +588,81 @@ async function migrateSchema(): Promise<void> {
   try {
     await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_indicator_daily_uniq ON indicator_daily_signal(trade_date, symbol, indicator_name, calc_version)");
   } catch {}
+
+  // ── Algo Trading Strategy Tables ─────────────────────────────────────────────────────
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS algo_strategies (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL DEFAULT 'default',
+      name TEXT NOT NULL,
+      universe TEXT NOT NULL DEFAULT 'all_listed',
+      custom_symbol_list TEXT,
+      entry_rule TEXT NOT NULL,
+      exit_rule TEXT NOT NULL,
+      stop_loss_pct NUMERIC,
+      take_profit_pct NUMERIC,
+      max_hold_days INTEGER,
+      position_size_pct NUMERIC NOT NULL DEFAULT 10,
+      max_concurrent_positions INTEGER NOT NULL DEFAULT 5,
+      is_active INTEGER NOT NULL DEFAULT 0,
+      last_backtested_at INTEGER,
+      updated_at INTEGER NOT NULL DEFAULT (cast(strftime('%s','now') as int)),
+      created_at INTEGER NOT NULL DEFAULT (cast(strftime('%s','now') as int))
+    )
+  `);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS algo_strategy_positions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      strategy_id INTEGER NOT NULL REFERENCES algo_strategies(id),
+      symbol TEXT NOT NULL,
+      entry_trade_id INTEGER,
+      exit_trade_id INTEGER,
+      entry_date TEXT NOT NULL,
+      exit_date TEXT,
+      entry_price NUMERIC NOT NULL,
+      exit_price NUMERIC,
+      status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','closed')),
+      exit_reason TEXT
+    )
+  `);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS algo_pending_orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      strategy_id INTEGER NOT NULL REFERENCES algo_strategies(id),
+      symbol TEXT NOT NULL,
+      action TEXT NOT NULL CHECK (action IN ('ENTER','EXIT')),
+      flagged_date TEXT NOT NULL,
+      exit_reason TEXT,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','filled','cancelled')),
+      filled_date TEXT,
+      filled_price NUMERIC
+    )
+  `);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS algo_strategy_run_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      strategy_id INTEGER REFERENCES algo_strategies(id),
+      run_date TEXT NOT NULL,
+      symbols_evaluated INTEGER NOT NULL DEFAULT 0,
+      entries_flagged INTEGER NOT NULL DEFAULT 0,
+      exits_flagged INTEGER NOT NULL DEFAULT 0,
+      skipped_capacity INTEGER NOT NULL DEFAULT 0,
+      errors TEXT,
+      run_at INTEGER NOT NULL DEFAULT (cast(strftime('%s','now') as int)),
+      UNIQUE(strategy_id, run_date)
+    )
+  `);
+
+  // Add strategy_id + algo_position_id to paper_trade_history
+  try {
+    await db.execute("ALTER TABLE paper_trade_history ADD COLUMN strategy_id INTEGER REFERENCES algo_strategies(id)");
+  } catch {}
+  try {
+    await db.execute("ALTER TABLE paper_trade_history ADD COLUMN algo_position_id INTEGER REFERENCES algo_strategy_positions(id)");
+  } catch {}
 }
 migrateSchema().catch(console.error);
 
