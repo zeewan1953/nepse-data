@@ -49,5 +49,7 @@ next-env.d.ts
 # Claude Code local settings
 .claude/settings.local.json
 
+__pycache__/
+*.pyc
 *.zip
 *.png
