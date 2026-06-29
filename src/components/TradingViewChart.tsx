@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { NepseDatafeed } from "@/lib/datafeed";
+import { NEPSE_ChartDatafeed } from "@/lib/chart-datafeed";
 
 interface TradingViewChartProps {
   symbol?: string;
@@ -57,13 +57,10 @@ export default function TradingViewChart({
       }
 
       try {
-        // Create the datafeed adapter
-        const datafeed = new NepseDatafeed();
-
-        // Create the widget
+        // Create the widget with the custom datafeed
         widgetRef.current = new TV.widget({
           container: containerRef.current,
-          datafeed: datafeed,
+          datafeed: NEPSE_ChartDatafeed,
           autosize: autosize,
           symbol: symbol,
           interval: interval,
@@ -166,7 +163,7 @@ export default function TradingViewChart({
               </ol>
             </div>
             <p className="mt-4 text-xs text-[#8a93a6]">
-              The datafeed API is ready at <code className="text-white">/api/datafeed</code>
+              The datafeed API is ready at <code className="text-white">/api/chart/*</code>
             </p>
           </div>
         </div>
