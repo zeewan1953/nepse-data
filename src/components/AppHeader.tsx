@@ -45,6 +45,7 @@ const NAV: Array<{ href: string; label: string; icon: string; badge?: boolean }>
   { href: "/paper-trading", label: "Paper Trading", icon: "📈", badge: true },
   { href: "/alerts", label: "Alerts", icon: icons.bell },
   { href: "/portfolio", label: "Portfolio", icon: icons.chart },
+  { href: "/fundamental", label: "Fundamental", icon: icons.spreadsheet },
   { href: "/signals/performance", label: "Signal Perf", icon: icons.chart },
   { href: "/indicators", label: "Indicators", icon: icons.spreadsheet },
   { href: "/sectors", label: "Sectors", icon: icons.chart },
