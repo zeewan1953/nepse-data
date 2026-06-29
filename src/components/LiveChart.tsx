@@ -15,6 +15,8 @@ import {
   type Time,
 } from "lightweight-charts";
 import TradingViewChart from "./TradingViewChart";
+import { usePoll } from "@/lib/useLive";
+import { isNepseMarketOpen, getNPTNow } from "@/lib/market-hours";
 
 type Bar = CandlestickData<Time>;
 type Vol = HistogramData<Time>;
@@ -102,10 +104,9 @@ export default function LiveChart({
     el.innerHTML = `O <b style="color:${c}">${r2(bar.open)}</b> H <b style="color:${c}">${r2(bar.high)}</b> L <b style="color:${c}">${r2(bar.low)}</b> C <b style="color:${c}">${r2(bar.close)}</b>`;
   }, []);
 
-  // ── Load historical data ─────────────────────────────────────────
+  // ── Load historical data from /api/chart/history ────────────────────
   const loadHistory = useCallback(async () => {
     try {
-      // NEPSE Index: always use /api/index-graph (has real intraday data)
       if (isNepse) {
         const res = await fetch("/api/index-graph", { cache: "no-store" });
         const json = await res.json();
@@ -113,7 +114,6 @@ export default function LiveChart({
         const pts = json.points as [number, number][];
         if (!Array.isArray(pts) || pts.length < 2) throw new Error("No index data");
 
-        // Aggregate into 1-min OHLC candles
         const sec = 60;
         const bk = new Map<number, { o: number; h: number; l: number; c: number; v: number }>();
         for (const [t, v] of pts) {
@@ -145,8 +145,10 @@ export default function LiveChart({
         return;
       }
 
-      // Individual stock: try /api/history UDF first (DB has daily data)
-      let res = await fetch(`/api/history?symbol=${encodeURIComponent(symbol)}&resolution=D`, { cache: "no-store" });
+      // Individual stock: use /api/chart/history (UDF format)
+      const fromTs = Math.floor((Date.now() - 365 * 86400000) / 1000);
+      const toTs = Math.floor(Date.now() / 1000) + 86400;
+      let res = await fetch(`/api/chart/history?symbol=${encodeURIComponent(symbol)}&resolution=D&from=${fromTs}&to=${toTs}`, { cache: "no-store" });
       let udf = await res.json();
 
       if (udf.s === "ok" && Array.isArray(udf.t) && udf.t.length > 0) {
@@ -204,26 +206,74 @@ export default function LiveChart({
     }
   }, [symbol, isNepse]);
 
-  // ── Connect live SSE stream ────────────────────────────────────────
+  // ── Poll /api/chart/today-snapshot for live updates ────────────────
+  const pollToday = useCallback(async () => {
+    if (isNepse) return;
+    try {
+      const res = await fetch(`/api/chart/today-snapshot?symbol=${encodeURIComponent(symbol)}`, { cache: "no-store" });
+      if (!res.ok) { setStatus("reconnecting"); return; }
+      const today = await res.json();
+      if (!today) { setStatus("ready"); return; }
+
+      setStatus("live");
+      const bar: Bar = { time: today.time as Time, open: today.open, high: today.high, low: today.low, close: today.close };
+
+      const bars = barsRef.current;
+      if (bars.length > 0) {
+        const lastIdx = bars.length - 1;
+        const lastTime = typeof bars[lastIdx].time === "string"
+          ? new Date(bars[lastIdx].time as string).getTime() / 1000
+          : (bars[lastIdx].time as number);
+
+        if (Math.abs(lastTime - today.time) < 86400) {
+          bars[lastIdx] = bar;
+          candleRef.current?.update(bar);
+        } else {
+          bars.push(bar);
+          if (bars.length > 500) barsRef.current = bars.slice(-500);
+          setBarCount(bars.length);
+          candleRef.current?.setData(bars);
+          volRef.current?.setData(bars.map(b => ({
+            time: b.time, value: 0, color: b.close >= b.open ? "#26a69a44" : "#ef535044",
+          })));
+          maRef.current?.setData(smaLine(bars, 20));
+        }
+
+        setHeaderInfo(prev => {
+          const ch = prev ? today.close - (prev.price - prev.change) : 0;
+          return { price: today.close, change: ch, pct: ch !== 0 ? (ch / (prev?.price ?? today.close)) * 100 : 0 };
+        });
+        updateLegend(bar);
+      }
+    } catch { setStatus("reconnecting"); }
+  }, [symbol, isNepse, updateLegend]);
+
+  // Poll every 10s during market hours
+  useEffect(() => {
+    if (useTradingView || isNepse) return;
+    pollToday();
+    const id = setInterval(() => {
+      if (isNepseMarketOpen(getNPTNow())) {
+        pollToday();
+      }
+    }, 10_000);
+    return () => clearInterval(id);
+  }, [pollToday, useTradingView, isNepse]);
+
+  // Fallback SSE connect for symbols where today-snapshot returns null
   const connectLive = useCallback(() => {
+    if (isNepse) return;
     esRef.current?.close();
     const es = new EventSource(`/api/stream?symbol=${encodeURIComponent(symbol)}`);
     esRef.current = es;
 
-    es.onopen = () => setStatus("live");
-    es.onerror = () => setStatus("reconnecting");
+    es.onopen = () => { if (status !== "live") setStatus("live"); };
+    es.onerror = () => { /* ignore, poll handles reconnection */ };
 
     es.addEventListener("tick", (e) => {
       try {
         const t = JSON.parse(e.data);
         if (t.price <= 0) return;
-        setHeaderInfo(prev => {
-          if (!prev) return { price: t.price, change: 0, pct: 0 };
-          const open = prev.price - prev.change;
-          const ch = t.price - open;
-          return { price: t.price, change: ch, pct: open > 0 ? (ch / open) * 100 : 0 };
-        });
-        // Update last candle
         const bars = barsRef.current;
         if (bars.length > 0) {
           const last = { ...bars[bars.length - 1] };
@@ -236,22 +286,7 @@ export default function LiveChart({
         }
       } catch { /* ignore */ }
     });
-
-    es.addEventListener("candle", (e) => {
-      try {
-        const c = JSON.parse(e.data);
-        const bar: Bar = { time: c.t as Time, open: c.o, high: c.h, low: c.l, close: c.c };
-        const vol: Vol = { time: c.t as Time, value: c.v, color: c.c >= c.o ? "#26a69a44" : "#ef535044" };
-        barsRef.current.push(bar);
-        if (barsRef.current.length > 500) barsRef.current = barsRef.current.slice(-500);
-        setBarCount(barsRef.current.length);
-        candleRef.current?.update(bar);
-        volRef.current?.update(vol);
-        maRef.current?.setData(smaLine(barsRef.current, 20));
-        updateLegend(bar);
-      } catch { /* ignore */ }
-    });
-  }, [symbol, updateLegend]);
+  }, [symbol, isNepse, updateLegend, status]);
 
   // ── Create chart (once) ────────────────────────────────────────────
   useEffect(() => {

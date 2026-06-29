@@ -8,11 +8,11 @@ export default function ChartPage() {
   const [symbolInput, setSymbolInput] = useState("NEPSE");
   const [allSymbols, setAllSymbols] = useState<string[]>([]);
 
-  // Fetch all NEPSE stock symbols for search
+  // Fetch all NEPSE stock symbols for search from /api/chart/symbols
   useEffect(() => {
-    fetch("/api/live", { cache: "no-store" })
+    fetch("/api/chart/symbols", { cache: "no-store" })
       .then((r) => r.json())
-      .then((j) => setAllSymbols(["NEPSE", ...(j.data ?? []).map((d: { symbol: string }) => d.symbol).sort()]))
+      .then((j) => setAllSymbols(["NEPSE", ...(Array.isArray(j) ? j.map((d: { symbol: string }) => d.symbol) : [])]))
       .catch(() => {});
   }, []);
 
