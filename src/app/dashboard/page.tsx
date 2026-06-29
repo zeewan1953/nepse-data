@@ -45,17 +45,7 @@ function Ticker({ stocks }: { stocks: LiveMarketData[] }) {
   );
 }
 
-// ─── Breadth chip ────────────────────────────────────────────────────────────
-function BreadthChip({ icon, label, value, color }: { icon: string; label: string; value: number | string; color: string }) {
-  return (
-    <div className="flex flex-1 items-center justify-between gap-2 border-r border-border px-4 py-2.5 last:border-r-0">
-      <span className={`flex items-center gap-1.5 text-xs font-medium ${color}`}>
-        <span>{icon}</span>{label}
-      </span>
-      <span className={`text-base font-bold ${color}`}>{value}</span>
-    </div>
-  );
-}
+
 
 // ─── Top movers tabbed panel ─────────────────────────────────────────────────
 function MoversPanel({ movers }: { movers: MoversResp | null }) {
@@ -344,17 +334,6 @@ export default function Dashboard() {
           </div>
         </header>
 
-        {/* ── Ticker ── */}
-        <Ticker stocks={tickerStocks} />
-
-        {/* ── Breadth row ── */}
-        <div className="flex flex-wrap border-b border-border bg-surface">
-          <BreadthChip icon="📈" label="Advanced" value={s?.upCount ?? "—"} color="text-green-600" />
-          <BreadthChip icon="📉" label="Declined" value={s?.downCount ?? "—"} color="text-red-600" />
-          <BreadthChip icon="—" label="Unchanged" value={s?.flatCount ?? "—"} color="text-blue-500" />
-          <BreadthChip icon="🟢" label="Transactions" value={s ? int(s.totalTransactions) : "—"} color="text-foreground" />
-        </div>
-
         {/* ── Body ── */}
         <main className="grid flex-1 grid-cols-1 gap-4 p-4">
           {/* Row 1: NEPSE INDEX + AI Summary (TOP) */}
@@ -562,6 +541,9 @@ export default function Dashboard() {
           {/* Row 4: Movers (Full Width) */}
           <MoversPanel movers={movers} />
         </main>
+
+        {/* ── Ticker (bottom) ── */}
+        <Ticker stocks={tickerStocks} />
       </div>
     </div>
   );

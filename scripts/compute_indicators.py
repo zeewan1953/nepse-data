@@ -59,7 +59,8 @@ def is_trading_day(date_str: str) -> bool:
         d = datetime.strptime(date_str, "%Y-%m-%d")
     except ValueError:
         return False
-    return d.weekday() < 5  # 0=Mon..4=Fri (Sun-Thu in NEPSE)
+    # NEPSE trades Sunday (6) through Thursday (3)
+    return d.weekday() in (6, 0, 1, 2, 3)
 
 
 def get_trading_days(from_date: str, to_date: str) -> list[str]:
@@ -122,7 +123,7 @@ def get_net_broker_flow(conn: sqlite3.Connection, symbol: str, date_str: str) ->
     )
     row = cur.fetchone()
     if row and row[0] is not None:
-        return row[0]
+        return round(row[0], 2)
     cur = conn.execute(
         """SELECT SUM(netAmt) FROM broker_daily_agg
            WHERE tradeDate = ? AND stockSymbol = ?""",
@@ -130,7 +131,7 @@ def get_net_broker_flow(conn: sqlite3.Connection, symbol: str, date_str: str) ->
     )
     row = cur.fetchone()
     if row and row[0] is not None:
-        return row[0]
+        return round(row[0], 2)
     return None
 
 

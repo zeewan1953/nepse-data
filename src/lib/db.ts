@@ -418,6 +418,17 @@ async function migrateSchema(): Promise<void> {
     )
   `);
 
+  // Stock → Sector mapping (NEPSE official classification)
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS stock_sector_mapping (
+      symbol TEXT PRIMARY KEY,
+      sector TEXT NOT NULL,
+      sub_sector TEXT,
+      source_vendor TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    )
+  `);
+
   // Company news headlines
   await db.execute(`
     CREATE TABLE IF NOT EXISTS company_news (

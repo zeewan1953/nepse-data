@@ -137,6 +137,9 @@ export default function PortfolioPage() {
         <Stat label="Return" value={pct(holdings.invested ? (holdings.pl / holdings.invested) * 100 : 0)} cls={changeClass(holdings.pl)} />
       </div>
 
+      {/* Sector Exposure */}
+      <SectorExposureCard holdings={holdings.rows.map(r => ({ symbol: r.symbol, value: r.current }))} thresholdPct={40} />
+
       {/* Allocation pie + legend */}
       <section className="rounded-xl border border-border bg-surface p-4 shadow-sm">
         <h2 className="mb-3 font-bold">📊 Allocation</h2>
@@ -311,6 +314,71 @@ function Donut({ slices }: { slices: { label: string; value: number; color: stri
         arcs.map((a, i) => <path key={i} d={a.d} fill={a.color} />)
       )}
     </svg>
+  );
+}
+
+function SectorExposureCard({ holdings, thresholdPct }: { holdings: Array<{ symbol: string; value: number }>; thresholdPct: number }) {
+  const [sectors, setSectors] = useState<Array<{ sector: string; value: number; pctOfPortfolio: number }> | null>(null);
+  const [warnings, setWarnings] = useState<Array<{ sector: string; pctOfPortfolio: number }>>([]);
+  const [loading, setLoading] = useState(false);
+
+  const key = holdings.map(h => `${h.symbol}:${Math.round(h.value)}`).join(",");
+  useEffect(() => {
+    if (!key) { setSectors(null); setWarnings([]); return; }
+    setLoading(true);
+    fetch(`/api/portfolio/exposure?holdings=${encodeURIComponent(key)}`)
+      .then(r => r.json())
+      .then(j => {
+        setSectors(j.sectors || null);
+        setWarnings(j.concentrationWarnings || []);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [key]);
+
+  if (!key || (sectors && sectors.length === 0)) return null;
+
+  const total = sectors?.reduce((a, s) => a + s.value, 0) ?? 0;
+  const exposureColors = ["#00cc44", "#e60000", "#0044ff", "#d4af37", "#8b5cf6", "#06b6d4", "#f59e0b", "#ec4899", "#14b8a6", "#f97316"];
+
+  return (
+    <section className="rounded-xl border border-border bg-surface p-4 shadow-sm">
+      <h2 className="mb-3 font-bold">🏢 Sector Exposure</h2>
+      {loading ? (
+        <p className="text-sm text-muted">Loading...</p>
+      ) : sectors && sectors.length > 0 ? (
+        <>
+          <div className="flex flex-wrap gap-4">
+            <div className="flex gap-1">
+              {sectors.map((s, i) => (
+                <div key={s.sector} className="h-3 rounded-sm transition-all hover:opacity-80" style={{
+                  width: Math.max(4, (s.pctOfPortfolio / 100) * 200),
+                  background: exposureColors[i % exposureColors.length],
+                }} title={`${s.sector}: ${s.pctOfPortfolio}%`} />
+              ))}
+            </div>
+          </div>
+          <div className="mt-2 space-y-1">
+            {sectors.map((s, i) => {
+              const warn = warnings.find(w => w.sector === s.sector);
+              return (
+                <div key={s.sector} className="flex items-center justify-between gap-2 text-xs">
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-sm" style={{ background: exposureColors[i % exposureColors.length] }} />
+                    <span className="text-foreground">{s.sector}</span>
+                  </span>
+                  <span className="flex items-center gap-2 tabular-nums">
+                    <span className="text-muted">{npr(s.value)}</span>
+                    <span className="font-semibold text-foreground">{s.pctOfPortfolio}%</span>
+                    {warn && <span className="rounded border border-[#d4af37]/40 bg-[#d4af37]/10 px-1.5 py-0.5 text-[9px] text-[#d4af37] font-semibold">Concentrated</span>}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      ) : null}
+    </section>
   );
 }
 

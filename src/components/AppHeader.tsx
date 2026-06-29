@@ -46,13 +46,50 @@ const NAV: Array<{ href: string; label: string; icon: string; badge?: boolean }>
   { href: "/alerts", label: "Alerts", icon: icons.bell },
   { href: "/signals/performance", label: "Signal Perf", icon: icons.chart },
   { href: "/indicators", label: "Indicators", icon: icons.spreadsheet },
+  { href: "/sectors", label: "Sectors", icon: icons.chart },
+  { href: "/compare", label: "Compare", icon: icons.exchange },
   { href: "/news", label: "News", icon: icons.news },
 ];
 
 type IndicesResp = { index: NepseIndex[]; subIndices: NepseSubIndex[] };
 type LiveResp = { data: LiveMarketData[]; count: number; source?: string };
 
-/* ─── Live Market Stats Bar ─── */
+/* ─── Live Market Stats + Breadth ─── */
+const LiveHeaderBar = ({ nepse, liveData }: { nepse?: NepseIndex; liveData: LiveMarketData[] | undefined }) => {
+  const now = getNPTNow();
+  const { label, color } = getMarketStatusLabel(now);
+  const session = getMarketSession(now);
+  const isOpen = session === "open";
+  const adv = liveData?.filter(s => s.percentageChange > 0).length ?? 0;
+  const dec = liveData?.filter(s => s.percentageChange < 0).length ?? 0;
+  const unc = liveData?.filter(s => s.percentageChange === 0).length ?? 0;
+  const total = liveData?.length ?? 0;
+  return (
+    <div className="border-b" style={{ borderColor: "rgba(0,0,0,0.12)", background: "#f8f9fa" }}>
+      <div className="mx-auto flex max-w-[1400px] items-center gap-2 sm:gap-4 px-2 sm:px-4 py-1 text-[10px] sm:text-xs tabular-nums overflow-x-auto whitespace-nowrap flex-wrap sm:flex-nowrap">
+        <span className="font-bold text-foreground">{nepse?.index || "NEPSE Index"}</span>
+        <span className="font-semibold text-foreground">{num(nepse?.currentValue ?? 0)}</span>
+        <span className={nepse && nepse.perChange >= 0 ? "text-up" : "text-down"}>
+          {nepse ? `${nepse.perChange >= 0 ? "+" : ""}${nepse.perChange.toFixed(2)}%` : "—"}
+        </span>
+        <span className="text-muted">|</span>
+        <span className="text-muted">Adv</span>
+        <span className="font-semibold text-up">{adv}</span>
+        <span className="text-muted">Dec</span>
+        <span className="font-semibold text-down">{dec}</span>
+        <span className="text-muted">Unch</span>
+        <span className="font-semibold text-foreground">{unc}</span>
+        <span className="text-muted">|</span>
+        <span className="text-muted">Trx</span>
+        <span className="font-semibold text-foreground">{total}</span>
+        <span className={`ml-auto rounded px-1.5 py-0.5 text-[8px] sm:text-[9px] font-bold uppercase ${isOpen ? "bg-up/10 text-up" : "bg-down/10 text-down"}`}>
+          {label}
+        </span>
+      </div>
+    </div>
+  );
+};
+
 /* ─── Ticker items ─── */
 const STATIC_TICKS = [
   { s: "NEPSE", v: "2,134.58", ch: 12.4 },
@@ -203,6 +240,34 @@ export default function AppHeader() {
 
   return (
     <header className="sticky top-0 z-50">
+      {/* ── Vertical Navigation List (top) ──────────────────── */}
+      <nav className="border-b" style={{ borderColor: "rgba(0,0,0,0.12)", background: "#fff" }}>
+        <div className="mx-auto max-w-[1400px] px-2 sm:px-4 py-1">
+          <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5">
+            {NAV.map((item) => {
+              const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] sm:text-[12px] font-medium transition whitespace-nowrap"
+                  style={active ? { background: "#0F6E56", color: "#fff" } : { background: "transparent", color: "#555" }}
+                >
+                  <Icon d={item.icon} size={13} />
+                  <span>{item.label}</span>
+                  {item.href === "/paper-trading" ? (
+                    <span className="rounded border px-1 py-0.5 text-[7px] font-bold uppercase leading-none tracking-wider"
+                      style={{ borderColor: "#d4af37", color: "#d4af37" }}>
+                      DEMO
+                    </span>
+                  ) : null}
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      </nav>
+
       {/* ── Main Header Bar ──────────────────────────────── */}
       <div className="border-b" style={{ borderColor: "rgba(0,0,0,0.12)", background: "#fff" }}>
         <div className="mx-auto flex max-w-[1400px] items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1 sm:py-1.5">
@@ -461,35 +526,8 @@ export default function AppHeader() {
         </div>
       </div>
 
-      {/* ── Vertical Navigation List ──────────────────────────── */}
-      <nav className="border-b" style={{ borderColor: "rgba(0,0,0,0.12)", background: "#fff" }}>
-        <div className="mx-auto max-w-[1400px] px-2 sm:px-4 py-1">
-          <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5">
-            {NAV.map((item) => {
-              const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] sm:text-[12px] font-medium transition whitespace-nowrap"
-                  style={active ? { background: "#0F6E56", color: "#fff" } : { background: "transparent", color: "#555" }}
-                >
-                  <Icon d={item.icon} size={13} />
-                  <span>{item.label}</span>
-                  {item.href === "/paper-trading" ? (
-                    <span className="rounded border px-1 py-0.5 text-[7px] font-bold uppercase leading-none tracking-wider"
-                      style={{ borderColor: "#d4af37", color: "#d4af37" }}>
-                      DEMO
-                    </span>
-                  ) : null}
-                </Link>
-              );
-            })}
-          </div>
-        </div>
-      </nav>
-
-
+      {/* ── Live Market Stats (NEPSE, breadth, session) ──── */}
+      <LiveHeaderBar nepse={indices.data?.index?.find(i => i.index === "NEPSE Index")} liveData={live.data?.data} />
 
       {/* ── Live Ticker Bar ──────────────────────────────── */}
       <div className="flex items-center overflow-hidden border-b" style={{ height: 26, background: "#F5F5F0", borderColor: "rgba(0,0,0,0.12)" }}>

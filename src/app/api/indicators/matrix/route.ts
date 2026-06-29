@@ -51,11 +51,17 @@ export async function GET(req: NextRequest) {
       calcVersion: r.calc_version,
     }));
 
+    // Get max OHLCV bars available for context
+    const maxBars = await execute(
+      `SELECT MAX(c) as cnt FROM (SELECT COUNT(*) as c FROM stock_daily_ohlcv GROUP BY symbol)`
+    );
+
     return NextResponse.json({
       date,
       indicators: INDICATOR_META,
       stocks: symbols,
       data,
+      maxOhlcvBars: (maxBars.rows[0] as any)?.cnt ?? 0,
     });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
