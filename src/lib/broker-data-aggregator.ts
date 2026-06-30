@@ -79,21 +79,31 @@ export async function aggregateBrokerDataForRange(
   );
 
   // Get buy/sell quantities from broker_daily_agg (floorsheet data)
-  const qtyRows = await execute(
-    `SELECT brokerId,
-            SUM(buyQty) AS totalBuyQty,
-            SUM(sellQty) AS totalSellQty
-     FROM broker_daily_agg
-     WHERE tradeDate IN (${placeholders})
-     GROUP BY brokerId`,
-    rangeDates,
-  );
+  // Use the latest available dates from broker_daily_agg, not merolagani_broker_daily
   const qtyMap = new Map<string, { buyQty: number; sellQty: number }>();
-  for (const r of qtyRows.rows as any[]) {
-    qtyMap.set(String(r.brokerId), {
-      buyQty: Number(r.totalBuyQty) || 0,
-      sellQty: Number(r.totalSellQty) || 0,
-    });
+  const latestFloorsheetDates = await execute(
+    "SELECT DISTINCT tradeDate FROM broker_daily_agg ORDER BY tradeDate DESC LIMIT ?",
+    [rangeDates.length],
+  );
+  const floorsheetDates = latestFloorsheetDates.rows.map((r: any) => String(r.tradeDate));
+  
+  if (floorsheetDates.length > 0) {
+    const fsPlaceholders = floorsheetDates.map(() => "?").join(",");
+    const qtyRows = await execute(
+      `SELECT brokerId,
+              SUM(buyQty) AS totalBuyQty,
+              SUM(sellQty) AS totalSellQty
+       FROM broker_daily_agg
+       WHERE tradeDate IN (${fsPlaceholders})
+       GROUP BY brokerId`,
+      floorsheetDates,
+    );
+    for (const r of qtyRows.rows as any[]) {
+      qtyMap.set(String(r.brokerId), {
+        buyQty: Number(r.totalBuyQty) || 0,
+        sellQty: Number(r.totalSellQty) || 0,
+      });
+    }
   }
 
   const brokers: BrokerAggregateData[] = [];
