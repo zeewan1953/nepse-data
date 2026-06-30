@@ -629,6 +629,8 @@ function SummaryTab({ range }: { range: TimeRange }) {
   const totalBrokerBuy = stocks.reduce((s: number, x: any) => s + (x.brokerBuy || 0), 0);
   const totalBrokerSell = stocks.reduce((s: number, x: any) => s + (x.brokerSell || 0), 0);
   const totalBrokerNet = totalBrokerBuy - totalBrokerSell;
+  const totalBrokerBuyQty = stocks.reduce((s: number, x: any) => s + (x.brokerBuyQty || 0), 0);
+  const totalBrokerSellQty = stocks.reduce((s: number, x: any) => s + (x.brokerSellQty || 0), 0);
   const totalTurnover = stocks.reduce((s: number, x: any) => s + (x.turnover || 0), 0);
 
   return (
@@ -647,22 +649,25 @@ function SummaryTab({ range }: { range: TimeRange }) {
           </div>
         </div>
         <div className="rounded-lg border border-border bg-surface p-3">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">Broker Buy</div>
-          <div className="mt-2 text-base font-bold text-foreground tabular-nums">
-            {compact(totalBrokerBuy)}
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">Buy Qty (Kitta)</div>
+          <div className="mt-2 text-base font-bold tabular-nums text-up">
+            {totalBrokerBuyQty.toLocaleString("en-IN")}
           </div>
+          <div className="text-[9px] text-muted mt-0.5">{compact(totalBrokerBuy)}</div>
         </div>
         <div className="rounded-lg border border-border bg-surface p-3">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">Broker Sell</div>
-          <div className="mt-2 text-base font-bold text-foreground tabular-nums">
-            {compact(totalBrokerSell)}
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">Sell Qty (Kitta)</div>
+          <div className="mt-2 text-base font-bold tabular-nums text-down">
+            {totalBrokerSellQty.toLocaleString("en-IN")}
           </div>
+          <div className="text-[9px] text-muted mt-0.5">{compact(totalBrokerSell)}</div>
         </div>
         <div className="rounded-lg border border-border bg-surface p-3">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">Broker Net</div>
-          <div className={`mt-2 text-base font-bold tabular-nums ${cls(totalBrokerNet)}`}>
-            {totalBrokerNet >= 0 ? "+" : ""}{compact(totalBrokerNet)}
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">Net Qty</div>
+          <div className={`mt-2 text-base font-bold tabular-nums ${totalBrokerBuyQty - totalBrokerSellQty >= 0 ? "text-up" : "text-down"}`}>
+            {totalBrokerBuyQty - totalBrokerSellQty >= 0 ? "+" : ""}{(totalBrokerBuyQty - totalBrokerSellQty).toLocaleString("en-IN")}
           </div>
+          <div className={`text-[9px] mt-0.5 ${totalBrokerNet >= 0 ? "text-up" : "text-down"}`}>{totalBrokerNet >= 0 ? "+" : ""}{compact(totalBrokerNet)}</div>
         </div>
       </div>
 
@@ -672,7 +677,7 @@ function SummaryTab({ range }: { range: TimeRange }) {
           Stock Wise Broker Summary {stocks.length ? `(${stocks.length})` : ""}
         </h3>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[500px] border-collapse">
+          <table className="w-full min-w-[700px] border-collapse">
             <thead>
               <tr className="border-b border-border text-[10px] font-semibold uppercase tracking-wider text-muted">
                 <th className="px-2 py-2 text-left">Symbol</th>
@@ -680,6 +685,8 @@ function SummaryTab({ range }: { range: TimeRange }) {
                 <th className="px-2 py-2 text-right">Change%</th>
                 <th className="px-2 py-2 text-right">Quantity</th>
                 <th className="px-2 py-2 text-right">Turnover</th>
+                <th className="px-2 py-2 text-right">Buy Qty</th>
+                <th className="px-2 py-2 text-right">Sell Qty</th>
                 <th className="px-2 py-2 text-right">Broker Buy</th>
                 <th className="px-2 py-2 text-right">Broker Sell</th>
                 <th className="px-2 py-2 text-right">Broker Net</th>
@@ -702,6 +709,8 @@ function SummaryTab({ range }: { range: TimeRange }) {
                   <td className="px-2 py-2 text-right tabular-nums">
                     {s.turnoverLabel}
                   </td>
+                  <td className="px-2 py-2 text-right tabular-nums text-up">{(s.brokerBuyQty || 0).toLocaleString("en-IN")}</td>
+                  <td className="px-2 py-2 text-right tabular-nums text-down">{(s.brokerSellQty || 0).toLocaleString("en-IN")}</td>
                   <td className="px-2 py-2 text-right tabular-nums text-up">{compact(s.brokerBuy)}</td>
                   <td className="px-2 py-2 text-right tabular-nums text-down">{compact(s.brokerSell)}</td>
                   <td className={`px-2 py-2 text-right tabular-nums font-semibold ${s.brokerNet >= 0 ? "text-up" : "text-down"}`}>

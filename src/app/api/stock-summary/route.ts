@@ -69,20 +69,21 @@ export async function GET(req: Request) {
     // Broker totals per stock from floorsheet aggregation
     const aggRows = await db.execute({
       sql: `SELECT stockSymbol, SUM(buyAmt) as brokerBuy, SUM(sellAmt) as brokerSell,
-                   SUM(netAmt) as brokerNet, SUM(buyQty + sellQty) as brokerQty
+                   SUM(netAmt) as brokerNet, SUM(buyQty) as brokerBuyQty, SUM(sellQty) as brokerSellQty
             FROM broker_daily_agg
             WHERE tradeDate = ?
             GROUP BY stockSymbol`,
       args: [date],
     });
 
-    let brokerMap = new Map<string, { brokerBuy: number; brokerSell: number; brokerNet: number; brokerQty: number | null }>();
+    let brokerMap = new Map<string, { brokerBuy: number; brokerSell: number; brokerNet: number; brokerBuyQty: number; brokerSellQty: number }>();
     for (const r of aggRows.rows as any[]) {
       brokerMap.set(String(r.stockSymbol), {
         brokerBuy: Number(r.brokerBuy) || 0,
         brokerSell: Number(r.brokerSell) || 0,
         brokerNet: Number(r.brokerNet) || 0,
-        brokerQty: Number(r.brokerQty) || null,
+        brokerBuyQty: Number(r.brokerBuyQty) || 0,
+        brokerSellQty: Number(r.brokerSellQty) || 0,
       });
     }
 
@@ -153,6 +154,8 @@ export async function GET(req: Request) {
         brokerBuy: b.brokerBuy,
         brokerSell: b.brokerSell,
         brokerNet: b.brokerNet,
+        brokerBuyQty: b.brokerBuyQty,
+        brokerSellQty: b.brokerSellQty,
         cmf: cmfVal,
         mfi: mfiVal,
         volZ: volZVal,
