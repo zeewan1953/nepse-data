@@ -70,15 +70,31 @@ export async function aggregateBrokerDataForRange(
             SUM(purchaseAmt) AS totalBuy,
             SUM(sellAmt) AS totalSell,
             SUM(netAmt) AS totalNet,
-            SUM(purchaseAmt + sellAmt) AS totalTurnover,
-            SUM(buyQty) AS totalBuyVol,
-            SUM(sellQty) AS totalSellVol
+            SUM(purchaseAmt + sellAmt) AS totalTurnover
      FROM merolagani_broker_daily
      WHERE tradeDate IN (${placeholders})
      GROUP BY brokerCode
      ORDER BY totalTurnover DESC`,
     rangeDates,
   );
+
+  // Get buy/sell quantities from broker_daily_agg (floorsheet data)
+  const qtyRows = await execute(
+    `SELECT brokerId,
+            SUM(buyQty) AS totalBuyQty,
+            SUM(sellQty) AS totalSellQty
+     FROM broker_daily_agg
+     WHERE tradeDate IN (${placeholders})
+     GROUP BY brokerId`,
+    rangeDates,
+  );
+  const qtyMap = new Map<string, { buyQty: number; sellQty: number }>();
+  for (const r of qtyRows.rows as any[]) {
+    qtyMap.set(String(r.brokerId), {
+      buyQty: Number(r.totalBuyQty) || 0,
+      sellQty: Number(r.totalSellQty) || 0,
+    });
+  }
 
   const brokers: BrokerAggregateData[] = [];
   // Count transactions from floorsheet_trades for the same date range
@@ -100,19 +116,21 @@ export async function aggregateBrokerDataForRange(
     const turnover = Number(row.totalTurnover) || 0;
     if (turnover === 0) continue;
     const days = Number(row.daysInRange) || 1;
+    const brokerCode = String(row.brokerCode);
+    const qty = qtyMap.get(brokerCode) || { buyQty: 0, sellQty: 0 };
     brokers.push({
-      brokerCode: String(row.brokerCode),
-      brokerName: String(row.brokerName || `Broker ${row.brokerCode}`),
+      brokerCode,
+      brokerName: String(row.brokerName || `Broker ${brokerCode}`),
       date: toDateStr,
       range,
       buyAmount: buyAmt,
       sellAmount: sellAmt,
       netAmount: Number(row.totalNet) || 0,
       turnover,
-      buyVolume: Number(row.totalBuyVol) || 0,
-      sellVolume: Number(row.totalSellVol) || 0,
-      netVolume: (Number(row.totalBuyVol) || 0) - (Number(row.totalSellVol) || 0),
-      transactionCount: txMap.get(String(row.brokerCode)) || 0,
+      buyVolume: qty.buyQty,
+      sellVolume: qty.sellQty,
+      netVolume: qty.buyQty - qty.sellQty,
+      transactionCount: txMap.get(brokerCode) || 0,
       daysInRange: days,
       averageDailyTurnover: turnover / days,
     });

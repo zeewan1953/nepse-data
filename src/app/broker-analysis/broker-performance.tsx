@@ -12,6 +12,9 @@ type BrokerPerformance = {
   sellAmount: number;
   netAmount: number;
   turnover: number;
+  buyVolume: number;
+  sellVolume: number;
+  netVolume: number;
   transactionCount: number;
   daysActive: number;
   avgDaily: number;
@@ -249,13 +252,13 @@ export function BrokerPerformanceSection() {
               <thead>
                 <tr className="border-b border-border bg-surface-2">
                   <th className="px-3 py-2 text-left text-xs font-semibold text-muted">Broker</th>
-                  <th className="px-3 py-2 text-right text-xs font-semibold text-muted">Buy Amount</th>
-                  <th className="px-3 py-2 text-right text-xs font-semibold text-muted">Sell Amount</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-muted">Buy Qty</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-muted">Sell Qty</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-muted">Buy Amt</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-muted">Sell Amt</th>
                   <th className="px-3 py-2 text-right text-xs font-semibold text-muted">Net</th>
                   <th className="px-3 py-2 text-right text-xs font-semibold text-muted">Turnover</th>
-                  <th className="px-3 py-2 text-right text-xs font-semibold text-muted">Transactions</th>
-                  <th className="px-3 py-2 text-right text-xs font-semibold text-muted">Days</th>
-                  <th className="px-3 py-2 text-right text-xs font-semibold text-muted">Avg Daily</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-muted">Txns</th>
                 </tr>
               </thead>
               <tbody>
@@ -273,6 +276,12 @@ export function BrokerPerformanceSection() {
                         </div>
                       </td>
                       <td className="px-3 py-2 text-right text-xs font-semibold text-green-600">
+                        {formatLarge(broker.buyVolume)}
+                      </td>
+                      <td className="px-3 py-2 text-right text-xs font-semibold text-red-600">
+                        {formatLarge(broker.sellVolume)}
+                      </td>
+                      <td className="px-3 py-2 text-right text-xs font-semibold text-green-600">
                         {formatNumber(broker.buyAmount)}
                       </td>
                       <td className="px-3 py-2 text-right text-xs font-semibold text-red-600">
@@ -286,12 +295,6 @@ export function BrokerPerformanceSection() {
                       </td>
                       <td className="px-3 py-2 text-right text-xs text-muted">
                         {formatLarge(broker.transactionCount)}
-                      </td>
-                      <td className="px-3 py-2 text-right text-xs text-muted">
-                        {broker.daysActive}
-                      </td>
-                      <td className="px-3 py-2 text-right text-xs font-semibold text-foreground">
-                        {formatNumber(broker.avgDaily)}
                       </td>
                     </tr>
 
